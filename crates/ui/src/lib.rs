@@ -151,6 +151,8 @@ impl Shell {
 
     /// Closes the tab at `index`. Closing a tab other than the active one keeps the active tab.
     fn close(&mut self, index: usize) {
+        // The dialog edits a tab by index, so it goes with any close.
+        self.dialog = None;
         self.tabs.remove(index);
         if index < self.active {
             self.active -= 1;

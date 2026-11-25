@@ -102,6 +102,7 @@ impl Shell {
         let type_id = self.active_session().ok_or(SessionError::NoSession)?.type_id.clone();
         let mut view = (self.session_type(&type_id).ok_or(SessionError::UnknownType)?.new)();
         self.prepare(view.as_mut());
+        self.dialog = None;
         self.tabs[self.active] = Some(view);
         self.select(self.active);
         Ok(())
