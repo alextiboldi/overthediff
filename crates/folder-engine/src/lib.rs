@@ -6,6 +6,6 @@ mod align;
 mod scan;
 mod status;
 
-pub use align::{Aligned, align, case_sensitive};
+pub use align::{Aligned, Placed, align, align_flat, case_sensitive};
 pub use scan::{Folder, ScanEvent, ScanState, TreeScan};
 pub use status::{Criteria, Status, quick_test};
