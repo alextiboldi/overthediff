@@ -90,3 +90,13 @@ fn each_side_resolves_to_paths_in_its_own_spelling() {
     let resolved = resolve_selection(&rows, TreeSide::Right, &[Path::new("Docs")]);
     assert_eq!(paths(&resolved), set(&["docs/READ.txt"]));
 }
+
+/// A stale path below a selected folder, such as a file a rescan removed, names no row: the folder
+/// still resolves to its contents instead of to nothing.
+#[test]
+fn a_selected_path_that_names_no_row_does_not_open_its_folder() {
+    let rows = rows(tree(), tree(), true, &all);
+    let closed = resolve_selection(&rows, TreeSide::Left, &[Path::new("d")]);
+    let stale = resolve_selection(&rows, TreeSide::Left, &[Path::new("d"), Path::new("d/gone.txt"), Path::new("d/sub/gone")]);
+    assert_eq!(paths(&stale), paths(&closed));
+}

@@ -53,12 +53,23 @@ fn walk(rows: &[Row], side: TreeSide, at: &Path, path: &Path, selected: &[&Path]
             if selected.contains(&at.as_path()) {
                 out.items.push((path, item.clone()));
             }
-        } else if selected.iter().any(|s| *s != at && s.starts_with(&at)) {
+        } else if selected.iter().any(|s| s.strip_prefix(&at).is_ok_and(|below| names_row(&row.children, below))) {
             walk(&row.children, side, &at, &path, selected, out);
         } else {
             contents(row, side, &path, out);
         }
     }
+}
+
+/// Whether `below`, a non-empty row-name path, names one of `rows` or a row under them, so a
+/// stale or mistyped path doesn't open its folder and empty its resolution.
+fn names_row(rows: &[Row], below: &Path) -> bool {
+    let mut names = below.iter();
+    let Some(first) = names.next() else { return false };
+    rows.iter().find(|row| *row.name == *first).is_some_and(|row| {
+        let rest = names.as_path();
+        rest.as_os_str().is_empty() || names_row(&row.children, rest)
+    })
 }
 
 /// The visible contents of the folder `row`, at `path` on `side`.
