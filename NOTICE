@@ -13,6 +13,10 @@ allowlisted options only:
 - r-efi (MIT OR Apache-2.0 OR LGPL-2.1-or-later), through getrandom on UEFI targets only, which
   OverTheDiff doesn't build for: used under MIT OR Apache-2.0.
 
+Regular expressions (crates/regex) run on fancy-regex (MIT), with regex-automata and regex-syntax
+(MIT OR Apache-2.0), aho-corasick and memchr (Unlicense OR MIT), and bit-set and bit-vec
+(Apache-2.0 OR MIT).
+
 The tests also use egui_kittest, kittest and craft-testkit (each MIT OR Apache-2.0), which the app
 doesn't ship.
 
