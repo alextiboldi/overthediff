@@ -4,7 +4,8 @@
 //!
 //! - [`DataSource`] is the contract, and [`copy`] copies within one source or across two.
 //! - [`MemorySource`] is the in-memory reference source, and the fixture other crates' tests use.
-//! - [`LocalSource`] is the local provider: local disks and mounted network shares.
+//! - [`LocalSource`] is the local provider: local disks and mounted network shares, opened by an
+//!   OS path, `~/…` or `smb://…`.
 //! - [`suite`] is the contract test suite. Every provider runs it.
 //!
 //! Paths are relative to the source's root, with `/` between names (`docs/readme.txt`); the empty
@@ -17,6 +18,7 @@
 mod local;
 mod memory;
 pub mod suite;
+mod volume;
 
 use std::fmt;
 use std::io::Read;

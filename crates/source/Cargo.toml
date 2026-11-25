@@ -16,7 +16,8 @@ craft-atomic = { workspace = true }
 # The local provider's OS recycle bin or trash.
 trash = "5.4"
 
-# Whether a local path is on a network share, which has no recycle bin.
+# Whether a local path is on a network share, which has no recycle bin, which file system it is
+# on, and whether it is mounted read-only.
 [target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
 rustix = { version = "1.1", default-features = false, features = ["std", "fs"] }
 
@@ -24,5 +25,14 @@ rustix = { version = "1.1", default-features = false, features = ["std", "fs"] }
 [target.'cfg(unix)'.dependencies]
 uzers = { version = "0.12", default-features = false }
 
+# Whether a macOS volume's names differ by case (`pathconf`), which rustix doesn't offer.
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2"
+
+# The same on Windows: `GetVolumeInformationByHandleW`.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }
+
 [dev-dependencies]
+craft-testkit = { workspace = true }
 tempfile = "3"

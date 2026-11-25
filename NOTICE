@@ -19,6 +19,10 @@ Regular expressions (crates/regex) run on fancy-regex (MIT), with regex-automata
 
 On macOS and Linux, the local data source looks up owner and group names with uzers (MIT,
 Copyright (c) 2019 Benjamin Sago and 2023 Sandro-Alessio Gierens), which links libc (MIT OR Apache-2.0).
+It asks which file system a path is on, and whether it is mounted read-only, with rustix and
+linux-raw-sys (Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT), bitflags and errno (MIT OR
+Apache-2.0) on macOS and Linux, and with windows-sys and windows-link (MIT OR Apache-2.0) on Windows.
+On macOS it also asks libc whether a volume's names differ by case.
 
 The launch hand-off (otd-launch) adds craft-ipc (MIT OR Apache-2.0) and its dependencies, among
 them interprocess (0BSD OR Apache-2.0), recvmsg and doctest-file (0BSD), and generic-array and zmij
