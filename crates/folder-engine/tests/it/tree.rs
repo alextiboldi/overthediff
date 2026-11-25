@@ -1,0 +1,128 @@
+//! Folder aggregation and the per-side visibility predicate, on two scanned `MemorySource` trees.
+
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::time::Duration;
+
+use otd_folder_engine::{Criteria, Cues, Row, Side, Status, TreeScan, compare};
+use otd_source::{DataSource, ErrorKind, Item, MemorySource, SourceError};
+
+use crate::fixture::{at, caps};
+
+const CRITERIA: Criteria = Criteria { size: true, modified: true, tolerance: Duration::from_secs(2) };
+
+fn path(names: &[&str]) -> PathBuf {
+    names.iter().collect()
+}
+
+fn scan(source: MemorySource, background: bool) -> TreeScan {
+    let (scan, _events) = TreeScan::new(Arc::new(source), "", background);
+    while scan.step() {}
+    scan
+}
+
+/// Both trees fully scanned, compared with `visible` as the predicate.
+fn rows(left: MemorySource, right: MemorySource, visible: &dyn Fn(Side, &Path, &Item) -> bool) -> Vec<Row> {
+    let case_sensitive = left.capabilities().case_sensitive && right.capabilities().case_sensitive;
+    compare(&scan(left, true), &scan(right, true), &CRITERIA, case_sensitive, visible)
+}
+
+fn all(_: Side, _: &Path, _: &Item) -> bool {
+    true
+}
+
+fn row<'a>(rows: &'a [Row], name: &str) -> &'a Row {
+    rows.iter().find(|row| row.name == name).unwrap_or_else(|| panic!("{name} is a row of {rows:#?}"))
+}
+
+/// `d` holds `new.txt`, newer on the left, and `only.txt`, on the left only.
+fn newer_and_orphan() -> (MemorySource, MemorySource) {
+    let left = MemorySource::new(caps(true)).file("d/new.txt", "x", at(100)).file("d/only.txt", "x", at(1));
+    let right = MemorySource::new(caps(true)).file("d/new.txt", "x", at(1));
+    (left, right)
+}
+
+#[test]
+fn a_folder_holding_a_newer_file_and_an_orphan_carries_both_cues() {
+    let (left, right) = newer_and_orphan();
+    let cues = row(&rows(left, right, &all), "d").cues();
+    assert!(cues.contains(&Status::LeftNewer) && cues.contains(&Status::LeftOrphan), "{cues:?}");
+}
+
+#[test]
+fn hiding_the_newer_file_through_the_predicate_removes_its_cue_and_keeps_the_orphans() {
+    let (left, right) = newer_and_orphan();
+    let rows = rows(left, right, &|_, at: &Path, _: &Item| at != path(&["d", "new.txt"]));
+    let d = row(&rows, "d");
+    assert!(row(&d.children, "new.txt").hidden(), "hidden on both sides");
+    let cues = d.cues();
+    assert!(!cues.contains(&Status::LeftNewer) && cues.contains(&Status::LeftOrphan), "{cues:?}");
+}
+
+#[test]
+fn a_file_hidden_on_the_left_only_stays_visible_flagged_on_that_side_and_still_counts() {
+    let (left, right) = newer_and_orphan();
+    let rows = rows(left, right, &|side, at: &Path, _: &Item| !(side == Side::Left && at == path(&["d", "new.txt"])));
+    let d = row(&rows, "d");
+    let new = row(&d.children, "new.txt");
+    assert!(new.left_hidden && !new.right_hidden && !new.hidden(), "{new:#?}");
+    assert!(d.cues().contains(&Status::LeftNewer));
+}
+
+#[test]
+fn a_cue_deep_down_reaches_every_folder_above_it() {
+    let left = MemorySource::new(caps(true)).file("a/b/c/x.txt", "x", at(1));
+    let right = MemorySource::new(caps(true)).file("a/b/c/x.txt", "x", at(100));
+    let rows = rows(left, right, &all);
+    assert!(Cues::of(&rows).contains(&Status::RightNewer));
+    assert!(row(&rows, "a").cues().contains(&Status::RightNewer));
+}
+
+/// A folder's own timestamp never makes it newer: only its contents decide.
+#[test]
+fn a_folder_with_a_later_timestamp_and_the_same_contents_has_no_newer_cue() {
+    let left = MemorySource::new(caps(true)).folder("d", at(1_000)).file("d/x.txt", "x", at(1));
+    let right = MemorySource::new(caps(true)).folder("d", at(1)).file("d/x.txt", "x", at(1));
+    let rows = rows(left, right, &all);
+    for cues in [row(&rows, "d").cues(), Cues::of(&rows)] {
+        assert!(cues.contains(&Status::Same) && !cues.contains(&Status::LeftNewer) && !cues.contains(&Status::RightNewer), "{cues:?}");
+    }
+}
+
+/// On a case-insensitive pair, each side descends by its own spelling, so `Docs` and `docs`
+/// compare their contents rather than look empty on one side.
+#[test]
+fn folders_whose_names_differ_only_in_case_compare_their_contents() {
+    let left = MemorySource::new(caps(false)).file("Docs/a.txt", "x", at(1));
+    let right = MemorySource::new(caps(false)).file("docs/a.txt", "x", at(1));
+    let rows = rows(left, right, &all);
+    let docs = row(&rows, "Docs");
+    let a = row(&docs.children, "a.txt");
+    assert!(a.left.is_some() && a.right.is_some() && a.status == Status::Same, "{a:#?}");
+}
+
+#[test]
+fn a_folder_not_yet_scanned_is_unknown_not_same() {
+    let tree = || MemorySource::new(caps(true)).file("d/x.txt", "x", at(1));
+    // Background scanning off and `d` never opened: only the base is listed.
+    let rows = compare(&scan(tree(), false), &scan(tree(), false), &CRITERIA, true, &all);
+    let cues = Cues::of(&rows);
+    assert!(cues.contains(&Status::Unknown) && !cues.contains(&Status::Same), "{cues:?}");
+}
+
+#[test]
+fn an_unreadable_folder_gives_its_parent_an_error_cue() {
+    let left = MemorySource::new(caps(true)).file("d/locked/x.txt", "x", at(1)).unreadable("d/locked");
+    let right = MemorySource::new(caps(true)).file("d/locked/x.txt", "x", at(1));
+    assert!(row(&rows(left, right, &all), "d").cues().contains(&Status::Error(SourceError::new(ErrorKind::Io, "any error matches"))));
+}
+
+/// A folder hidden on a side hides its contents on that side, so nothing in it counts.
+#[test]
+fn the_contents_of_a_hidden_folder_are_hidden_and_add_no_cues() {
+    let (left, right) = newer_and_orphan();
+    let rows = rows(left, right, &|_, at: &Path, _: &Item| at != Path::new("d"));
+    let d = row(&rows, "d");
+    assert!(d.children.iter().all(Row::hidden), "{d:#?}");
+    assert!(Cues::of(&rows).is_empty());
+}

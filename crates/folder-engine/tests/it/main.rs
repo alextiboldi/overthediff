@@ -7,3 +7,4 @@ mod fixture;
 mod flat;
 mod scan;
 mod status;
+mod tree;
