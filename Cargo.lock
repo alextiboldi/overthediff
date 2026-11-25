@@ -2170,6 +2170,15 @@ name = "otd-text-engine"
 version = "0.1.0"
 
 [[package]]
+name = "otd-ui-regex"
+version = "0.1.0"
+dependencies = [
+ "egui",
+ "egui_kittest",
+ "otd-regex",
+]
+
+[[package]]
 name = "parking"
 version = "2.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
