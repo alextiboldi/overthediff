@@ -103,9 +103,17 @@ impl Shell {
     /// Closes the active tab and selects the one after it, or else the one before. Closing the last
     /// tab leaves Home.
     pub fn close_tab(&mut self) {
-        self.tabs.remove(self.active);
+        self.close(self.active);
+    }
+
+    /// Closes the tab at `index`. Closing a tab other than the active one keeps the active tab.
+    fn close(&mut self, index: usize) {
+        self.tabs.remove(index);
+        if index < self.active {
+            self.active -= 1;
+        }
         if self.tabs.is_empty() {
-            self.push(None);
+            self.tabs.push(None);
         }
         self.select(self.active.min(self.tabs.len() - 1));
     }
@@ -241,10 +249,7 @@ impl Shell {
         self.focus_active = false;
         match action {
             Some(Action::Select(index)) => self.active = index,
-            Some(Action::Close(index)) => {
-                self.active = index;
-                self.close_tab();
-            }
+            Some(Action::Close(index)) => self.close(index),
             Some(Action::New) => self.new_tab(),
             None => {}
         }

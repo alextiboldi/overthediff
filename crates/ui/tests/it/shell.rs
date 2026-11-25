@@ -286,3 +286,55 @@ fn the_tab_strip_is_a_tab_list() {
     let tab = harness.get_by_role(Role::Tab);
     assert_eq!(tab.accesskit_node().parent().map(|p| p.role()), Some(Role::TabList));
 }
+
+fn names(harness: &Harness<'_, Shell>) -> Vec<String> {
+    tabs(harness).into_iter().map(|(name, _)| name).collect()
+}
+
+#[test]
+fn a_close_button_closes_its_own_tab_and_keeps_the_selected_one() {
+    let mut harness = three_tabs();
+    tab_to(&mut harness, Role::Button, &format!("{} {HOME}", otd_ui::CLOSE_TAB));
+    press(&mut harness, Modifiers::NONE, Key::Enter);
+    assert_eq!(names(&harness), [ALPHA, BETA]);
+    assert_eq!(selected(&harness).as_deref(), Some(BETA), "closing another tab keeps the selected one");
+    assert!(focus_is_on_selected_tab(&harness));
+
+    tab_to(&mut harness, Role::Button, &format!("{} {BETA}", otd_ui::CLOSE_TAB));
+    press(&mut harness, Modifiers::NONE, Key::Enter);
+    assert_eq!(names(&harness), [ALPHA]);
+    assert!(focus_is_on_selected_tab(&harness));
+}
+
+#[test]
+fn the_new_tab_button_opens_home_in_a_new_tab_that_takes_focus() {
+    let mut harness = three_tabs();
+    tab_to(&mut harness, Role::Button, otd_ui::NEW_TAB);
+    press(&mut harness, Modifiers::NONE, Key::Enter);
+    assert_eq!(names(&harness), [HOME, ALPHA, BETA, HOME]);
+    assert_eq!(tabs(&harness).last(), Some(&(HOME.to_owned(), true)));
+    assert!(focus_is_on_selected_tab(&harness));
+}
+
+#[test]
+fn ctrl_f4_closes_the_tab_on_windows_only() {
+    for (os, closes) in [(OperatingSystem::Windows, true), (OperatingSystem::Mac, false), (OperatingSystem::Nix, false)] {
+        let mut harness = harness_on(os);
+        harness.state_mut().open((session_types()[0].new)());
+        harness.run();
+        press(&mut harness, Modifiers::CTRL, Key::F4);
+        assert_eq!(tabs(&harness).len(), if closes { 1 } else { 2 }, "Ctrl+F4 on {os:?}");
+    }
+}
+
+#[test]
+fn enter_or_space_on_a_focused_tab_selects_it() {
+    for key in [Key::Enter, Key::Space] {
+        let mut harness = three_tabs();
+        tab_to(&mut harness, Role::Tab, ALPHA);
+        assert_eq!(selected(&harness).as_deref(), Some(BETA), "focus alone doesn't select");
+        press(&mut harness, Modifiers::NONE, key);
+        assert_eq!(selected(&harness).as_deref(), Some(ALPHA), "{key:?} selects the focused tab");
+        assert!(focus_is_on_selected_tab(&harness));
+    }
+}
