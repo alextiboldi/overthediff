@@ -534,6 +534,7 @@ Settle each one in product review, for example with a prototype or a user test, 
 | E02-S1 | **Fallback.** A file that matches no format resolves by content: text-like content gets the built-in catch-all Text format, and binary content gets the Hex kind when one is regi… |
 | E02-S1 | AC: the catalogue rename example passes, and a reference to a missing group produces an empty string (*inferred*). |
 | E02-S1 | A.1 doesn't say whether masks ignore case or what an edge `-` or an empty set in `[...]` means. Proposed default: a mask compares names with the data source's case sensitivity, so `*.txt` matches `README.TXT` on a case-insens… |
+| E02-S1 | A.1 doesn't say where a path mask starts, how file and folder masks combine, or how excludes rank. Proposed default: a path mask without `.\` may start at any depth, so `Windows\*.txt` and `...\Windows\*.txt` select the same files. A file is incl… |
 | E03-S2 | Items are aligned by name within each folder. Matching is case-insensitive on case-insensitive sources and case-sensitive otherwise (*inferred*, from "case sensitivity follows t… |
 | E04-S1 | The modified time, Windows attributes and Unix permissions can be set. Copying keeps the modified time (*inferred*). |
 | E04-S2 | The default is "As folders once opened" (*inferred* from "treated as files when copying or comparing; double-clicking expands them"). |
