@@ -63,23 +63,37 @@ The key words MUST, MUST NOT, SHOULD, SHOULD NOT and MAY are used as in RFC 2119
 ## This repository
 <!-- craft-agents:end -->
 
-OverTheDiff is a desktop tool for Windows, macOS and Linux that compares text, folder trees, tables, binaries and images, then copies, synchronises and merges what differs. It is a Craft app in Rust and egui, but no code exists yet: the repository holds the plan in `backlog/`, which is spec-derived and not yet validated.
+OverTheDiff is a desktop tool for Windows, macOS and Linux that compares text, folder trees, tables, binaries and images, then copies, synchronises and merges what differs. It is a Craft app in Rust and egui. It is built from the plan in `backlog/`, which is spec-derived and not yet validated. So far the code is the Cargo workspace (E27-S1-T1); the app opens an empty window until E01-S1 builds the shell.
 
 ### Where the shared rules meet this repository
 
-- There is no code yet, so no Cargo workspace, craft-libs pin, `unsafe` block, progress log or attribution file. The change that adds one names it here.
-- The repository is `alextiboldi/overthediff` on GitHub (public, issues on). It is empty so far: no commits, issues, pull requests or CI. The plan lives in `backlog/`.
+- The repository is `alextiboldi/overthediff` on GitHub (public, issues on).
 - Rule 9: when a task needs a pull request in craft-libs, defer it to a new ticket. The ticket explains why the pull request is needed and links the original task, and the pull request is raised from it later. Meanwhile the task does what it can inside OverTheDiff.
+- Rule 10: craft-libs crates come from `rev = "2c81ed850319ef3504ce56d82379b346522af18e"` (storytold/craft-libs `main`, 2026-11-25), written as `{ git = "https://github.com/storytold/craft-libs", rev = "..." }`. The egui family (0.37) is patched onto storytold/egui `6d518fc799681571963842f95b55a6b68431b15a` and winit onto storytold/winit `a517b3846ee8457d84ee4975110bfda6797c44dc`, in the root `Cargo.toml`'s `[patch.crates-io]`: the same revisions craft-libs uses.
 - Rule 11: the Webpages panel (E07-S21, E24-S6) shows rendered web pages, which needs a webview. That departure is open; settle it before those stories start.
+- Rule 13: no module may use `unsafe` yet (`unsafe_code = "deny"` in the workspace). A change that needs it names its module here.
 - Rule 14: the command registry, colour roles and running commands without the window are E01-S1's. The automation interface is E28: `otd-cli` (E28-S1) and the MCP agent entry point (E28-S2, rule 18). The command line (E11) and scripting (E20) are product features, separate from it.
 - Rule 16: user-facing text goes through the translation system; E01-S1 owns the lookup. Translating it is outside this backlog (PRD non-goals); craft-i18n adds translations.
+- Rule 19: there is no progress log yet.
 - Rule 22: the backlog's view, command and switch names are working names. Each passes the naming.md check before it reaches the UI.
+- Rule 24: `ATTRIBUTION.md` lists assets and `NOTICE` third-party notices. A change that adds a dependency or an asset updates both.
 
 ### Layout
 
+- `Cargo.toml`: the workspace. Members are the globs `apps/*`, `crates/*` and `xtask`, so a new crate joins without editing it. Workspace crates depend on each other by relative `path` in their own manifest (`otd-core = { path = "../../crates/core" }`), not through `[workspace.dependencies]`. Lints, `rustfmt.toml` and `clippy.toml` apply to every crate (`[lints] workspace = true`).
+- `apps/otd`: the desktop app, package and executable `otd`. All egui, eframe and winit code lives under `apps/`: the window, menus, toolbars, shortcuts and painting. `otd-cli` (E28-S1) goes in `apps/otd-cli`.
+- `crates/core` (`otd-core`): the UI-free platform library. E01-S1 puts here what must run without a window: the command registry (stable ids, typed arguments, results, run by id) and the colour-role table (each role's light and dark values). The app binds commands to menus, toolbars and shortcuts and paints with the roles.
+- `crates/<name>` (`otd-<name>`): engines (E03), data sources (E04), pattern and file-type services (E02) and other UI-free libraries each get a crate of their own here. Nothing under `crates/` may depend on egui, eframe, epaint, emath or winit; `cargo xtask ui-free` fails if one does, so their suites run headlessly.
+- `xtask`: workspace tooling, `cargo xtask <command>` (standard library only).
 - `backlog/PRD.md`: the readable summary: users, capabilities, releases, non-functional requirements, non-goals and open decisions.
 - `backlog/00-index.md`: epics, the release plan layer by layer, hub surfaces, open questions with proposed defaults, the roadmap, assumptions and traceability. Before you add, change or build a story, read its "How to read this backlog": IDs, priority vs layer, the independence rule and the Definition of Done.
 - `backlog/epic-NN-*.md`: the source of truth, one file per epic, holding its stories (`E07-S4`) and tasks (`E07-S4-T2`). Each epic has an `area:` label and tasks carry `· flags:`; the index's Labels section defines them, matching GitHub issue labels.
+
+### Tests
+
+- Unit tests sit beside the code in `#[cfg(test)] mod tests`.
+- Integration tests: one binary per crate, `tests/it/main.rs`, with a module per area (`tests/it/<area>.rs`).
+- UI tests drive the app by keyboard and read its accessibility tree with egui_kittest, in `apps/otd/tests/it/`. Hostile-input sweeps use craft-testkit's `hostile` module. E27-S1-T3 adds both and describes them here.
 
 ### Conventions
 
@@ -91,15 +105,24 @@ OverTheDiff is a desktop tool for Windows, macOS and Linux that compares text, f
 
 The operator's standing rule: each backlog task is built in its own worktree. Its ticket is updated and closed, and it is merged, only after its tests pass and its code is reviewed. The ticket is the task's entry in its `backlog/epic-NN-*.md` file. For the task's own pull request and branch, this rule is the operator's go-ahead for rule 4's merge and branch deletion; nothing else is.
 
-1. **Worktree.** From an up-to-date `main`, run `git worktree add ../overthediff-worktrees/<task-id> -b task/<task-id> main` (for example `task/E07-S4-T2`), and work only there.
+1. **Worktree.** From an up-to-date `main`, run `git worktree add .claude/worktrees/<task-id> -b task/<task-id> main` (for example `task/E07-S4-T2`), and work only there. `.claude/` is gitignored.
 2. **Build and test.** Implement the task and run the checks below for every crate it touches. All must pass. Push the branch, open a pull request titled `<task-id> · <task title>`, and wait for CI with `gh pr checks --watch --interval 60`.
 3. **Review.** Someone who didn't write the code (another agent session or `/code-review`) reviews the diff against the task's AC and the Definition of Done in `backlog/00-index.md`. Fix every real finding and run the checks again. Repeat until the review is clean and CI is green.
 4. **Update and close the ticket, in the same branch.** In the epic file, append ` · status: done` to the task's line and add an indented `  - Implemented:` line saying what was built, where it lives, which checks ran, and the pull request link. When the story's last task closes, tick its acceptance criteria (`- [x]`). Push, and wait for CI again.
 5. **Merge.** Squash-merge the pull request into `main` with `gh pr merge --squash --delete-branch`. If the epic file conflicts, rebase onto `main`, keep both status updates, and rerun the checks before merging.
-6. **Clean up.** Run `git worktree remove ../overthediff-worktrees/<task-id>`, `git branch -D task/<task-id>` if the local branch is still there, `git worktree prune`, and `git pull` on `main`.
+6. **Clean up.** Run `git worktree remove .claude/worktrees/<task-id>`, `git branch -D task/<task-id>` if the local branch is still there, `git worktree prune`, and `git pull` on `main`.
 
 A task whose tests or review won't pass after two different fixes stays open as a draft pull request, unmerged, with its worktree kept. Say what fails and what you tried (rule 36).
 
 ### Checks
 
-None yet: there is no code. The change that adds the Cargo workspace lists its checks here.
+Run them from the workspace root.
+
+- `cargo xtask ci` is the whole gate, and the command CI runs. It stops at the first failure:
+  - `cargo fmt --all -- --check`;
+  - `cargo clippy --workspace --all-targets --locked -- -D warnings`;
+  - `cargo test --workspace --locked`;
+  - `cargo xtask ui-free`: no crate under `crates/` depends on a UI package.
+- While iterating, run `cargo test -p <crate>` and `cargo clippy -p <crate> --all-targets -- -D warnings` for the crates you changed. Run `cargo xtask ci` before every push.
+- `Cargo.lock` is committed; the checks run with `--locked`, so commit the lock file with any dependency change.
+- Only the local platform builds locally. For `cfg(windows)` code, `cargo check --target x86_64-pc-windows-msvc -p <crate>` catches most errors.
