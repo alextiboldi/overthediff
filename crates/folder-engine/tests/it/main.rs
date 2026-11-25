@@ -2,5 +2,6 @@
 
 mod align;
 mod fixture;
+mod flat;
 mod scan;
 mod status;
