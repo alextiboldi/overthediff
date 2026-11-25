@@ -1,14 +1,16 @@
 //! One wildcard matched against one file or folder name (feature catalogue A.1, story E02-S1).
 //!
 //! - `?` matches one character and `*` matches zero or more.
-//! - `[az]` is a set, `[a-z]` a range, `[!az]` a negated set and `[[]` a literal `[`. A `-` at the
-//!   start or end of a set is literal.
+//! - `[az]` is a set, `[a-z]` a range, `[!az]` a negated set and `[[]` a literal `[`.
 //! - `*.*` also matches names without an extension.
 //! - A mask ending in `.` matches only names without an extension: the final `.` is dropped, and
 //!   neither `?` nor `*` matches a period. So `*.` matches names that contain no period.
 //!
+//! Left open by the story and decided here: a `-` at the start or end of a set is literal, an empty
+//! set is an error, and case is compared exactly.
+//!
 //! Splitting a mask list on `;`, the `-` exclude prefix and `\` folder parts belong to the mask list,
-//! not here. Case is compared exactly; the story leaves case folding unspecified.
+//! not here.
 
 use std::fmt;
 
