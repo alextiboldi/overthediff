@@ -10,11 +10,17 @@
 //!   the exclude-only `-*.bak` or the folder-only `Source\`, matches every other name.
 //! - A format with an empty mask never resolves automatically, but [`Registry::by_name`] picks it,
 //!   as it picks any format, enabled or not.
+//! - A file no format matches falls back by content: [`Registry::fallback_kind`] gives Hex for
+//!   binary content ([`is_binary`]) when Hex is registered, and Text otherwise.
 //!
-//! Not here: the fallback for files no format matches (E02-S1-T7), editing and reordering formats
-//! (E10-S1), and kind-specific properties, which the owning feature keeps by format name.
+//! Not here: editing and reordering formats (E10-S1), and kind-specific properties, which the
+//! owning feature keeps by format name.
+
+mod content;
 
 use std::fmt;
+
+pub use content::{SAMPLE_LEN, is_binary};
 
 use otd_mask::MaskList;
 pub use otd_mask::{Case, MaskListError};
@@ -137,6 +143,13 @@ impl Registry {
     /// source's `case`. `None` when none does.
     pub fn resolve(&self, file_name: &str, case: Case) -> Option<&Format> {
         self.formats.iter().find(|f| f.enabled && f.matches(file_name, case))
+    }
+
+    /// The kind for a file no format matched: Hex when Hex is registered and its `content`
+    /// [`is_binary`], otherwise Text. The first [`SAMPLE_LEN`] bytes of the file are enough. The
+    /// view of that kind opens the file with its catch-all format.
+    pub fn fallback_kind(&self, content: &[u8]) -> Kind {
+        if self.has_kind(Kind::Hex) && is_binary(content) { Kind::Hex } else { Kind::Text }
     }
 
     /// The format called `name`, for a manual pick: its mask and enabled flag don't matter.

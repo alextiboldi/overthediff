@@ -22,7 +22,7 @@ This epic is the shared matching layer: file masks, regular expressions and the 
   - A.1 doesn't say where a path mask starts, how file and folder masks combine, or how excludes rank. Proposed default: a path mask without `.\` may start at any depth, so `Windows\*.txt` and `...\Windows\*.txt` select the same files. A file is included when it passes the file masks and sits in an included folder; the base folder's own files count as in one. An exclude wins over any include, and a kind with no include masks includes everything of that kind not excluded. Spaces around a token are dropped and empty tokens skipped (*inferred*; E02-S1-T2).
   - Regex semantics follow A.2. Matching is line by line, so `\A`/`\Z` behave like `^`/`$`.
   - Format resolution: scan from the top, and the first enabled format whose mask matches wins. A format with an empty mask never matches automatically but can be picked manually.
-  - Unmatched files fall back by content (T7 decision, *inferred*).
+  - Unmatched files fall back by content: binary (a NUL or invalid text encoding in the first 8 KB) gets the Hex kind when it is registered, anything else Text (T7 decision, *inferred*, confirmed by the operator on 2026-11-25; see the story's Decisions).
 
 ---
 
@@ -62,6 +62,13 @@ As a developer on the product team, I can match names, text and file types throu
   - An empty-mask format is never chosen automatically but can be chosen by name.
   - Formats registered by a test feature appear in registration order after the built-ins.
 - [ ] **Fallback.** A file that matches no format resolves by content: text-like content gets the built-in catch-all Text format, and binary content gets the Hex kind when one is registered, otherwise Text (*inferred*, confirmed in T7).
+
+#### Decisions
+**Fallback for unmatched files (E02-S1-T7).** Recorded by E02-S1-T7 and confirmed by the operator on 2026-11-25, as proposed: a file with NUL bytes or invalid text encoding in its first 8 KB is binary. The catalogue doesn't say how unmatched files are treated, so this is OverTheDiff's own choice (*inferred*). It reads as follows:
+- Only the first 8 KB (8,192 bytes) are looked at. A character that byte 8,192 cuts in two still counts as text; one cut at the end of a shorter file doesn't.
+- A UTF-16 BOM (`FF FE` or `FE FF`) makes the sample UTF-16: it is text when its code units decode with no unpaired surrogate and no U+0000. Otherwise the sample must be valid UTF-8, with or without a BOM, and hold no NUL byte. An empty file is text.
+- So UTF-16 without a BOM, UTF-32 and legacy code-page text count as binary. A text format still takes them by mask, and any format can be picked by name.
+- A file no enabled format matches gets the Hex kind when its sample is binary and the Hex kind is registered, and the Text kind otherwise. The view of that kind opens it with its own catch-all format; the registry doesn't hold one, and no feature registers built-in formats before E07-S1 and E16-S1.
 
 #### Tasks
 - **E02-S1-T1** — Wildcard matcher for `?`, `*`, sets, ranges, negation, `[[]`, `*.*` and `*.` · size: M · depends: — · flags: `craft-libs` · status: done
