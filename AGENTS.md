@@ -123,7 +123,7 @@ Run them from the workspace root.
   - `cargo fmt --all -- --check`;
   - `cargo clippy --workspace --all-targets --locked -- -D warnings`;
   - `cargo test --workspace --locked`;
-  - `cargo xtask ui-free`: no crate under `crates/`, except `crates/ui` and `crates/ui-*`, depends on a UI package.
+  - `cargo xtask ui-free`: no crate under `crates/`, except `crates/ui` and `crates/ui-*`, depends on a UI package, counting optional dependencies.
 - While iterating, run `cargo test -p <crate>` and `cargo clippy -p <crate> --all-targets -- -D warnings` for the crates you changed. Run `cargo xtask ci` before every push.
 - `Cargo.lock` is committed; the checks run with `--locked`, so commit the lock file with any dependency change.
 - Only the local platform builds locally. For `cfg(windows)` code, `cargo check --target x86_64-pc-windows-msvc -p <crate>` catches most errors.

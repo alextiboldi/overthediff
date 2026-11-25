@@ -65,7 +65,8 @@ fn ci() -> Result<(), String> {
 }
 
 /// Fails if any crate under `crates/`, except `crates/ui` and `crates/ui-*`, has a UI package in its
-/// normal dependency tree, on any target.
+/// normal dependency tree, on any target, with all its features on (an optional UI dependency is
+/// still a UI dependency, and workspace feature unification can switch it on).
 fn ui_free() -> Result<(), String> {
     let dir = root().join("crates");
     let entries = std::fs::read_dir(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
@@ -78,7 +79,8 @@ fn ui_free() -> Result<(), String> {
             continue;
         }
         let manifest = manifest.to_string_lossy().into_owned();
-        let args = ["tree", "--manifest-path", &manifest, "--edges", "normal", "--target", "all", "--prefix", "none", "--format", "{p}"];
+        let args =
+            ["tree", "--manifest-path", &manifest, "--edges", "normal", "--target", "all", "--all-features", "--prefix", "none", "--format", "{p}"];
         let out = cargo(&args).output().map_err(|e| format!("cargo tree: failed to start: {e}"))?;
         if !out.status.success() {
             return Err(format!("cargo tree --manifest-path {manifest} failed:\n{}", String::from_utf8_lossy(&out.stderr)));
