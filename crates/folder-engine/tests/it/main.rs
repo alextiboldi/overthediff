@@ -3,3 +3,4 @@
 mod align;
 mod fixture;
 mod scan;
+mod status;
