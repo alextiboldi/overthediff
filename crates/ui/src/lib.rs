@@ -12,19 +12,25 @@ use std::time::Duration;
 use egui::accesskit::{Live, Role};
 use egui::os::OperatingSystem;
 use egui::{Key, Modifiers, Response, Sense, Stroke, Ui, Vec2, WidgetInfo};
+use otd_core::i18n::{fmt, measure, t};
 
-// ponytail: English literals until E01-S1-T13's translation lookup; the shell's own text is all here.
+// The shell's own text: English keys, drawn only through `t` (E01-S1-T13).
 pub const HOME: &str = "Home";
 pub const NEW_TAB: &str = "New Tab";
-pub const CLOSE_TAB: &str = "Close Tab";
+/// The close button's name; `{tab}` is the tab's title.
+pub const CLOSE_TAB: &str = "Close Tab {tab}";
 pub const NO_SESSION_TYPES: &str = "No session types are available yet.";
 pub const INSERT: &str = "Insert";
 pub const OVERWRITE: &str = "Overwrite";
 pub const LOAD_TIME: &str = "Load time";
+/// A status-bar field's text.
+const FIELD: &str = "{label}: {value}";
+/// The load time's unit; `{n}` is the number of seconds.
+const SECONDS: &str = "{n} s";
 
 /// What a tab shows: a session of some type, or a test view.
 pub trait View {
-    /// The tab's caption.
+    /// The tab's caption, in the interface language (`otd_core::i18n::t`).
     fn title(&self) -> String;
     /// The fields this view publishes to the status bar. Read every frame.
     fn status(&self) -> Status {
@@ -40,13 +46,14 @@ pub trait View {
 pub struct SessionType {
     /// A stable id, unique among session types, independent of the translated name.
     pub id: &'static str,
-    /// The Home button's caption.
+    /// The Home button's caption, in English: the shell looks it up (`otd_core::i18n::t`).
     pub name: &'static str,
     /// An empty session of this type.
     pub new: fn() -> Box<dyn View>,
 }
 
-/// One status-bar field. Its accessible name starts with its label.
+/// One status-bar field. Its accessible name starts with its label. The view looks its label and
+/// value up (`otd_core::i18n::t`); the shell draws them as given.
 pub struct Field {
     /// A stable id, unique within the view.
     pub id: &'static str,
@@ -71,7 +78,7 @@ pub struct Status {
 type Tab = Option<Box<dyn View>>;
 
 fn title(tab: &Tab) -> String {
-    tab.as_ref().map_or_else(|| HOME.to_owned(), |view| view.title())
+    tab.as_ref().map_or_else(|| t(HOME).to_owned(), |view| view.title())
 }
 
 /// The main window's contents. Launch-argument handlers act on it (`otd_launch::Handler<Shell>`).
@@ -224,8 +231,8 @@ impl Shell {
                 // No `push_id` scope: its container would sit between the tab and the tab list.
                 let response = ui.selectable_label(selected, &title);
                 // The tab role and selected state, as craft-ui's `tabs::Tab` sets them.
-                // ponytail: not craft-ui itself, which would add ~110 crates (craft-i18n and
-                // ICU) for these lines; switch to it once the app depends on craft-i18n.
+                // ponytail: not craft-ui itself, which would add its other dependencies for these
+                // lines; the app now has craft-i18n, so switching is a refactor of its own.
                 ui.ctx().accesskit_node_builder(response.id, |node| {
                     node.set_role(Role::Tab);
                     node.clear_toggled();
@@ -240,11 +247,11 @@ impl Shell {
                 if response.clicked() {
                     action = Some(Action::Select(index));
                 }
-                if icon_button(ui, &format!("{CLOSE_TAB} {title}"), &LUCIDE_X).clicked() {
+                if icon_button(ui, &fmt(t(CLOSE_TAB), &[("tab", &title)]), &LUCIDE_X).clicked() {
                     action = Some(Action::Close(index));
                 }
             }
-            if icon_button(ui, NEW_TAB, &LUCIDE_PLUS).clicked() {
+            if icon_button(ui, t(NEW_TAB), &LUCIDE_PLUS).clicked() {
                 action = Some(Action::New);
             }
         });
@@ -262,13 +269,13 @@ impl Shell {
             view.ui(ui);
             return;
         }
-        ui.heading(HOME);
+        ui.heading(t(HOME));
         if self.session_types.is_empty() {
-            ui.label(NO_SESSION_TYPES);
+            ui.label(t(NO_SESSION_TYPES));
         }
         let mut chosen = None;
         for session_type in &self.session_types {
-            if ui.push_id(session_type.id, |ui| ui.button(session_type.name)).inner.clicked() {
+            if ui.push_id(session_type.id, |ui| ui.button(t(session_type.name))).inner.clicked() {
                 chosen = Some(session_type.new);
             }
         }
@@ -290,13 +297,13 @@ impl Shell {
         }
         if let Some(insert) = status.insert {
             ui.separator();
-            if ui.button(if insert { INSERT } else { OVERWRITE }).clicked() {
+            if ui.button(t(if insert { INSERT } else { OVERWRITE })).clicked() {
                 view.toggle_insert();
             }
         }
         if let Some(load_time) = status.load_time {
-            ui.separator();
-            ui.label(format!("{LOAD_TIME}: {:.2} s", load_time.as_secs_f64()));
+            let value = measure(load_time.as_secs_f64(), 2, SECONDS);
+            field(ui, &Field { id: "load-time", label: t(LOAD_TIME).to_owned(), value });
         }
     }
 }
@@ -339,7 +346,7 @@ impl egui::Plugin for CtrlTab {
 
 fn field(ui: &mut Ui, field: &Field) -> Response {
     ui.separator();
-    ui.push_id(field.id, |ui| ui.label(format!("{}: {}", field.label, field.value))).inner
+    ui.push_id(field.id, |ui| ui.label(fmt(t(FIELD), &[("label", &field.label), ("value", &field.value)]))).inner
 }
 
 /// Lucide's `x` and `plus` icons (ISC; both from Feather, MIT; see ATTRIBUTION.md): their
