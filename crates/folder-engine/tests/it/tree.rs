@@ -114,7 +114,41 @@ fn a_folder_not_yet_scanned_is_unknown_not_same() {
 fn an_unreadable_folder_gives_its_parent_an_error_cue() {
     let left = MemorySource::new(caps(true)).file("d/locked/x.txt", "x", at(1)).unreadable("d/locked");
     let right = MemorySource::new(caps(true)).file("d/locked/x.txt", "x", at(1));
-    assert!(row(&rows(left, right, &all), "d").cues().contains(&Status::Error(SourceError::new(ErrorKind::Io, "any error matches"))));
+    let d = row(&rows(left, right, &all), "d").cues();
+    assert!(d.contains(&Status::Error(SourceError::new(ErrorKind::Io, "any error matches"))), "{d:?}");
+    // Nothing is known of what the unreadable side holds, so the other side's items aren't orphans.
+    assert!(d.contains(&Status::Unknown) && !d.contains(&Status::RightOrphan), "{d:?}");
+}
+
+fn no_orphans(cues: Cues) -> bool {
+    !cues.contains(&Status::LeftOrphan) && !cues.contains(&Status::RightOrphan)
+}
+
+/// One side's listing of `d` isn't done yet, so what it faces deep down is unknown, not orphans.
+#[test]
+fn items_facing_a_folder_not_yet_listed_on_the_other_side_are_unknown_not_orphans() {
+    let tree = || MemorySource::new(caps(true)).file("d/sub/x.txt", "x", at(1));
+    let rows = compare(&scan(tree(), true), &scan(tree(), false), &CRITERIA, true, &all);
+    for cues in [row(&rows, "d").cues(), Cues::of(&rows)] {
+        assert!(cues.contains(&Status::Unknown) && no_orphans(cues), "{cues:?}");
+    }
+}
+
+#[test]
+fn items_facing_a_base_not_yet_listed_are_unknown_not_orphans() {
+    let tree = || MemorySource::new(caps(true)).file("x.txt", "x", at(1));
+    let (unlisted, _events) = TreeScan::new(Arc::new(tree()), "", false);
+    let cues = Cues::of(&compare(&scan(tree(), true), &unlisted, &CRITERIA, true, &all));
+    assert!(cues.contains(&Status::Unknown) && no_orphans(cues), "{cues:?}");
+}
+
+/// A folder on one side only is listed and its contents really are orphans.
+#[test]
+fn the_contents_of_a_listed_orphan_folder_are_orphans() {
+    let left = MemorySource::new(caps(true)).file("d/x.txt", "x", at(1));
+    let right = MemorySource::new(caps(true)).file("y.txt", "x", at(1));
+    let rows = rows(left, right, &all);
+    assert_eq!(row(&row(&rows, "d").children, "x.txt").status, Status::LeftOrphan);
 }
 
 /// A folder hidden on a side hides its contents on that side, so nothing in it counts.

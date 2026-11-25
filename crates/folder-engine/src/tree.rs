@@ -33,7 +33,9 @@ pub struct Row {
     pub left: Option<Item>,
     pub right: Option<Item>,
     /// From the quick tests. Two folders are [`Status::Unknown`]: their result is their
-    /// [`Row::cues`]. A folder that can't be listed makes the row an error with its message.
+    /// [`Row::cues`]. A folder that can't be listed makes the row an error with its message. An
+    /// item facing a folder whose listing isn't done, or failed, is unknown, not an orphan: nothing
+    /// is known yet of what that side holds.
     pub status: Status,
     /// The predicate hides the left item, or the folder it is in is hidden on the left.
     pub left_hidden: bool,
@@ -108,8 +110,8 @@ impl Row {
 }
 
 /// The compared tree of two scans: the rows of their base folders, as far as each scan has got.
-/// Call it again after more listings to see them. Whether a base itself could be listed is on its
-/// scan (`TreeScan::folder` of the empty path).
+/// Call it again after more listings to see them. Until a base is listed, the other side's items
+/// are unknown; why a base couldn't be listed is on its scan (`TreeScan::folder` of the empty path).
 ///
 /// *Unspecified*, decided here: the contents of a folder hidden on a side are hidden on that side
 /// too; a file against a folder has the folder's contents as orphans of the folder's side; an
@@ -117,7 +119,7 @@ impl Row {
 pub fn compare(left: &TreeScan, right: &TreeScan, criteria: &Criteria, case_sensitive: bool, visible: &Visibility<'_>) -> Vec<Row> {
     let trees = Trees { left, right, criteria, case_sensitive, visible };
     let base = Some(Path::new(""));
-    trees.rows([trees.listing(Side::Left, base), trees.listing(Side::Right, base)], [false, false])
+    trees.rows([trees.listing(Side::Left, base), trees.listing(Side::Right, base)], [false, false], [false, false])
 }
 
 struct Trees<'a> {
@@ -150,11 +152,20 @@ impl Trees<'_> {
         }
     }
 
+    /// `unknown` marks a side whose contents here aren't known: this folder, or one above it, isn't
+    /// listed yet or couldn't be. A side with no folder here (`dir` is `None`) is known to be empty.
+    ///
     /// ponytail: recursive, so as deep as the tree; paths' own length limits keep that shallow.
-    fn rows(&self, [left, right]: [Listing; 2], hidden: [bool; 2]) -> Vec<Row> {
+    fn rows(&self, [left, right]: [Listing; 2], hidden: [bool; 2], unknown: [bool; 2]) -> Vec<Row> {
+        let unlisted = |l: &Listing| l.dir.is_some() && (l.state != ScanState::Done || l.error.is_some());
+        let unknown = [unknown[0] || unlisted(&left), unknown[1] || unlisted(&right)];
         let mut rows = Vec::new();
         for aligned in align(left.items, right.items, self.case_sensitive) {
-            let mut status = quick_test(&aligned, self.criteria);
+            let mut status = match quick_test(&aligned, self.criteria) {
+                Status::LeftOrphan if unknown[1] => Status::Unknown,
+                Status::RightOrphan if unknown[0] => Status::Unknown,
+                status => status,
+            };
             // Each side descends by its own item's spelling, which may differ in case.
             let path = |dir: &Option<PathBuf>, item: &Option<Item>| Some(dir.as_ref()?.join(&item.as_ref()?.name));
             let paths = [path(&left.dir, &aligned.left), path(&right.dir, &aligned.right)];
@@ -177,7 +188,7 @@ impl Trees<'_> {
             } else {
                 ScanState::Done
             };
-            let children = if below.iter().any(|l| l.dir.is_some()) { self.rows(below, row_hidden) } else { Vec::new() };
+            let children = if below.iter().any(|l| l.dir.is_some()) { self.rows(below, row_hidden, unknown) } else { Vec::new() };
             rows.push(Row {
                 name: aligned.name,
                 left: aligned.left,
