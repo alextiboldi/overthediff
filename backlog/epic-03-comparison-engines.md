@@ -61,8 +61,9 @@ As a developer on the product team, I can hand the engine two texts and a rule s
 - [ ] Very large inputs stay within the memory and time budgets set in T6.
 
 #### Tasks
-- **E03-S1-T1** — Standard line alignment with gap padding and sections · size: L · depends: — · flags: `craft-libs`
+- **E03-S1-T1** — Standard line alignment with gap padding and sections · size: L · depends: — · flags: `craft-libs` · status: done
   - AC: a corpus of before/after pairs (insertions, deletions, moved blocks, repeated lines) gives the expected row pairings and sections.
+  - Implemented: `compare(left, right) -> Comparison { rows, sections }` over `Line { text, ending }` in the new UI-free crate `crates/text-engine` (`otd-text-engine`, no dependencies): a forward walk that anchors on the nearest three-line match, pairs single matching lines nearest-first between anchors, breaks equally near points by how long the sides then agree, pads the rest with gaps, and groups differing rows into maximal sections; lines align on text, and a different ending makes the row changed. The before/after corpus (each case also swapped), order, row-kind, section and repeated-line relation tests are in `crates/text-engine/tests/it/alignment.rs`. Checks: `cargo xtask ci` on macOS and pull-request CI on Linux and macOS passed. craft-libs follow-up: #9. Pull request: https://github.com/alextiboldi/overthediff/pull/10
 - **E03-S1-T2** — Character-level differences inside changed rows · size: M · depends: E03-S1-T1 · flags: `craft-libs`
   - AC: changing one word in a long line marks only that word's characters, and changing whitespace marks only the whitespace.
 - **E03-S1-T3** — Importance classification framework: pluggable rules, orphan-always-important, overall result, statistics · size: M · depends: E03-S1-T1
