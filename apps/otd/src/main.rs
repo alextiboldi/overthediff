@@ -70,7 +70,7 @@ fn run_window(registry: Registry<Shell>, instance: Instance) -> eframe::Result {
             Ok(Box::new(App {
                 registry,
                 instance,
-                shell: Shell::new(session_types::session_types()).with_settings(session_settings::session_settings()),
+                shell: Shell::new(session_types::session_types()).with_settings(session_settings::session_settings())?,
             }))
         }),
     )

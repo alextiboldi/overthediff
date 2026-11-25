@@ -5,20 +5,23 @@
 //! active view's session: the Specs tab holds one input per side and the Description, and each
 //! tab contributed for the session type holds its contributed options ([`Setting`], added with
 //! [`Shell::with_settings`]). OK writes the copy back to that view only ("Use for this view only",
-//! the one scope until E06-S2 adds more); Cancel and Esc drop it.
+//! the one scope until E06-S2 adds more); Cancel and Esc drop it, and a click outside it
+//! does nothing.
 
 use std::fmt;
 
 use egui::accesskit::Role;
-use egui::{Color32, Context, Id, Key, Response, TextEdit, Ui};
+use egui::{Color32, Context, Id, Key, Modifiers, Response, TextEdit, Ui};
 
-pub use otd_core::session::{Session, Setting, Value};
+use otd_core::session::check_unique;
+pub use otd_core::session::{DuplicateSetting, Session, Setting, Value};
 pub use otd_format::Kind;
 
 use crate::{SessionType, Shell, View};
 
 // ponytail: English literals until E01-S1-T13's translation lookup, as in lib.rs.
-pub const SESSION_SETTINGS: &str = "Session Settings";
+/// The Session Settings dialog's title, in our own words (docs/feature-names.md).
+pub const SESSION_SETTINGS: &str = "Comparison Settings";
 /// The tab the backlog calls Specs: the session's inputs and its description.
 pub const INPUTS: &str = "Inputs";
 pub const DESCRIPTION: &str = "Description";
@@ -67,10 +70,12 @@ pub(crate) struct Dialog {
 }
 
 impl Shell {
-    /// Adds the options features contribute to Session Settings tabs.
-    pub fn with_settings(mut self, settings: Vec<Setting>) -> Self {
+    /// Adds the options features contribute to Session Settings tabs. Fails when one shares its
+    /// session type, tab and id with another, added now or before.
+    pub fn with_settings(mut self, settings: Vec<Setting>) -> Result<Self, DuplicateSetting> {
         self.settings.extend(settings);
-        self
+        check_unique(&self.settings)?;
+        Ok(self)
     }
 
     /// The session type that opens files of `kind`: the first registered one that declares it.
@@ -175,7 +180,10 @@ impl Shell {
                 cancel |= ui.button(CANCEL).clicked();
             });
         });
-        if !(ok || cancel || modal.should_close()) {
+        // Esc closes it as Cancel does, unless it closes a popup first. A click outside it doesn't:
+        // a stray click would drop what the user typed.
+        let escape = modal.is_top_modal && !modal.any_popup_open && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape));
+        if !(ok || cancel || escape) {
             return;
         }
         let dialog = self.dialog.take();

@@ -6,7 +6,9 @@ use egui::accesskit::Role;
 use egui::{Key, Modifiers};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
-use otd_ui::{CANCEL, DESCRIPTION, HOME, INPUTS, Kind, OK, SESSION_SETTINGS, Session, SessionType, Setting, Shell, Value, View};
+use otd_ui::{
+    CANCEL, DESCRIPTION, HOME, INPUTS, Kind, OK, SCOPE, SESSION_SETTINGS, Session, SessionType, Setting, Shell, THIS_VIEW_ONLY, Value, View,
+};
 
 const ALPHA: &str = "Alpha Compare";
 const BETA: &str = "Beta Compare";
@@ -19,6 +21,7 @@ const TAB_WIDTH: &str = "Tab width";
 const SHOWS_SPECS: &str = "Shows inputs";
 const SHOWS_DESCRIPTION: &str = "About";
 const SHOWS_RULE: &str = "Ignoring case";
+const SHOWS_DISPLAY: &str = "Display values";
 
 /// A test session view that shows its inputs, description and one rule.
 struct SessionView {
@@ -39,6 +42,7 @@ impl View for SessionView {
         ui.label(format!("{SHOWS_SPECS}: {}", self.session.specs.join("|")));
         ui.label(format!("{SHOWS_DESCRIPTION}: {}", self.session.description));
         ui.label(format!("{SHOWS_RULE}: {:?}", self.session.rule(COMPARISON, "ignore_case")));
+        ui.label(format!("{SHOWS_DISPLAY}: {:?}", self.session.rules.get(DISPLAY)));
     }
 }
 
@@ -81,7 +85,7 @@ fn settings() -> Vec<Setting> {
 }
 
 fn shell() -> Shell {
-    Shell::new(session_types()).with_settings(settings())
+    Shell::new(session_types()).with_settings(settings()).unwrap()
 }
 
 /// A harness with tabs Home, Alpha and Alpha, the second Alpha selected.
@@ -103,23 +107,23 @@ fn dialog() -> Harness<'static, Shell> {
     harness
 }
 
-fn press(harness: &mut Harness<'_, Shell>, modifiers: Modifiers, key: Key) {
+fn press<S>(harness: &mut Harness<'_, S>, modifiers: Modifiers, key: Key) {
     harness.key_press_modifiers(modifiers, key);
     harness.run();
 }
 
-fn type_text(harness: &mut Harness<'_, Shell>, text: &str) {
+fn type_text<S>(harness: &mut Harness<'_, S>, text: &str) {
     harness.get_by(|node| node.is_focused()).type_text(text);
     harness.run();
 }
 
-fn focused(harness: &Harness<'_, Shell>) -> Option<(Role, String)> {
+fn focused<S>(harness: &Harness<'_, S>) -> Option<(Role, String)> {
     let node = harness.query_by(|node| node.is_focused())?;
     let node = node.accesskit_node();
     Some((node.role(), node.label().or_else(|| node.value()).unwrap_or_default()))
 }
 
-fn tab_to(harness: &mut Harness<'_, Shell>, role: Role, name: &str) {
+fn tab_to<S>(harness: &mut Harness<'_, S>, role: Role, name: &str) {
     for _ in 0..30 {
         if focused(harness).is_some_and(|(r, label)| r == role && label == name) {
             return;
@@ -250,6 +254,18 @@ fn esc_and_cancel_discard_the_changes_and_give_focus_back_to_the_window() {
 }
 
 #[test]
+fn a_click_outside_the_dialog_keeps_it_and_its_changes() {
+    let mut harness = dialog();
+    tab_to(&mut harness, Role::MultilineTextInput, DESCRIPTION);
+    type_text(&mut harness, "notes");
+    harness.get_by(|node| node.role() == Role::Tab && node.label().as_deref() == Some(HOME)).click();
+    harness.run();
+    assert!(is_open(&harness));
+    let description = harness.get_by(|node| node.role() == Role::MultilineTextInput && node.label().as_deref() == Some(DESCRIPTION));
+    assert_eq!(description.accesskit_node().value().as_deref(), Some("notes"));
+}
+
+#[test]
 fn focus_moves_into_the_dialog_and_tab_never_leaves_it() {
     let mut harness = dialog();
     assert_eq!(focused(&harness), Some((Role::Tab, INPUTS.to_owned())));
@@ -314,4 +330,49 @@ fn each_value_type_gets_a_control_named_by_its_label() {
         let found = harness.query_by(|node| node.role() == role && node.label().is_some_and(|name| name.starts_with(label)));
         assert!(found.is_some(), "{label}: a {role:?} named by it");
     }
+}
+
+#[test]
+fn the_scope_dropdown_offers_use_for_this_view_only() {
+    let mut harness = dialog();
+    tab_to(&mut harness, Role::ComboBox, SCOPE);
+    press(&mut harness, Modifiers::NONE, Key::Space);
+    press(&mut harness, Modifiers::NONE, Key::ArrowDown);
+    assert_eq!(focused(&harness).map(|(_, name)| name).as_deref(), Some(THIS_VIEW_ONLY));
+}
+
+#[test]
+fn a_choice_picked_by_keyboard_is_applied() {
+    let mut harness = dialog();
+    let before = shown(&harness, SHOWS_DISPLAY);
+    tab_to(&mut harness, Role::Tab, DISPLAY);
+    press(&mut harness, Modifiers::NONE, Key::Enter);
+    tab_to(&mut harness, Role::ComboBox, "Unit");
+    press(&mut harness, Modifiers::NONE, Key::Space);
+    tab_to(&mut harness, Role::Button, "Words");
+    press(&mut harness, Modifiers::NONE, Key::Enter);
+    tab_to(&mut harness, Role::Button, OK);
+    press(&mut harness, Modifiers::NONE, Key::Enter);
+    let after = shown(&harness, SHOWS_DISPLAY);
+    assert!(after != before && after.contains(r#"Choice("Words")"#), "{before} became {after}");
+}
+
+#[test]
+fn a_colour_changed_by_keyboard_is_written_back() {
+    let accent = setting("alpha", DISPLAY, "accent", "Accent", Value::Colour([10, 20, 30, 255]));
+    let start = accent.default.clone();
+    // ponytail: egui's colour picker draws its copy button with an emoji the bundled fonts lack.
+    let mut harness = Harness::builder().allow_missing_glyphs().build_ui_state(
+        move |ui, value: &mut Value| {
+            otd_ui::edit_value(ui, &accent, value);
+        },
+        start.clone(),
+    );
+    harness.run();
+    tab_to(&mut harness, Role::ColorWell, "Accent");
+    press(&mut harness, Modifiers::NONE, Key::Space);
+    tab_to(&mut harness, Role::SpinButton, "R");
+    type_text(&mut harness, "5");
+    press(&mut harness, Modifiers::NONE, Key::Enter);
+    assert_ne!(*harness.state(), start);
 }
