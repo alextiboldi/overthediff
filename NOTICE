@@ -24,6 +24,13 @@ The launch hand-off (otd-launch) adds craft-ipc (MIT OR Apache-2.0) and its depe
 them interprocess (0BSD OR Apache-2.0), recvmsg and doctest-file (0BSD), and generic-array and zmij
 (MIT). The rest offer MIT OR Apache-2.0.
 
+The local data source moves items to the OS recycle bin or trash with trash (MIT, Copyright 2019
+Artúr Barnabás Kovács), which brings objc2 and objc2-foundation (MIT) on macOS, the windows crates
+(MIT OR Apache-2.0) on Windows, and jiff (Unlicense OR MIT) and urlencoding (MIT) on Linux. It
+writes files crash-safely with craft-atomic (MIT OR Apache-2.0, storytold/craft-libs) and asks
+macOS and Linux which file system a path is on with rustix (Apache-2.0 WITH LLVM-exception OR
+Apache-2.0 OR MIT).
+
 The tests also use egui_kittest, kittest, craft-testkit and tempfile (each MIT OR Apache-2.0),
 which the app doesn't ship.
 

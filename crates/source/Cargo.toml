@@ -11,6 +11,14 @@ workspace = true
 
 # No UI dependency (`cargo xtask ui-free`).
 [dependencies]
+# The local provider's crash-safe writes.
+craft-atomic = { workspace = true }
+# The local provider's OS recycle bin or trash.
+trash = "5.4"
+
+# Whether a local path is on a network share, which has no recycle bin.
+[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
+rustix = { version = "1.1", default-features = false, features = ["std", "fs"] }
 
 # The local provider's owner and group names. No default features, so it needs only libc.
 [target.'cfg(unix)'.dependencies]
