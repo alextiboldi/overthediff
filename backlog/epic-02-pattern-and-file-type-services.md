@@ -37,31 +37,31 @@ This epic is the shared matching layer: file masks, regular expressions and the 
 As a developer on the product team, I can match names, text and file types through one tested service so that every filter, search and viewer choice behaves the same way across the product.
 
 **Acceptance criteria**
-- [ ] **Wildcards.** `?` matches one character and `*` matches zero or more. `[az]` is a set, `[a-z]` a range, `[!az]` a negated set and `[[]` a literal `[`. `*.*` also matches names without an extension.
-- [ ] **No-extension masks.** `*.` matches only names without an extension. In a mask ending in `.`, neither `?` nor `*` matches a period.
-- [ ] **Simple masks.**
+- [x] **Wildcards.** `?` matches one character and `*` matches zero or more. `[az]` is a set, `[a-z]` a range, `[!az]` a negated set and `[[]` a literal `[`. `*.*` also matches names without an extension.
+- [x] **No-extension masks.** `*.` matches only names without an extension. In a mask ending in `.`, neither `?` nor `*` matches a period.
+- [x] **Simple masks.**
   - `f` includes files named f, and `p\` includes folders named p and their subfolders.
   - `-f` excludes files and `-p\` excludes folders.
   - The base folder is always included, and folders containing included files are included.
-- [ ] **Relative masks.** `p\f` requires f inside a folder named p. `.\f` requires f in the base folder. `...\f` allows zero or more parent folders.
-- [ ] **Catalogue examples.** `*.pas;*.dfm;*.dpr`, `Source\`, `-*.dcu;-*.ddp`, `-Backup\`, `Windows\*.txt`, `...\Windows\*.txt` and `.\Windows\*.txt` give the specified include/exclude results on a sample tree.
-- [ ] **Regex escapes and classes.**
+- [x] **Relative masks.** `p\f` requires f inside a folder named p. `.\f` requires f in the base folder. `...\f` allows zero or more parent folders.
+- [x] **Catalogue examples.** `*.pas;*.dfm;*.dpr`, `Source\`, `-*.dcu;-*.ddp`, `-Backup\`, `Windows\*.txt`, `...\Windows\*.txt` and `.\Windows\*.txt` give the specified include/exclude results on a sample tree.
+- [x] **Regex escapes and classes.**
   - Escapes: `\xnn`, `\x{nnnn}`, `\t`, `\f`, `\a` and `\e`, with `\` escaping metacharacters.
   - Classes: `.`, `\w`, `\W`, `\d`, `\D` and `\s` (space and tab).
   - Bracket classes support ranges, `[^…]` negation, a literal `-` at the start or end, and predefined classes inside.
-- [ ] **Regex structure.**
+- [x] **Regex structure.**
   - Alternation takes the leftmost alternative first (`get|getter` matches "get" in "getter").
   - Greedy (`*` `+` `?` `{n}` `{n,}` `{n,m}`) and lazy (`*?` `+?` `??` `{n}?` `{n,}?` `{n,m}?`) quantifiers work.
   - Groups support backreferences `\1`–`\9`, and `(?i)`/`(?-i)` apply only within the enclosing group.
-- [ ] **Line by line.** A pattern never matches across a line break, and `\A`/`\Z` behave like `^`/`$`.
-- [ ] **Sample library.** `^abc`, `abc$`, `^abc$`, `^\s*abc`, `^\s*end;?\s*$`, `abc|def`, `a(b|c)d` and `a(b|c)d\1` match exactly the specified strings.
-- [ ] **Replacement templates.** `$1`…`$9` insert captured groups. `.*(\d\.txt)` with `xyz$1` turns `abc1.txt` into `xyz1.txt`.
-- [ ] **Regex input aid.** *Insert Regular Expression Element* inserts the chosen construct at the cursor, and *RE Examples* inserts a chosen sample. Both work in any field that hosts the aid.
-- [ ] **Format resolution.**
+- [x] **Line by line.** A pattern never matches across a line break, and `\A`/`\Z` behave like `^`/`$`.
+- [x] **Sample library.** `^abc`, `abc$`, `^abc$`, `^\s*abc`, `^\s*end;?\s*$`, `abc|def`, `a(b|c)d` and `a(b|c)d\1` match exactly the specified strings.
+- [x] **Replacement templates.** `$1`…`$9` insert captured groups. `.*(\d\.txt)` with `xyz$1` turns `abc1.txt` into `xyz1.txt`.
+- [x] **Regex input aid.** *Insert Regular Expression Element* inserts the chosen construct at the cursor, and *RE Examples* inserts a chosen sample. Both work in any field that hosts the aid.
+- [x] **Format resolution.**
   - The registry resolves a file name to the first enabled format whose mask matches, and disabled formats are skipped.
   - An empty-mask format is never chosen automatically but can be chosen by name.
   - Formats registered by a test feature appear in registration order after the built-ins.
-- [ ] **Fallback.** A file that matches no format resolves by content: text-like content gets the built-in catch-all Text format, and binary content gets the Hex kind when one is registered, otherwise Text (*inferred*, confirmed in T7).
+- [x] **Fallback.** A file that matches no format resolves by content: text-like content gets the built-in catch-all Text format, and binary content gets the Hex kind when one is registered, otherwise Text (*inferred*, confirmed in T7).
 
 #### Decisions
 **Fallback for unmatched files (E02-S1-T7).** Recorded by E02-S1-T7 and confirmed by the operator on 2026-11-25, as proposed: a file with NUL bytes or invalid text encoding in its first 8 KB is binary. The catalogue doesn't say how unmatched files are treated, so this is OverTheDiff's own choice (*inferred*). It reads as follows:
@@ -90,5 +90,6 @@ As a developer on the product team, I can match names, text and file types throu
 - **E02-S1-T6** — File-format registry: ordered list, kinds, enable flag, mask resolution, manual pick of empty-mask formats, registration by features · size: M · depends: E02-S1-T2 · status: done
   - AC: with formats A (`*.txt`) and B (`*.*`) in that order, `x.txt` resolves to A. Disabling A makes it resolve to B. An empty-mask format C resolves only when picked by name.
   - Implemented: the UI-free crate `crates/format` (`otd-format`, depends only on `otd-mask`, no new third-party dependency): `Kind` (Text, Table, Hex, Picture, External) with `Registry::register_kind`/`has_kind`; `Format::new(name, kind, masks)` compiles the A.1 mask list and rejects a bad mask; `Registry::register` appends below earlier formats and refuses an unregistered kind or a taken name; `resolve(file_name, case)` returns the first enabled format whose mask matches, with the data source's case; an empty mask never resolves automatically; `by_name` is the manual pick; `set_enabled` turns a format on or off. Tests for the AC, registration order, case and refusals are in `crates/format/tests/it/registry.rs`. Checks: `cargo xtask ci` (fmt, clippy `-D warnings`, `cargo test --workspace --locked`, ui-free) on macOS and pull-request CI (Linux, macOS) passed. Pull request: https://github.com/alextiboldi/overthediff/pull/31
-- **E02-S1-T7** — Decide and implement the fallback for unmatched files (text vs binary detection) · size: S · depends: E02-S1-T6 · flags: `decision`, `craft-libs`
+- **E02-S1-T7** — Decide and implement the fallback for unmatched files (text vs binary detection) · size: S · depends: E02-S1-T6 · flags: `decision`, `craft-libs` · status: done
   - AC: decision recorded in this story. Proposed default: a file with NUL bytes or invalid text encoding in its first 8 KB is binary. A UTF-8 sample resolves to Text, and a PNG with an unknown extension resolves to the Hex kind when Hex is registered.
+  - Implemented: the decision is recorded in this story's Decisions section (confirmed by the operator on 2026-11-25). In `crates/format` (`otd-format`, std only, no new third-party dependency): `content::is_binary` with `SAMPLE_LEN` (8,192 bytes) applies it, the registry always holds the built-in catch-all Text format (`Registry::catch_all()`, working name *Plain text*, empty mask, outside the ordered list, pickable by name), and `Registry::fallback(content)` returns the first enabled Hex format for binary content when Hex is registered, else the catch-all. Tests for the AC and the decision's edges are in `crates/format/tests/it/fallback.rs`, and a craft-testkit hostile sweep of `is_binary` in `crates/format/tests/it/hostile.rs`. Checks: `cargo xtask ci` (fmt, clippy `-D warnings`, `cargo test --workspace --locked`, ui-free) on macOS after rebasing onto main, plus pull-request CI (Linux, macOS). craft-libs follow-up: #40. Pull request: https://github.com/alextiboldi/overthediff/pull/41
