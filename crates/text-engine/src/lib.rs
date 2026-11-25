@@ -11,9 +11,14 @@
 //! is on which side.
 //!
 //! Lines align on their text. A pair whose text matches but whose ending differs is a changed row.
+//!
+//! [`classify`] then marks each difference important or unimportant by a set of [`Rule`]s.
 
 use std::collections::HashMap;
 use std::ops::Range;
+
+mod importance;
+pub use importance::{Classification, Importance, Outcome, Rule, Statistics, classify};
 
 /// How a line ends in its file.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
