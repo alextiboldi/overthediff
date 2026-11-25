@@ -11,6 +11,7 @@ use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use otd_ui::{Field, HOME, SessionType, Shell, Status, View};
 
 const ALPHA: &str = "Alpha Compare";
+const EDIT_CONTROL: &str = "Edit control";
 const BETA: &str = "Beta Compare";
 
 /// An empty test session that publishes fixed status fields.
@@ -36,6 +37,29 @@ impl View for TestView {
 
     fn ui(&mut self, ui: &mut egui::Ui) {
         ui.label(self.title);
+    }
+}
+
+/// A test view that edits: one focusable control, and the insert/overwrite field.
+struct EditView {
+    insert: bool,
+}
+
+impl View for EditView {
+    fn title(&self) -> String {
+        "Edit".to_owned()
+    }
+
+    fn status(&self) -> Status {
+        Status { insert: Some(self.insert), ..Status::default() }
+    }
+
+    fn toggle_insert(&mut self) {
+        self.insert = !self.insert;
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui) {
+        let _ = ui.button(EDIT_CONTROL);
     }
 }
 
@@ -216,4 +240,49 @@ fn each_status_field_is_named_by_its_label_and_only_the_result_is_announced() {
     assert_eq!(field("Result"), Live::Polite);
     assert_eq!(field("Own"), Live::Off);
     assert_eq!(field(otd_ui::LOAD_TIME), Live::Off);
+}
+
+#[test]
+fn shortcuts_with_extra_alt_or_shift_do_nothing() {
+    let mut harness = three_tabs();
+    let before = tabs(&harness);
+    for modifiers in [Modifiers::COMMAND | Modifiers::ALT, Modifiers::COMMAND | Modifiers::SHIFT] {
+        press(&mut harness, modifiers, Key::W);
+        press(&mut harness, modifiers, Key::T);
+    }
+    press(&mut harness, Modifiers::CTRL | Modifiers::ALT, Key::Tab);
+    assert_eq!(tabs(&harness), before);
+}
+
+#[test]
+fn tab_reaches_the_insert_field_after_the_views_contents_and_activating_it_toggles_the_view() {
+    let mut harness = harness();
+    harness.state_mut().open(Box::new(EditView { insert: true }));
+    harness.run();
+    let mut order = Vec::new();
+    for _ in 0..20 {
+        press(&mut harness, Modifiers::NONE, Key::Tab);
+        let (_, name) = focused(&harness).unwrap_or_default();
+        if name == otd_ui::INSERT {
+            break;
+        }
+        order.push(name);
+    }
+    assert!(order.iter().any(|name| name == EDIT_CONTROL), "the view's control comes before the bar: {order:?}");
+
+    let control = harness.get_by_label(EDIT_CONTROL).rect();
+    let field = harness.get_by_label(otd_ui::INSERT).rect();
+    let window = harness.ctx.content_rect();
+    assert!(window.contains_rect(field), "the bar is inside the window: {field:?} in {window:?}");
+    assert!(field.top() >= control.bottom(), "the bar is below the contents");
+
+    press(&mut harness, Modifiers::NONE, Key::Enter);
+    assert!(harness.query_by_label(otd_ui::OVERWRITE).is_some(), "the view toggled to overwrite");
+}
+
+#[test]
+fn the_tab_strip_is_a_tab_list() {
+    let harness = harness();
+    let tab = harness.get_by_role(Role::Tab);
+    assert_eq!(tab.accesskit_node().parent().map(|p| p.role()), Some(Role::TabList));
 }

@@ -65,17 +65,11 @@ pub struct Status {
     pub load_time: Option<Duration>,
 }
 
-struct Tab {
-    /// Stable across closes and reorders, so egui keeps each tab's state with its tab.
-    id: u64,
-    /// `None` is Home.
-    view: Option<Box<dyn View>>,
-}
+/// A tab's contents; `None` is Home.
+type Tab = Option<Box<dyn View>>;
 
-impl Tab {
-    fn title(&self) -> String {
-        self.view.as_ref().map_or_else(|| HOME.to_owned(), |view| view.title())
-    }
+fn title(tab: &Tab) -> String {
+    tab.as_ref().map_or_else(|| HOME.to_owned(), |view| view.title())
 }
 
 /// The main window's contents. Launch-argument handlers act on it (`otd_launch::Handler<Shell>`).
@@ -83,7 +77,6 @@ pub struct Shell {
     session_types: Vec<SessionType>,
     tabs: Vec<Tab>,
     active: usize,
-    next_id: u64,
     /// The active tab changed by a command, so its tab in the strip takes focus on the next draw.
     focus_active: bool,
 }
@@ -91,7 +84,7 @@ pub struct Shell {
 impl Shell {
     /// A shell with one Home tab.
     pub fn new(session_types: Vec<SessionType>) -> Self {
-        let mut shell = Self { session_types, tabs: Vec::new(), active: 0, next_id: 0, focus_active: false };
+        let mut shell = Self { session_types, tabs: Vec::new(), active: 0, focus_active: false };
         shell.push(None);
         shell.focus_active = false;
         shell
@@ -133,8 +126,7 @@ impl Shell {
     }
 
     fn push(&mut self, view: Option<Box<dyn View>>) {
-        self.tabs.push(Tab { id: self.next_id, view });
-        self.next_id += 1;
+        self.tabs.push(view);
         self.select(self.tabs.len() - 1);
     }
 
@@ -173,7 +165,16 @@ impl Shell {
         let ctrl_tab = ui.ctx().data_mut(|data| data.remove_temp::<CtrlTabPresses>(egui::Id::unique(CTRL_TAB)));
         let CtrlTabPresses { mut previous, mut next } = ctrl_tab.unwrap_or_default();
         let [new, close] = ui.input_mut(|i| {
-            let mut pressed = |modifiers, keys: &[Key]| keys.iter().any(|&key| i.consume_key(modifiers, key));
+            // Exact modifiers, unlike egui's `consume_key`, which lets extra Shift and Alt through:
+            // Ctrl+Alt+W is AltGr+W on Windows, and Cmd+Shift+T isn't New Tab.
+            let mut pressed = |modifiers: Modifiers, keys: &[Key]| {
+                let before = i.events.len();
+                i.events.retain(|event| {
+                    !matches!(event, egui::Event::Key { key, pressed: true, modifiers: held, .. }
+                        if keys.contains(key) && held.matches_exact(modifiers))
+                });
+                i.events.len() < before
+            };
             if os == OperatingSystem::Mac {
                 let shift_cmd = Modifiers::SHIFT | Modifiers::COMMAND;
                 previous |= pressed(shift_cmd, &[Key::OpenBracket, Key::OpenCurlyBracket]);
@@ -206,29 +207,32 @@ impl Shell {
         let mut action = None;
         ui.horizontal(|ui| {
             ui.ctx().accesskit_node_builder(ui.unique_id(), |node| node.set_role(Role::TabList));
+            let count = self.tabs.len();
             for (index, tab) in self.tabs.iter().enumerate() {
                 let selected = index == self.active;
-                let title = tab.title();
-                ui.push_id(tab.id, |ui| {
-                    let response = ui.selectable_label(selected, &title);
-                    // The tab role and selected state, as craft-ui's `tabs::Tab` sets them.
-                    // ponytail: not craft-ui itself, which would add ~110 crates (craft-i18n and
-                    // ICU) for these lines; switch to it once the app depends on craft-i18n.
-                    ui.ctx().accesskit_node_builder(response.id, |node| {
-                        node.set_role(Role::Tab);
-                        node.clear_toggled();
-                        node.set_selected(selected);
-                    });
-                    if selected && self.focus_active {
-                        response.request_focus();
-                    }
-                    if response.clicked() {
-                        action = Some(Action::Select(index));
-                    }
-                    if icon_button(ui, &format!("{CLOSE_TAB} {title}"), &LUCIDE_X).clicked() {
-                        action = Some(Action::Close(index));
-                    }
+                let title = title(tab);
+                // No `push_id` scope: its container would sit between the tab and the tab list.
+                let response = ui.selectable_label(selected, &title);
+                // The tab role and selected state, as craft-ui's `tabs::Tab` sets them.
+                // ponytail: not craft-ui itself, which would add ~110 crates (craft-i18n and
+                // ICU) for these lines; switch to it once the app depends on craft-i18n.
+                ui.ctx().accesskit_node_builder(response.id, |node| {
+                    node.set_role(Role::Tab);
+                    node.clear_toggled();
+                    node.set_selected(selected);
+                    // "2 of 3", which tells apart two tabs with the same title, such as two Homes.
+                    node.set_position_in_set(index + 1);
+                    node.set_size_of_set(count);
                 });
+                if selected && self.focus_active {
+                    response.request_focus();
+                }
+                if response.clicked() {
+                    action = Some(Action::Select(index));
+                }
+                if icon_button(ui, &format!("{CLOSE_TAB} {title}"), &LUCIDE_X).clicked() {
+                    action = Some(Action::Close(index));
+                }
             }
             if icon_button(ui, NEW_TAB, &LUCIDE_PLUS).clicked() {
                 action = Some(Action::New);
@@ -247,7 +251,7 @@ impl Shell {
     }
 
     fn contents(&mut self, ui: &mut Ui) {
-        if let Some(view) = &mut self.tabs[self.active].view {
+        if let Some(view) = &mut self.tabs[self.active] {
             view.ui(ui);
             return;
         }
@@ -268,7 +272,7 @@ impl Shell {
 
     fn status_bar(&mut self, ui: &mut Ui) {
         // Home publishes no fields, so its bar is empty.
-        let Some(view) = &mut self.tabs[self.active].view else { return };
+        let Some(view) = &mut self.tabs[self.active] else { return };
         let status = view.status();
         if let Some(result) = &status.result {
             let response = field(ui, result);
@@ -312,7 +316,7 @@ impl egui::Plugin for CtrlTab {
     fn input_hook(&mut self, ctx: &egui::Context, input: &mut egui::RawInput) {
         let mut presses = CtrlTabPresses::default();
         input.events.retain(|event| match event {
-            egui::Event::Key { key: Key::Tab, pressed, modifiers, .. } if modifiers.ctrl => {
+            egui::Event::Key { key: Key::Tab, pressed, modifiers, .. } if modifiers.ctrl && !modifiers.alt => {
                 if *pressed {
                     *(if modifiers.shift { &mut presses.previous } else { &mut presses.next }) = true;
                 }
