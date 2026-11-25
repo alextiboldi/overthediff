@@ -1,0 +1,16 @@
+[package]
+name = "otd-regex"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "OverTheDiff's regular expressions: the catalogue's A.2 syntax, matched line by line"
+
+[lints]
+workspace = true
+
+[dependencies]
+fancy-regex = "0.19"
+
+[dev-dependencies]
+craft-testkit = { workspace = true }
