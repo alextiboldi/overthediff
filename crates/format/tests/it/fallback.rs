@@ -1,17 +1,24 @@
 //! The fallback for files no format matches (story E02-S1, task T7).
 
-use otd_format::{Case, Format, Kind, Registry, SAMPLE_LEN, is_binary};
+use otd_format::{CATCH_ALL, Case, Format, Kind, RegisterError, Registry, SAMPLE_LEN, is_binary};
 
 /// The PNG signature and the start of an IHDR chunk, written out here.
 const PNG: &[u8] = b"\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00";
 
-fn registry(kinds: &[Kind]) -> Registry {
+/// A Text format for `*.txt` and, when `hex`, a Hex format for `*.bin`.
+fn registry(hex: bool) -> Registry {
     let mut registry = Registry::default();
-    for &kind in kinds {
-        registry.register_kind(kind);
+    registry.register_kind(Kind::Text);
+    registry.register(Format::new("Notes", Kind::Text, "*.txt").unwrap()).unwrap();
+    if hex {
+        registry.register_kind(Kind::Hex);
+        registry.register(Format::new("Bytes", Kind::Hex, "*.bin").unwrap()).unwrap();
     }
-    registry.register(Format::new("Plain", Kind::Text, "*.txt").unwrap()).unwrap();
     registry
+}
+
+fn fallback(registry: &Registry, content: &[u8]) -> String {
+    registry.fallback(content).name.clone()
 }
 
 fn utf16(text: &str, bom: &[u8], unit: fn(u16) -> [u8; 2]) -> Vec<u8> {
@@ -20,18 +27,34 @@ fn utf16(text: &str, bom: &[u8], unit: fn(u16) -> [u8; 2]) -> Vec<u8> {
 
 #[test]
 fn a_png_with_an_unknown_extension_falls_back_to_hex_only_when_hex_is_registered() {
-    let with_hex = registry(&[Kind::Text, Kind::Hex]);
+    let mut with_hex = registry(true);
     assert!(with_hex.resolve("picture.xyz", Case::Sensitive).is_none(), "no format matches");
-    assert_eq!(with_hex.fallback_kind(PNG), Kind::Hex);
-    assert_eq!(registry(&[Kind::Text]).fallback_kind(PNG), Kind::Text);
+    assert_eq!(with_hex.fallback(PNG).kind, Kind::Hex);
+    assert_eq!(fallback(&registry(false), PNG), CATCH_ALL);
+
+    with_hex.set_enabled("Bytes", false);
+    assert_eq!(fallback(&with_hex, PNG), CATCH_ALL, "a disabled Hex format is skipped");
 }
 
 #[test]
-fn utf8_text_falls_back_to_text_even_when_hex_is_registered() {
-    let registry = registry(&[Kind::Text, Kind::Hex]);
+fn utf8_text_falls_back_to_the_catch_all_text_format_even_when_hex_is_registered() {
+    let registry = registry(true);
+    assert_eq!(registry.catch_all().kind, Kind::Text);
     for text in ["naïve café\r\n\tdone\n", "\u{feff}with a BOM", ""] {
-        assert_eq!(registry.fallback_kind(text.as_bytes()), Kind::Text, "{text:?}");
+        assert_eq!(fallback(&registry, text.as_bytes()), CATCH_ALL, "{text:?}");
     }
+}
+
+#[test]
+fn the_catch_all_never_resolves_by_mask_but_is_picked_by_name_and_keeps_its_name() {
+    let mut registry = registry(false);
+    assert!(registry.formats().iter().all(|f| f.name != CATCH_ALL), "outside the ordered list");
+    for name in ["x.xyz", "noext", ""] {
+        assert!(registry.resolve(name, Case::Sensitive).is_none(), "{name:?}");
+    }
+    assert!(registry.by_name(CATCH_ALL).is_some());
+    let taken = Format::new(CATCH_ALL, Kind::Text, "*.md").unwrap();
+    assert_eq!(registry.register(taken), Err(RegisterError::DuplicateName(CATCH_ALL.into())));
 }
 
 #[test]
