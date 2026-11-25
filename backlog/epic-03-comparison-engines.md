@@ -49,16 +49,18 @@ This epic is the two headless engines that decide what differs. The text engine 
 As a developer on the product team, I can hand the engine two texts and a rule set and get back aligned rows, character differences, sections and an importance-aware result, so that every text-based view and tool shows the same, trustworthy differences.
 
 **Acceptance criteria**
-- [ ] Matching lines pair up. Inserted or deleted lines pair with gaps on the other side. Rows keep the order of both inputs.
-- [ ] Paired lines that differ carry character-level ranges on both sides that cover exactly the changed characters.
-- [ ] Contiguous differing rows form sections, and the same input always gives the same sections.
-- [ ] Standard alignment delivers partial results while it works, so the top of a large comparison can be shown before it finishes. It can be cancelled.
-- [ ] Every difference is classified important or unimportant by the active rules.
+- [x] Matching lines pair up. Inserted or deleted lines pair with gaps on the other side. Rows keep the order of both inputs.
+- [x] Paired lines that differ carry character-level ranges on both sides that cover exactly the changed characters.
+- [x] Contiguous differing rows form sections, and the same input always gives the same sections.
+- [x] Standard alignment delivers partial results while it works, so the top of a large comparison can be shown before it finishes. It can be cancelled.
+- [x] Every difference is classified important or unimportant by the active rules.
   - With no rules, all differences are important.
   - An orphan line counts as important even if its text would be unimportant (an inserted blank line, for example).
-- [ ] The overall result is "same", "unimportant differences only" or "important differences", and the statistics match the rows.
+- [x] The overall result is "same", "unimportant differences only" or "important differences", and the statistics match the rows.
 - [ ] After an edit to either side, recomparing gives the same rows as a full comparison of the edited text. Interactive edits stay within the budget set in T6.
+  - Not ticked: the recompare equals a full comparison (T5's tests), and the edit budget passed `cargo bench -p otd-text-engine --bench budgets` only on a busy Apple M4 Max under macOS; it needs a run on an idle machine and on slower hardware (see T6's Verify by hand).
 - [ ] Very large inputs stay within the memory and time budgets set in T6.
+  - Not ticked: the budgets passed `cargo bench -p otd-text-engine --bench budgets` only on a busy Apple M4 Max under macOS; it needs a run on an idle machine, on slower hardware and on Windows (see T6's Verify by hand).
 
 #### Decisions
 Recorded by E03-S1-T6. The catalogue sets no performance figures, so every budget here is *unspecified* there and is OverTheDiff's own choice.
@@ -88,8 +90,10 @@ Recorded by E03-S1-T6. The catalogue sets no performance figures, so every budge
 - **E03-S1-T5** — Recompare after edits, matching a full comparison · size: M · depends: E03-S1-T3 · status: done
   - AC: for random edit sequences on the corpus, recompare after each edit equals a full comparison of the edited text.
   - Implemented: `Pair::new(left, right)` with `edit_left` and `edit_right` (replace a line range, so insert and delete too) in `crates/text-engine/src/recompare.rs` keeps two texts and their comparison current; each edit recompares the edited texts in full, so its rows are exactly what `compare` gives, and an edit outside a side's lines returns `OutOfRange` and changes nothing. Reusing old rows past the edit is left for E03-S1-T6 if its budget needs it. Fixed-seed random edit sequences on the alignment corpus, checked against a full comparison after every edit, are in `crates/text-engine/tests/it/recompare.rs`. Checks: `cargo xtask ci` on macOS and pull-request CI on Linux and macOS passed. Pull request: https://github.com/alextiboldi/overthediff/pull/27
-- **E03-S1-T6** — Set and meet performance budgets for large inputs · size: S · depends: E03-S1-T4, E03-S1-T5 · flags: `decision`
+- **E03-S1-T6** — Set and meet performance budgets for large inputs · size: S · depends: E03-S1-T4, E03-S1-T5 · flags: `decision` · status: needs-verification
   - AC: budgets recorded in this story. Proposed: a 100,000-line pair with scattered changes shows first rows within 1 s and completes within 10 s on reference hardware; a single-line edit in a 10,000-line pair recompares within 100 ms. The benchmark suite passes them.
+  - Implemented: the budgets are recorded in this story's Decisions section (the time budgets confirmed by the operator on 2026-11-25 as proposed, plus a 64 MiB memory budget for a 100,000-line pair and a 100 ms budget for one row's character differences). The benchmark `crates/text-engine/benches/budgets.rs` (`cargo bench -p otd-text-engine --bench budgets`, `harness = false`, documented in AGENTS.md) checks each one on a 100,000-line scattered pair, a 100,000-line repetitive pair, 18 single-line edits of a 10,000-line `Pair` and two hard character rows, reads memory with `ps` on macOS and Linux and `tasklist` on Windows, and exits with an error on a miss or when memory can't be read. Every budget passed without an engine change, so T5's full recompare stays. The integration test `twice_the_lines_take_about_twice_the_polls` in `crates/text-engine/tests/it/progressive.rs` fails when work grows faster than the input. Checks: `cargo xtask ci` on macOS after rebasing onto `main`, the `budgets` and `progress` benchmarks on macOS, pull-request CI on Linux and macOS and the full Linux, macOS and Windows matrix passed. Pull request: https://github.com/alextiboldi/overthediff/pull/39
+  - Verify by hand: run `cargo bench -p otd-text-engine --bench budgets` in a release build on an otherwise idle machine, on hardware slower than an Apple M4 Max, and once on Windows (its `tasklist` memory read has never run), and confirm it exits 0 with every figure inside its budget.
 
 ### E03-S2 — Folder comparison engine
 **Priority**: Must · **Layer**: 0 · **Size**: L · **Platforms**: All
