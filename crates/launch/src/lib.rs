@@ -341,6 +341,7 @@ fn forward(mut client: Client, request: &Request, wait: bool, runtime: &RuntimeD
         // Before the request, so the close can't come first.
         client.subscribe(&[CLOSED]).map_err(text)?;
     }
+    let cwd = request.cwd.to_str().ok_or("the working folder is not valid Unicode")?;
     let attachment = match &request.attachment {
         Some(bytes) => {
             let name = format!("{ATTACHMENT_PREFIX}{}", craft_ipc::generate_token().map_err(text)?);
@@ -352,7 +353,7 @@ fn forward(mut client: Client, request: &Request, wait: bool, runtime: &RuntimeD
     let params = json!({
         "handler": request.handler,
         "args": request.args,
-        "cwd": request.cwd.to_str().ok_or("the working folder is not valid Unicode")?,
+        "cwd": cwd,
         "attachment": attachment,
         "wait": wait,
     });

@@ -5,7 +5,7 @@
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Barrier};
+use std::sync::{Arc, Barrier, Mutex, MutexGuard, PoisonError};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
@@ -89,21 +89,29 @@ fn launch_at(dir: &Path, args: &[&str], requested: Requested, spawn_instance: Sp
     otd_launch::launch(&registry(), &args, requested, &config)
 }
 
-/// A runtime folder of its own, short enough for a socket path.
-struct TestDir(PathBuf);
+/// A runtime folder of its own, short enough for a socket path. Tests that hold one run one at a
+/// time: an instance's Windows pipe is named after the app and the process, not the folder, so two
+/// instances in this process would claim the same pipe.
+struct TestDir {
+    path: PathBuf,
+    _one_at_a_time: MutexGuard<'static, ()>,
+}
 
 impl TestDir {
     fn new() -> Self {
         static NEXT: AtomicUsize = AtomicUsize::new(0);
-        Self(std::env::temp_dir().join(format!("otd{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed))))
+        static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
+        let serial = ONE_AT_A_TIME.lock().unwrap_or_else(PoisonError::into_inner);
+        let path = std::env::temp_dir().join(format!("otd{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
+        Self { path, _one_at_a_time: serial }
     }
 
     fn launch(&self, args: &[&str], requested: Requested) -> Launch {
-        launch_at(&self.0, args, requested, no_spawn())
+        launch_at(&self.path, args, requested, no_spawn())
     }
 
     fn launch_in_thread(&self, args: &'static [&'static str], requested: Requested) -> JoinHandle<Launch> {
-        let dir = self.0.clone();
+        let dir = self.path.clone();
         thread::spawn(move || launch_at(&dir, args, requested, no_spawn()))
     }
 
@@ -117,7 +125,7 @@ impl TestDir {
 
 impl Drop for TestDir {
     fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
+        let _ = std::fs::remove_dir_all(&self.path);
     }
 }
 
@@ -154,7 +162,7 @@ fn two_launches_at_once_leave_one_instance_that_handled_both_argument_sets() {
     let threads: Vec<_> = ["a.txt", "b.txt"]
         .into_iter()
         .map(|arg| {
-            let (dir, barrier) = (dir.0.clone(), Arc::clone(&barrier));
+            let (dir, barrier) = (dir.path.clone(), Arc::clone(&barrier));
             thread::spawn(move || {
                 barrier.wait();
                 launch_at(&dir, &[arg], Requested::Default, no_spawn())
@@ -248,18 +256,21 @@ fn a_waiting_launcher_exits_with_a_failure_when_the_instance_quits_first() {
 #[test]
 fn a_forward_and_wait_launch_with_no_instance_starts_one_and_waits_on_it() {
     let dir = TestDir::new();
-    let path = dir.0.clone();
+    let (path, started) = (dir.path.clone(), Arc::new(Mutex::new(None)));
+    let started_here = Arc::clone(&started);
     let spawn: Spawn = Box::new(move || {
         let path = path.clone();
-        thread::spawn(move || {
+        *started_here.lock().unwrap_or_else(PoisonError::into_inner) = Some(thread::spawn(move || {
             let instance = instance(launch_at(&path, &[], Requested::Default, no_spawn()));
             let _own = next(&instance);
             let (_request, done) = open_next(&instance);
             done.finish(6);
-        });
+        }));
         Ok(())
     });
-    assert_eq!(code(launch_at(&dir.0, &["-wait-view"], Requested::Default, spawn)), 6);
+    assert_eq!(code(launch_at(&dir.path, &["-wait-view"], Requested::Default, spawn)), 6);
+    let instance_thread = started.lock().unwrap_or_else(PoisonError::into_inner).take();
+    instance_thread.expect("the launch started an instance").join().expect("instance thread");
 }
 
 #[test]
