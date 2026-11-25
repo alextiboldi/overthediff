@@ -13,9 +13,15 @@
 //! Lines align on their text. A pair whose text matches but whose ending differs is a changed row.
 //!
 //! [`classify`] then marks each difference important or unimportant by a set of [`Rule`]s.
+//!
+//! [`char_differences`] gives the characters that differ inside a changed row. A caller asks for
+//! the rows it needs, so a large comparison doesn't diff every changed line up front.
 
 use std::collections::HashMap;
 use std::ops::Range;
+
+mod chars;
+pub use chars::{CharDifferences, CharRange, Side, char_differences};
 
 mod importance;
 pub use importance::{Classification, Importance, Outcome, Rule, Statistics, classify};
