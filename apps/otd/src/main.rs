@@ -1,6 +1,7 @@
 //! The `otd` executable. `otd-launch` decides first whether this process hands its arguments to the
 //! running instance, runs them here or becomes the instance; only an instance opens the window.
 
+mod colour_roles;
 mod handlers;
 mod session_types;
 
@@ -59,6 +60,10 @@ fn run_window(registry: Registry<Shell>, instance: Instance) -> eframe::Result {
         "OverTheDiff",
         eframe::NativeOptions::default(),
         Box::new(move |cc| {
+            otd_ui::colour::install(&cc.egui_ctx, colour_roles::colour_roles()?);
+            // On the UI thread, which draws all the text.
+            let catalogs = otd_core::i18n::embedded();
+            otd_core::i18n::set_language(catalogs, catalogs.system_lang());
             let ctx = cc.egui_ctx.clone();
             instance.set_waker(move || ctx.request_repaint());
             Ok(Box::new(App { registry, instance, shell: Shell::new(session_types::session_types()) }))

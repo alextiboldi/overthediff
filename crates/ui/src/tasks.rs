@@ -3,19 +3,27 @@
 //!
 //! A feature starts its work with `otd_core::task::Task::spawn` and hands a clone of the handle to
 //! [`show_task`] once, when it starts the task, from wherever it has the window's `egui::Context`.
-//! It keeps its own clone to read the [`otd_core::task::Outcome`] when the task ends.
+//! It keeps its own clone to read the [`otd_core::task::Outcome`] when the task ends. The task's
+//! title and its items' messages are text the feature has already looked up
+//! (`otd_core::i18n::t`); the shell draws them as given.
 
 use std::collections::VecDeque;
 use std::time::Duration;
 
 use egui::{Context, Id};
+use otd_core::i18n::{fmt, t, trn};
 use otd_core::task::{End, Outcome, Task};
 
-// ponytail: English literals until E01-S1-T13's translation lookup.
+// English keys, drawn through `otd_core::i18n`.
 pub const CANCEL: &str = "Cancel";
 pub const CLOSE: &str = "Close";
 pub const CANCELLED: &str = "Cancelled.";
 pub const FINISHED_WITH_ERRORS: &str = "Finished with errors.";
+const DONE_OF_TOTAL: &str = "{done} of {total}";
+const DONE: &str = "{done} done";
+const ONE_FAILED: &str = "{n} item failed:";
+const MANY_FAILED: &str = "{n} items failed:";
+const ITEM_ERROR: &str = "{item}: {message}";
 
 /// Where [`show_task`] leaves tasks for the shell to pick up on its next frame.
 const NEW_TASKS: &str = "otd-new-tasks";
@@ -122,15 +130,18 @@ fn progress_window(ctx: &Context, task: &Task) -> bool {
         let progress = task.progress();
         // No `animate` while the total is unknown: an animation repaints every frame.
         let (fraction, text) = match progress.total {
-            Some(total) => (progress.done as f32 / total.max(1) as f32, format!("{} of {total}", progress.done)),
-            None => (0.0, format!("{} done", progress.done)),
+            Some(total) => {
+                let text = fmt(t(DONE_OF_TOTAL), &[("done", &progress.done.to_string()), ("total", &total.to_string())]);
+                (progress.done as f32 / total.max(1) as f32, text)
+            }
+            None => (0.0, fmt(t(DONE), &[("done", &progress.done.to_string())])),
         };
         ui.add(egui::ProgressBar::new(fraction).text(text));
         // Disabled once asked, until the task reaches its next safe point and the window closes.
         if !task.cancellable() {
             return false;
         }
-        let cancel = ui.add_enabled(!task.cancel_requested(), egui::Button::new(CANCEL));
+        let cancel = ui.add_enabled(!task.cancel_requested(), egui::Button::new(t(CANCEL)));
         if cancel.clicked() {
             task.cancel();
         }
@@ -152,17 +163,17 @@ fn summary_dialog(ctx: &Context, summary: &mut Summary) -> bool {
             });
         }
         ui.heading(&title);
-        ui.label(if summary.outcome.end == End::Cancelled { CANCELLED } else { FINISHED_WITH_ERRORS });
+        ui.label(t(if summary.outcome.end == End::Cancelled { CANCELLED } else { FINISHED_WITH_ERRORS }));
         let errors = &summary.outcome.errors;
         if !errors.is_empty() {
-            ui.label(if errors.len() == 1 { "1 item failed:".to_owned() } else { format!("{} items failed:", errors.len()) });
+            ui.label(trn(errors.len() as u64, ONE_FAILED, MANY_FAILED));
             egui::ScrollArea::vertical().max_height(240.0).show(ui, |ui| {
                 for error in errors {
-                    ui.label(format!("{}: {}", error.item, error.message));
+                    ui.label(fmt(t(ITEM_ERROR), &[("item", &error.item), ("message", &error.message)]));
                 }
             });
         }
-        let close = ui.button(CLOSE);
+        let close = ui.button(t(CLOSE));
         if !summary.drawn {
             close.request_focus();
         }

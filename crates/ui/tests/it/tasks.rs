@@ -8,12 +8,16 @@ use egui::Key;
 use egui::accesskit::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
+use otd_core::i18n::{Lang, embedded, set_language, t};
 use otd_core::task::{End, Task};
 use otd_ui::{CANCEL, CANCELLED, CLOSE, Shell, show_task};
 
 fn harness() -> Harness<'static, Shell> {
-    let mut harness =
-        Harness::builder().with_os(egui::os::OperatingSystem::Mac).build_ui_state(|ui, shell: &mut Shell| shell.ui(ui), Shell::new(Vec::new()));
+    // egui's default fonts have no `⟦`, the pseudo locale's mark.
+    let mut harness = Harness::builder()
+        .with_os(egui::os::OperatingSystem::Mac)
+        .allow_missing_glyphs()
+        .build_ui_state(|ui, shell: &mut Shell| shell.ui(ui), Shell::new(Vec::new()));
     harness.run();
     harness
 }
@@ -162,4 +166,38 @@ fn showing_one_task_twice_shows_it_once() {
     harness.run();
     press(&mut harness, Key::Escape);
     assert!(!dialog_open(&harness, "Copy"), "one Esc closed its only summary");
+}
+
+#[test]
+fn no_text_in_the_task_windows_skips_the_lookup() {
+    set_language(embedded(), Lang::PSEUDO);
+    let mut harness = harness();
+    // The feature looks its title and messages up on the UI thread; the task's thread reads English.
+    let (title, message) = (t("Copy").to_owned(), t("Access denied").to_owned());
+    let failed = Task::spawn(title, true, move |worker| {
+        worker.fail("a", message.as_str());
+        worker.fail("b", message.as_str());
+    });
+    failed.wait();
+    let (reached, progress) = mpsc::channel();
+    let (finish, wait_for_finish) = mpsc::channel::<()>();
+    let running = Task::spawn(t("Count"), true, move |worker| {
+        worker.progress(1, Some(2));
+        let _ = reached.send(());
+        let _ = wait_for_finish.recv();
+    });
+    progress.recv().unwrap();
+    show_task(&harness.ctx, running.clone());
+    harness.run();
+    let mut seen = crate::translation::texts(&harness);
+    show_task(&harness.ctx, failed);
+    harness.run();
+    seen.extend(crate::translation::texts(&harness));
+    finish.send(()).unwrap();
+    running.wait();
+
+    let roles = |role| seen.iter().filter(|(r, _)| *r == role).count();
+    assert!(roles(Role::ProgressIndicator) > 0 && roles(Role::Dialog) > 0, "{seen:?}");
+    let unmarked: Vec<_> = seen.iter().filter(|(_, text)| !crate::translation::wholly_marked(text)).collect();
+    assert!(unmarked.is_empty(), "text drawn without the lookup: {unmarked:?}");
 }

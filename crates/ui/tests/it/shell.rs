@@ -294,13 +294,13 @@ fn names(harness: &Harness<'_, Shell>) -> Vec<String> {
 #[test]
 fn a_close_button_closes_its_own_tab_and_keeps_the_selected_one() {
     let mut harness = three_tabs();
-    tab_to(&mut harness, Role::Button, &format!("{} {HOME}", otd_ui::CLOSE_TAB));
+    tab_to(&mut harness, Role::Button, &otd_ui::CLOSE_TAB.replace("{tab}", HOME));
     press(&mut harness, Modifiers::NONE, Key::Enter);
     assert_eq!(names(&harness), [ALPHA, BETA]);
     assert_eq!(selected(&harness).as_deref(), Some(BETA), "closing another tab keeps the selected one");
     assert!(focus_is_on_selected_tab(&harness));
 
-    tab_to(&mut harness, Role::Button, &format!("{} {BETA}", otd_ui::CLOSE_TAB));
+    tab_to(&mut harness, Role::Button, &otd_ui::CLOSE_TAB.replace("{tab}", BETA));
     press(&mut harness, Modifiers::NONE, Key::Enter);
     assert_eq!(names(&harness), [ALPHA]);
     assert!(focus_is_on_selected_tab(&harness));
