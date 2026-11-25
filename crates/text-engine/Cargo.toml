@@ -1,0 +1,13 @@
+[package]
+name = "otd-text-engine"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "OverTheDiff's text comparison engine: line alignment and difference sections, without a UI"
+
+[lints]
+workspace = true
+
+# No UI dependency: `cargo xtask ui-free` fails if one reaches a crate under crates/.
+[dependencies]
