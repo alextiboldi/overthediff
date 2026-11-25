@@ -46,6 +46,8 @@ fn main() -> ExitCode {
             ControlFlow::<()>::Continue(())
         });
         let total = start.elapsed();
+        // The work after the last poll (the sections pass) counts too.
+        gap = gap.max(last.elapsed());
         let rows = if let ControlFlow::Continue(c) = &done { c.rows.len() } else { 0 };
         println!("{name}: {rows} rows; first rows after {first_rows:?}, done after {total:?}, longest gap between polls {gap:?}");
         if gap > CANCEL_WITHIN {
