@@ -68,9 +68,9 @@ impl Pair {
     }
 
     fn recompare(&mut self) -> &Comparison {
-        // ponytail: a full recompare, about 1 to 4 ms for a 10,000-line pair in a release build,
-        // inside E03-S1-T6's proposed 100 ms. If that budget is missed, reuse the old rows past the
-        // edit: Standard alignment from a point (i, j) reads only the lines after it, so once the
+        // ponytail: a full recompare, about 1.5 ms for a 10,000-line pair in a release build, inside
+        // E03-S1-T6's 100 ms budget (`cargo bench -p otd-text-engine --bench budgets`). If that
+        // budget is missed, reuse the old rows past the edit: Standard alignment from a point (i, j) reads only the lines after it, so once the
         // new walk reaches an old point beyond the edit, the old rows from there on hold, shifted.
         self.comparison = compare(&self.left, &self.right);
         &self.comparison

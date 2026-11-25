@@ -50,7 +50,8 @@ const MAX_STEPS: usize = 1 << 26;
 ///
 /// Lines that differ by more than 2,048 characters, or that would take more than 2^26 search steps,
 /// come back not [exact](CharDifferences::exact).
-// ponytail: the limits are fixed guesses; E03-S1-T6 sets the budgets for large inputs.
+// ponytail: E03-S1-T6 kept these limits: at either one a row takes under 100 ms in a release build
+// (`cargo bench -p otd-text-engine --bench budgets`), inside its per-row budget.
 pub fn char_differences(left: &str, right: &str) -> CharDifferences {
     within(left, right, MAX_EDITS, MAX_STEPS)
 }

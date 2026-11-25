@@ -70,3 +70,15 @@ fn a_break_stops_the_comparison_without_another_poll_and_returns_the_break() {
     assert_eq!(result, ControlFlow::Break("stop"));
     assert_eq!(polls, stop_at);
 }
+
+#[test]
+fn twice_the_lines_take_about_twice_the_polls() {
+    // The step counter behind E03-S1-T6's budgets: work that grows faster than the input, such as
+    // a search rescanning the whole text at every change, would miss them on large inputs.
+    let polls = |n| {
+        let (left, right) = scattered(n);
+        batches(&left, &right).len()
+    };
+    let (small, large) = (polls(4_000), polls(8_000));
+    assert!(large <= small * 2 + small / 4, "{small} polls for 4,000 lines, {large} for 8,000");
+}
