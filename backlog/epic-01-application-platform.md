@@ -120,10 +120,11 @@ Recorded by E01-S1-T1 and confirmed by the operator on 2026-11-25, as proposed: 
   | Help | Cmd+? | F1 | F1 |
   | Exit | Cmd+Q (application menu) | none: Alt+F4 is the OS's and closes the window | Ctrl+Q |
   | Hide / Hide Others / Minimize | Cmd+H / Cmd+Alt+H / Cmd+M | — | — |
-  | Menu bar, next region, context menu | the OS's own | Alt or F10, F6, Shift+F10 or the Menu key | Alt or F10, F6, Shift+F10 or the Menu key |
+  | Next / previous region, also out of an editable pane | F6 / Shift+F6 | F6 / Shift+F6 | F6 / Shift+F6 |
+  | Menu bar, context menu | the OS's own | Alt or F10, Shift+F10 or the Menu key | Alt or F10, Shift+F10 or the Menu key |
   | Close a menu, popup or dialog / its default button | Esc / Enter | Esc / Enter | Esc / Enter |
 
-  While a text field or an editable pane has focus, the platform's text-editing chords go to it (craft-keymap `text_editing_chords`: undo, redo, select all, and moving and deleting by word, line and text), and plain keys type.
+  While a text field or an editable pane has focus, the platform's text-editing chords go to it (craft-keymap `text_editing_chords`: undo, redo, select all, and moving and deleting by word, line and text), and plain keys type. An editable pane may take Tab to indent (E10-S4, E24-S6), so F6 / Shift+F6 are the way out of it on every OS: no pane or field captures them. On Mac keyboards whose top row is media keys, they are Fn+F6 / Fn+Shift+F6.
 - **Product shortcuts named in the catalogue.** Each applies only where shown:
 
   | Chord | Command | Where |
@@ -134,7 +135,7 @@ Recorded by E01-S1-T1 and confirmed by the operator on 2026-11-25, as proposed: 
   | Space | Mark the focused item (E08-S10) | the Folder Compare list, while it has focus. Elsewhere Space activates the focused control |
   | Shift+Left / Shift+Right | Limit a both-sides selection to the left / right side (E08-S7) | the Folder Compare list. In text panes Shift+arrow extends the selection as usual |
   | Esc | Close the current file view (E22-S5, when *Esc closes file views* is on) | file views such as Text Compare, never a folder view |
-  | Insert | Toggle insert/overwrite | editable panes. Mac keyboards have no Insert key, so the command is also in the menu and the status-bar field toggles it |
+  | Insert | Toggle insert/overwrite | editable panes. On every OS the command is also in the Edit menu and the status-bar field toggles it, so keyboards without an Insert key, such as Mac ones, still reach it |
   | Ctrl+arrow | Nudge the crop offset by a larger step (E17) | the Picture Compare difference pane |
   | Ctrl+Alt+C | Compare the two newest clips, a global hotkey that can be turned off (E26-S3) | Windows only |
 - **Esc, innermost first.** Esc closes an open menu, popup or dialog and puts focus back, then cancels a pending action (Align With in E07), then leaves full screen (E17), then closes the find bar. Only when none of these is open does it close a file view, and then the unsaved-changes prompt still applies.
@@ -150,7 +151,7 @@ Recorded by E01-S1-T1 and confirmed by the operator on 2026-11-25, as proposed: 
 
   On Windows, AltGr arrives as Ctrl+Alt, so in-app defaults don't use Ctrl+Alt+<a key that types a character>. The E26-S3 global hotkey is the one catalogue-named exception. Shortcuts that users assign (workspaces in E06, customisation in E22-S1) can't take a reserved chord either.
 - **Conflicts.** Within one view type, two commands never share a default chord, and an application-level command holds its chord in every view type. Where a catalogue shortcut clashes with a platform habit in a view type, the catalogue shortcut wins there. A command this list doesn't cover gets a default only when its story names one or a platform standard exists. Otherwise it ships without one, and users can assign one (E22-S1).
-- **Showing chords.** Menus, tooltips and accessibility nodes show a chord in the current platform's form (craft-keymap `Chord::display`: ⇧⌘Z on macOS, Ctrl+Shift+Z elsewhere). Every default chord also has a menu entry, except the hidden-by-default commands the catalogue names. Single-key shortcuts (Space, F2, Del, Insert, Esc) can be remapped or removed through E22-S1.
+- **Showing chords.** Menus, tooltips and accessibility nodes show a chord in the current platform's form (craft-keymap `Chord::display`: ⇧⌘Z on macOS, Ctrl+Shift+Z elsewhere). Every application or view command with a default chord also has a menu entry, except the hidden-by-default commands the catalogue names. Keys that act on the focused list, pane or dialog (F2 and Del in manager lists, Space, Shift+Left/Right, Ctrl+arrow, Esc), focus and menu navigation, and the text-editing chords need none. Single-key shortcuts (Space, F2, Del, Insert, Esc) can be remapped or removed through E22-S1.
 
 **Status-bar field model (Q25)**
 - The shell owns the status bar and shows the active view's fields; views never draw it. Switching tabs swaps the fields. Home fills none, so its bar is empty.
