@@ -18,6 +18,7 @@ This epic is the shared matching layer: file masks, regular expressions and the 
 - **Integrations**: features consume the engines, and viewers register format kinds and built-in formats at start-up. User edits to formats and their order belong to E10-S1.
 - **Rules/states**:
   - Mask semantics follow A.1. The base folder is always included, and folders containing included files are included.
+  - A.1 doesn't say whether masks ignore case or what an edge `-` or an empty set in `[...]` means. Proposed default: a mask compares names with the data source's case sensitivity, so `*.txt` matches `README.TXT` on a case-insensitive source, as names align in E03-S2. A `-` at the start or end of a set is literal, and an empty set (`[]`, `[!]`) is an error (*inferred*; E02-S1-T1 takes the case from its caller).
   - Regex semantics follow A.2. Matching is line by line, so `\A`/`\Z` behave like `^`/`$`.
   - Format resolution: scan from the top, and the first enabled format whose mask matches wins. A format with an empty mask never matches automatically but can be picked manually.
   - Unmatched files fall back by content (T7 decision, *inferred*).

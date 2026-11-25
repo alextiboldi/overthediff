@@ -1,7 +1,7 @@
 //! Wildcards against single names: the A.1 conformance table from story E02-S1's acceptance
 //! criteria, then the rules that follow from them.
 
-use otd_mask::{Wildcard, WildcardError};
+use otd_mask::{Case, Wildcard, WildcardError};
 
 /// Mask, name, whether the name matches. Each row comes from a rule the story's AC state.
 const A1: &[(&str, &str, bool)] = &[
@@ -52,7 +52,7 @@ fn the_a1_conformance_table_passes() {
     let failures: Vec<String> = A1
         .iter()
         .filter_map(|&(mask, name, want)| {
-            let got = Wildcard::new(mask).map(|w| w.matches(name));
+            let got = Wildcard::new(mask, Case::Sensitive).map(|w| w.matches(name));
             (got != Ok(want)).then(|| format!("{mask:?} vs {name:?}: want {want}, got {got:?}"))
         })
         .collect();
@@ -63,11 +63,22 @@ fn the_a1_conformance_table_passes() {
 /// matcher that backtracks only the last `*` misses this match: the first `*` has to give way.
 #[test]
 fn a_set_can_match_a_period_that_the_stars_around_it_cannot_in_a_mask_ending_in_a_period() {
-    let mask = Wildcard::new("*[.a]*x.").unwrap();
+    let mask = Wildcard::new("*[.a]*x.", Case::Sensitive).unwrap();
     assert!(mask.matches("aa.bx"));
 }
 
 #[test]
 fn a_set_without_its_closing_bracket_is_an_error() {
-    assert_eq!(Wildcard::new("a[bc").err(), Some(WildcardError::UnclosedSet));
+    assert_eq!(Wildcard::new("a[bc", Case::Sensitive).err(), Some(WildcardError::UnclosedSet));
+}
+
+/// Whether a mask ignores case is the caller's choice, since it follows the data source. Ignoring
+/// case reaches characters, ranges and negated sets alike.
+#[test]
+fn ignoring_case_matches_names_that_differ_only_in_case_and_comparing_it_does_not() {
+    for (mask, name, insensitive) in [("*.txt", "README.TXT", true), ("[a-c]x", "BX", true), ("[!a]x", "Ax", false)] {
+        for (case, want) in [(Case::Insensitive, insensitive), (Case::Sensitive, !insensitive)] {
+            assert_eq!(Wildcard::new(mask, case).unwrap().matches(name), want, "{mask:?} vs {name:?} with {case:?}");
+        }
+    }
 }

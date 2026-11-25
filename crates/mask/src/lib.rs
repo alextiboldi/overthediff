@@ -2,4 +2,4 @@
 
 mod wildcard;
 
-pub use wildcard::{Wildcard, WildcardError};
+pub use wildcard::{Case, Wildcard, WildcardError};

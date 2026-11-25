@@ -6,8 +6,9 @@
 //! - A mask ending in `.` matches only names without an extension: the final `.` is dropped, and
 //!   neither `?` nor `*` matches a period. So `*.` matches names that contain no period.
 //!
-//! Left open by the story and decided here: a `-` at the start or end of a set is literal, an empty
-//! set is an error, and case is compared exactly.
+//! The caller passes [`Case`], because whether `*.txt` matches `README.TXT` depends on the data
+//! source. A `-` at the start or end of a set is literal, and an empty set is an error. Story
+//! E02-S1 records these choices.
 //!
 //! Splitting a mask list on `;`, the `-` exclude prefix and `\` folder parts belong to the mask list,
 //! not here.
@@ -20,6 +21,16 @@ pub struct Wildcard {
     tokens: Vec<Token>,
     /// Set by a final `.`: `?` and `*` then don't match a period.
     no_extension: bool,
+    case: Case,
+}
+
+/// How the mask compares letters with the name's.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Case {
+    /// `a` matches only `a`.
+    Sensitive,
+    /// `a` matches `a` and `A`, and `[a-c]` matches `B`.
+    Insensitive,
 }
 
 #[derive(Clone, Debug)]
@@ -58,10 +69,10 @@ impl std::error::Error for WildcardError {}
 
 impl Wildcard {
     /// Compiles `mask`, one name's worth of wildcard with no `;`, `-` or `\` syntax.
-    pub fn new(mask: &str) -> Result<Self, WildcardError> {
+    pub fn new(mask: &str, case: Case) -> Result<Self, WildcardError> {
         // `*.*` matches every name, with or without an extension, so it is `*`.
         if mask == "*.*" {
-            return Ok(Self { tokens: vec![Token::Many], no_extension: false });
+            return Ok(Self { tokens: vec![Token::Many], no_extension: false, case });
         }
         let (body, no_extension) = match mask.strip_suffix('.') {
             Some(body) => (body, true),
@@ -77,7 +88,7 @@ impl Wildcard {
                 c => Token::Char(c),
             });
         }
-        Ok(Self { tokens, no_extension })
+        Ok(Self { tokens, no_extension, case })
     }
 
     /// Whether `name`, a single path component, matches the whole mask.
@@ -108,18 +119,35 @@ impl Wildcard {
                 // `*` matches nothing here, or one more character after its match so far.
                 Token::Many => here || (next.last().copied().unwrap_or(false) && self.wild(c)),
                 Token::One => before && self.wild(c),
-                Token::Char(want) => before && *want == c,
-                Token::Set { negated, ranges } => before && ranges.iter().any(|&(lo, hi)| (lo..=hi).contains(&c)) != *negated,
+                Token::Char(want) => before && self.variants(c).any(|v| v == *want),
+                Token::Set { negated, ranges } => {
+                    before && self.variants(c).any(|v| ranges.iter().any(|&(lo, hi)| (lo..=hi).contains(&v))) != *negated
+                }
             };
             next.push(matched);
         }
         next
     }
 
+    /// `c` and, ignoring case, its lower- and upper-case forms: what a mask character or set may
+    /// match it as. Endpoints of a range stay as typed, so `[Z-a]` keeps its meaning.
+    // ponytail: simple per-character folding. A letter whose other case is several characters
+    // (`ß`, `İ`) only matches itself; full Unicode case folding if names ever need it.
+    fn variants(&self, c: char) -> impl Iterator<Item = char> {
+        let fold = (self.case == Case::Insensitive).then_some(c);
+        std::iter::once(c).chain(fold.and_then(|c| single(c.to_lowercase()))).chain(fold.and_then(|c| single(c.to_uppercase())))
+    }
+
     /// Whether `?` or `*` may match `c`.
     fn wild(&self, c: char) -> bool {
         !(self.no_extension && c == '.')
     }
+}
+
+/// The only item of `it`, or `None` when it has none or several.
+fn single(mut it: impl Iterator<Item = char>) -> Option<char> {
+    let c = it.next()?;
+    it.next().is_none().then_some(c)
 }
 
 /// Parses a set after its `[`, up to and including its `]`.
