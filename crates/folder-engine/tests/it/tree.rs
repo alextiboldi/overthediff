@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use otd_folder_engine::{Criteria, Cues, Row, Side, Status, TreeScan, compare};
+use otd_folder_engine::{Criteria, Cues, Row, Status, TreeScan, TreeSide, compare_trees};
 use otd_source::{DataSource, ErrorKind, Item, MemorySource, SourceError};
 
 use crate::fixture::{at, caps};
@@ -22,12 +22,12 @@ fn scan(source: MemorySource, background: bool) -> TreeScan {
 }
 
 /// Both trees fully scanned, compared with `visible` as the predicate.
-fn rows(left: MemorySource, right: MemorySource, visible: &dyn Fn(Side, &Path, &Item) -> bool) -> Vec<Row> {
+fn rows(left: MemorySource, right: MemorySource, visible: &dyn Fn(TreeSide, &Path, &Item) -> bool) -> Vec<Row> {
     let case_sensitive = left.capabilities().case_sensitive && right.capabilities().case_sensitive;
-    compare(&scan(left, true), &scan(right, true), &CRITERIA, case_sensitive, visible)
+    compare_trees(&scan(left, true), &scan(right, true), &CRITERIA, case_sensitive, visible)
 }
 
-fn all(_: Side, _: &Path, _: &Item) -> bool {
+fn all(_: TreeSide, _: &Path, _: &Item) -> bool {
     true
 }
 
@@ -62,7 +62,7 @@ fn hiding_the_newer_file_through_the_predicate_removes_its_cue_and_keeps_the_orp
 #[test]
 fn a_file_hidden_on_the_left_only_stays_visible_flagged_on_that_side_and_still_counts() {
     let (left, right) = newer_and_orphan();
-    let rows = rows(left, right, &|side, at: &Path, _: &Item| !(side == Side::Left && at == path(&["d", "new.txt"])));
+    let rows = rows(left, right, &|side, at: &Path, _: &Item| !(side == TreeSide::Left && at == path(&["d", "new.txt"])));
     let d = row(&rows, "d");
     let new = row(&d.children, "new.txt");
     assert!(new.left_hidden && !new.right_hidden && !new.hidden(), "{new:#?}");
@@ -105,7 +105,7 @@ fn folders_whose_names_differ_only_in_case_compare_their_contents() {
 fn a_folder_not_yet_scanned_is_unknown_not_same() {
     let tree = || MemorySource::new(caps(true)).file("d/x.txt", "x", at(1));
     // Background scanning off and `d` never opened: only the base is listed.
-    let rows = compare(&scan(tree(), false), &scan(tree(), false), &CRITERIA, true, &all);
+    let rows = compare_trees(&scan(tree(), false), &scan(tree(), false), &CRITERIA, true, &all);
     let cues = Cues::of(&rows);
     assert!(cues.contains(&Status::Unknown) && !cues.contains(&Status::Same), "{cues:?}");
 }
@@ -128,7 +128,7 @@ fn no_orphans(cues: Cues) -> bool {
 #[test]
 fn items_facing_a_folder_not_yet_listed_on_the_other_side_are_unknown_not_orphans() {
     let tree = || MemorySource::new(caps(true)).file("d/sub/x.txt", "x", at(1));
-    let rows = compare(&scan(tree(), true), &scan(tree(), false), &CRITERIA, true, &all);
+    let rows = compare_trees(&scan(tree(), true), &scan(tree(), false), &CRITERIA, true, &all);
     for cues in [row(&rows, "d").cues(), Cues::of(&rows)] {
         assert!(cues.contains(&Status::Unknown) && no_orphans(cues), "{cues:?}");
     }
@@ -138,7 +138,7 @@ fn items_facing_a_folder_not_yet_listed_on_the_other_side_are_unknown_not_orphan
 fn items_facing_a_base_not_yet_listed_are_unknown_not_orphans() {
     let tree = || MemorySource::new(caps(true)).file("x.txt", "x", at(1));
     let (unlisted, _events) = TreeScan::new(Arc::new(tree()), "", false);
-    let cues = Cues::of(&compare(&scan(tree(), true), &unlisted, &CRITERIA, true, &all));
+    let cues = Cues::of(&compare_trees(&scan(tree(), true), &unlisted, &CRITERIA, true, &all));
     assert!(cues.contains(&Status::Unknown) && no_orphans(cues), "{cues:?}");
 }
 

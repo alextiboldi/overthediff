@@ -1,6 +1,6 @@
 //! The compared tree, folder aggregation and the per-side visibility predicate (E03-S2-T6).
 //!
-//! [`compare`] aligns two scanned trees folder by folder into [`Row`]s, gives each row its quick
+//! [`compare_trees`] aligns two scanned trees folder by folder into [`Row`]s, gives each row its quick
 //! status and flags each side the visibility predicate hides. [`Row::cues`] then summarises a
 //! folder's visible contents: every status found anywhere below it, several at once.
 //!
@@ -16,14 +16,14 @@ use crate::{Criteria, ScanState, Status, TreeScan, align, quick_test};
 
 /// One side of a comparison.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Side {
+pub enum TreeSide {
     Left,
     Right,
 }
 
 /// The per-side visibility predicate: whether `item`, at `path` on `side` (relative to that side's
 /// base, in that side's own spelling), is visible. Name masks and file filters plug in here.
-pub type Visibility<'a> = dyn Fn(Side, &Path, &Item) -> bool + 'a;
+pub type Visibility<'a> = dyn Fn(TreeSide, &Path, &Item) -> bool + 'a;
 
 /// One aligned name in the compared tree.
 #[derive(Debug, Clone, PartialEq)]
@@ -116,10 +116,10 @@ impl Row {
 /// *Unspecified*, decided here: the contents of a folder hidden on a side are hidden on that side
 /// too; a file against a folder has the folder's contents as orphans of the folder's side; an
 /// orphan folder adds its orphan cue even when it is empty.
-pub fn compare(left: &TreeScan, right: &TreeScan, criteria: &Criteria, case_sensitive: bool, visible: &Visibility<'_>) -> Vec<Row> {
+pub fn compare_trees(left: &TreeScan, right: &TreeScan, criteria: &Criteria, case_sensitive: bool, visible: &Visibility<'_>) -> Vec<Row> {
     let trees = Trees { left, right, criteria, case_sensitive, visible };
     let base = Some(Path::new(""));
-    trees.rows([trees.listing(Side::Left, base), trees.listing(Side::Right, base)], [false, false], [false, false])
+    trees.rows([trees.listing(TreeSide::Left, base), trees.listing(TreeSide::Right, base)], [false, false], [false, false])
 }
 
 struct Trees<'a> {
@@ -140,11 +140,11 @@ struct Listing {
 
 impl Trees<'_> {
     /// `dir` is `None` when the side has no folder here.
-    fn listing(&self, side: Side, dir: Option<&Path>) -> Listing {
+    fn listing(&self, side: TreeSide, dir: Option<&Path>) -> Listing {
         let Some(dir) = dir else { return Listing { dir: None, items: Vec::new(), state: ScanState::Done, error: None } };
         let scan = match side {
-            Side::Left => self.left,
-            Side::Right => self.right,
+            TreeSide::Left => self.left,
+            TreeSide::Right => self.right,
         };
         match scan.folder(dir) {
             Some(folder) => Listing { dir: Some(dir.to_path_buf()), items: folder.items, state: folder.state, error: folder.error },
@@ -172,10 +172,10 @@ impl Trees<'_> {
             let flag = |side, at: usize, item: &Option<Item>| {
                 hidden[at] || matches!((item, &paths[at]), (Some(item), Some(path)) if !(self.visible)(side, path, item))
             };
-            let row_hidden = [flag(Side::Left, 0, &aligned.left), flag(Side::Right, 1, &aligned.right)];
+            let row_hidden = [flag(TreeSide::Left, 0, &aligned.left), flag(TreeSide::Right, 1, &aligned.right)];
             let folder_path =
                 |at: usize, item: &Option<Item>| paths[at].as_deref().filter(|_| item.as_ref().is_some_and(|item| item.kind == ItemKind::Folder));
-            let below = [self.listing(Side::Left, folder_path(0, &aligned.left)), self.listing(Side::Right, folder_path(1, &aligned.right))];
+            let below = [self.listing(TreeSide::Left, folder_path(0, &aligned.left)), self.listing(TreeSide::Right, folder_path(1, &aligned.right))];
             if let Some(error) = below.iter().find_map(|listing| listing.error.clone())
                 && !matches!(status, Status::Error(_))
             {
