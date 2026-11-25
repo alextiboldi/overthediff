@@ -5,7 +5,7 @@
 
 use otd_text_engine::{Comparison, Line, LineEnding, RowKind, compare};
 
-fn side(texts: &[&str]) -> Vec<Line> {
+pub(crate) fn side(texts: &[&str]) -> Vec<Line> {
     texts.iter().map(|t| Line { text: (*t).to_owned(), ending: LineEnding::Lf }).collect()
 }
 
@@ -42,10 +42,10 @@ fn mirror(rows: &[&str]) -> Vec<String> {
         .collect()
 }
 
-struct Case {
-    name: &'static str,
-    left: &'static [&'static str],
-    right: &'static [&'static str],
+pub(crate) struct Case {
+    pub(crate) name: &'static str,
+    pub(crate) left: &'static [&'static str],
+    pub(crate) right: &'static [&'static str],
     expect: Expect,
     sections: usize,
 }
@@ -57,7 +57,7 @@ enum Expect {
     Same(usize),
 }
 
-const CORPUS: &[Case] = &[
+pub(crate) const CORPUS: &[Case] = &[
     Case { name: "identical", left: &["a", "b", "c"], right: &["a", "b", "c"], expect: Expect::Rows(&["a", "b", "c"]), sections: 0 },
     Case { name: "both empty", left: &[], right: &[], expect: Expect::Rows(&[]), sections: 0 },
     Case { name: "one side empty", left: &[], right: &["a", "b"], expect: Expect::Rows(&["> a", "> b"]), sections: 1 },

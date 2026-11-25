@@ -20,6 +20,9 @@ use std::ops::Range;
 mod importance;
 pub use importance::{Classification, Importance, Outcome, Rule, Statistics, classify};
 
+mod recompare;
+pub use recompare::{OutOfRange, Pair};
+
 /// How a line ends in its file.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum LineEnding {
