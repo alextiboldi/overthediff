@@ -65,8 +65,20 @@ impl View for EditView {
 
 fn session_types() -> Vec<SessionType> {
     vec![
-        SessionType { id: "alpha", name: ALPHA, new: || Box::new(TestView { title: ALPHA, result: "Alpha result", field: "Alpha field" }) },
-        SessionType { id: "beta", name: BETA, new: || Box::new(TestView { title: BETA, result: "Beta result", field: "Beta field" }) },
+        SessionType {
+            id: "alpha",
+            name: ALPHA,
+            kinds: &[],
+            sides: &[],
+            new: || Box::new(TestView { title: ALPHA, result: "Alpha result", field: "Alpha field" }),
+        },
+        SessionType {
+            id: "beta",
+            name: BETA,
+            kinds: &[],
+            sides: &[],
+            new: || Box::new(TestView { title: BETA, result: "Beta result", field: "Beta field" }),
+        },
     ]
 }
 
