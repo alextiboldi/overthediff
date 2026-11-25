@@ -2,6 +2,7 @@
 
 mod align;
 mod container;
+mod content;
 mod fixture;
 mod flat;
 mod scan;
