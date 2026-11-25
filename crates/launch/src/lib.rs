@@ -397,10 +397,8 @@ impl Completion {
 
     fn report(&mut self, code: i32) {
         let Some((ticket, shared)) = self.waiter.take() else { return };
-        let Some(shared) = shared.upgrade() else { return };
-        if let Some(server) = lock(&shared.server).as_ref() {
-            let _ = server.emit(CLOSED, json!({"ticket": ticket, "code": code}));
-            *lock(&shared.last_close) = Some(Instant::now());
+        if let Some(shared) = shared.upgrade() {
+            shared.close(ticket, code);
         }
     }
 }
@@ -418,8 +416,26 @@ struct Shared {
     server: Mutex<Option<Server>>,
     /// When a view's close was last reported to a waiting launcher.
     last_close: Mutex<Option<Instant>>,
+    /// Tickets whose launchers still wait.
+    waiting: Mutex<Vec<u64>>,
     next_ticket: AtomicU64,
     runtime: Option<RuntimeDir>,
+}
+
+impl Shared {
+    /// Tells the launcher waiting on `ticket` that its view closed with `code`, once.
+    fn close(&self, ticket: u64, code: i32) {
+        let was_waiting = {
+            let mut waiting = lock(&self.waiting);
+            let before = waiting.len();
+            waiting.retain(|&t| t != ticket);
+            waiting.len() < before
+        };
+        if was_waiting && let Some(server) = lock(&self.server).as_ref() {
+            let _ = server.emit(CLOSED, json!({"ticket": ticket, "code": code}));
+            *lock(&self.last_close) = Some(Instant::now());
+        }
+    }
 }
 
 /// This process as an instance: the requests it acts on, its own launch's first.
@@ -438,6 +454,7 @@ impl Instance {
             waker: Mutex::new(None),
             server: Mutex::new(None),
             last_close: Mutex::new(None),
+            waiting: Mutex::new(Vec::new()),
             next_ticket: AtomicU64::new(1),
             runtime,
         });
@@ -485,6 +502,12 @@ impl Instance {
 
 impl Drop for Instance {
     fn drop(&mut self) {
+        // Quitting closes every view, so every launcher still waiting gets its answer and hangs up
+        // before the server stops: a connection still open can hold up the shutdown.
+        let waiting = lock(&self.shared.waiting).clone();
+        for ticket in waiting {
+            self.shared.close(ticket, EXIT_FAILED);
+        }
         // Taken out first: a completion dropped on a connection thread locks `server` too.
         let server = lock(&self.shared.server).take();
         if let Some(server) = server {
@@ -533,7 +556,11 @@ fn receive(shared: &Arc<Shared>, params: &Value) -> Result<Incoming, String> {
         let _ = std::fs::remove_file(dir.join(&name));
         request.attachment = Some(bytes?);
     }
-    let waiter = wire.wait.then(|| (shared.next_ticket.fetch_add(1, Ordering::Relaxed), Arc::downgrade(shared)));
+    let waiter = wire.wait.then(|| {
+        let ticket = shared.next_ticket.fetch_add(1, Ordering::Relaxed);
+        lock(&shared.waiting).push(ticket);
+        (ticket, Arc::downgrade(shared))
+    });
     Ok(Incoming { request, done: Completion { waiter } })
 }
 
