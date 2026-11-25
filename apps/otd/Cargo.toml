@@ -11,6 +11,7 @@ workspace = true
 
 [dependencies]
 otd-core = { path = "../../crates/core" }
+otd-launch = { path = "../../crates/launch" }
 eframe = { workspace = true, features = ["wgpu", "accesskit", "wayland", "x11"] }
 
 [dev-dependencies]

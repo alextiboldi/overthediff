@@ -20,6 +20,10 @@ Regular expressions (crates/regex) run on fancy-regex (MIT), with regex-automata
 On macOS and Linux, the local data source looks up owner and group names with uzers (MIT,
 Copyright (c) 2019 Benjamin Sago and 2023 Sandro-Alessio Gierens), which links libc (MIT OR Apache-2.0).
 
+The launch hand-off (otd-launch) adds craft-ipc (MIT OR Apache-2.0) and its dependencies, among
+them interprocess (0BSD OR Apache-2.0), recvmsg and doctest-file (0BSD), and generic-array and zmij
+(MIT). The rest are MIT OR Apache-2.0.
+
 The tests also use egui_kittest, kittest, craft-testkit and tempfile (each MIT OR Apache-2.0),
 which the app doesn't ship.
 

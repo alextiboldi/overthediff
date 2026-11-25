@@ -5,4 +5,4 @@ Every non-code asset in this repository (images, icons, fonts, fixtures, sample 
 | Asset | Author | Source | Licence | Notes |
 |---|---|---|---|---|
 
-There are no assets yet.
+There are no assets yet. Crate dependencies are not assets; their notices are in `NOTICE`.

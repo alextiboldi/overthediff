@@ -1,0 +1,18 @@
+[package]
+name = "otd-launch"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "OverTheDiff's single-instance launch, argument hand-off and argument dispatch"
+
+[lints]
+workspace = true
+
+# UI-free (AGENTS.md "## This repository"): the app wires the instance it returns to its window.
+[dependencies]
+craft-ipc = { workspace = true }
+serde_json = "1"
+
+[dev-dependencies]
+craft-testkit = { workspace = true }
