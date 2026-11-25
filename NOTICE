@@ -1,0 +1,17 @@
+OverTheDiff
+Copyright (c) 2026 the OverTheDiff contributors.
+
+Third-party material
+
+OverTheDiff is built from Rust crates under their own licences. Cargo.lock pins every one, and
+each crate's licence is in its manifest. Every crate's licence expression offers an option made only
+of identifiers on the Craft licence allowlist (storytold/craft-contrib standards/licences.md). Two
+crates also offer a GPL-family licence as an alternative, and OverTheDiff uses them under their
+allowlisted options only:
+
+- self_cell (Apache-2.0 OR GPL-2.0-only), through epaint: used under Apache-2.0.
+- r-efi (MIT OR Apache-2.0 OR LGPL-2.1-or-later), through getrandom on UEFI targets only, which
+  OverTheDiff doesn't build for: used under MIT OR Apache-2.0.
+
+OverTheDiff bundles no third-party fonts, images or other assets yet. Each one added is listed
+here with its notice, and in ATTRIBUTION.md.
