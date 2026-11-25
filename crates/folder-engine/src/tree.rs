@@ -90,7 +90,8 @@ fn bit(status: &Status) -> u8 {
 }
 
 impl Row {
-    /// Hidden on every side it has an item on, so out of aggregation and selection.
+    /// Hidden on every side it has an item on, so out of aggregation. Selection goes by each side's
+    /// own flag: see [`crate::resolve_selection`].
     pub fn hidden(&self) -> bool {
         (self.left.is_none() || self.left_hidden) && (self.right.is_none() || self.right_hidden)
     }
