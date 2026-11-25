@@ -63,9 +63,7 @@ fn focused(harness: &Harness<'_, TestWindow>) -> Option<(Role, String)> {
 }
 
 fn harness() -> Harness<'static, TestWindow> {
-    // ponytail: the app is built without egui's default fonts yet, so text draws as boxes. Drop
-    // `allow_missing_glyphs` when the first task that draws text enables them.
-    Harness::builder().allow_missing_glyphs().build_ui_state(|ui, window| window.ui(ui), TestWindow::default())
+    Harness::builder().build_ui_state(|ui, window| window.ui(ui), TestWindow::default())
 }
 
 #[test]
