@@ -60,6 +60,18 @@ As a developer on the product team, I can hand the engine two texts and a rule s
 - [ ] After an edit to either side, recomparing gives the same rows as a full comparison of the edited text. Interactive edits stay within the budget set in T6.
 - [ ] Very large inputs stay within the memory and time budgets set in T6.
 
+#### Decisions
+Recorded by E03-S1-T6. The catalogue sets no performance figures, so every budget here is *unspecified* there and is OverTheDiff's own choice.
+
+- **Time budgets**, confirmed by the operator on 2026-11-25, as proposed:
+  - A 100,000-line pair with scattered changes shows its first rows within 1 s and completes within 10 s.
+  - A single-line edit in a 10,000-line pair recompares within 100 ms.
+- **Further budgets**, added by E03-S1-T6 because the acceptance criteria also ask for a memory budget and character differences are part of what a view shows. They are not part of the confirmed proposal:
+  - Comparing a 100,000-line pair grows the process by at most 64 MiB beyond the two inputs. The engine's memory grows in step with the number of lines.
+  - The character differences of one changed row come within 100 ms. The character search keeps its limits (2,048 differing characters, 2^26 steps) and past either one marks the whole differing middle as approximate.
+- **Reference hardware** is a current laptop or desktop running a release build, otherwise idle. The budgets were measured on an Apple M4 Max machine under macOS with other builds running, where every figure came in under a tenth of its budget: first rows in about 12 ms and completion in about 15 ms for the 100,000-line pair, about 1.5 ms for the slowest single-line recompare, about 27 MiB of memory, and about 40 ms for the slowest row's character differences. Slower hardware has not been measured.
+- **How they are checked.** `cargo bench -p otd-text-engine --bench budgets` runs each budget and exits with an error when one is missed. It also runs a 100,000-line pair of repetitive source-like text (blank lines and braces) against the same time budgets. Timings stay out of `cargo test` (AGENTS.md rule 28); the integration test `twice_the_lines_take_about_twice_the_polls` counts polls instead, so work that grows faster than the input fails in `cargo test`.
+
 #### Tasks
 - **E03-S1-T1** — Standard line alignment with gap padding and sections · size: L · depends: — · flags: `craft-libs` · status: done
   - AC: a corpus of before/after pairs (insertions, deletions, moved blocks, repeated lines) gives the expected row pairings and sections.

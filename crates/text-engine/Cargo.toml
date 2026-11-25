@@ -16,3 +16,8 @@ workspace = true
 [[bench]]
 name = "progress"
 harness = false
+
+# The performance budgets of E03-S1-T6: `cargo bench -p otd-text-engine --bench budgets`.
+[[bench]]
+name = "budgets"
+harness = false
