@@ -8,7 +8,8 @@
 //!
 //! Paths are relative to the source's root, with `/` between names (`docs/readme.txt`); the empty
 //! path is the root. Each provider maps them onto its own syntax (`C:\…`, `smb://…`, a path
-//! inside an archive). A path that leaves the root (`..`, an absolute path) is not found.
+//! inside an archive). A path with a `..` component, even one that leads back inside, or an
+//! absolute path is not found, so nothing can reach outside the root.
 //!
 //! ponytail: error messages are English. They go through the translation lookup once E01-S1 has one.
 
@@ -17,7 +18,7 @@ pub mod suite;
 
 use std::fmt;
 use std::io::Read;
-use std::path::Path;
+use std::path::{Component, Path};
 use std::time::{Duration, SystemTime};
 
 pub use memory::MemorySource;
@@ -184,6 +185,11 @@ pub fn copy(from: &dyn DataSource, from_path: &Path, to: &dyn DataSource, to_pat
             let children = from.list(from_path, Links::Report)?;
             to.create_folder(to_path)?;
             for child in children {
+                // A listed name could come from an archive entry such as `../x` or `/x`.
+                let mut parts = Path::new(&child.name).components();
+                if !matches!((parts.next(), parts.next()), (Some(Component::Normal(_)), None)) {
+                    return Err(SourceError::new(ErrorKind::NotFound, format!("{} isn't a single name", child.name)));
+                }
                 copy(from, &from_path.join(&child.name), to, &to_path.join(&child.name))?;
             }
         }

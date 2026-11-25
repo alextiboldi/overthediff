@@ -316,7 +316,7 @@ impl Tree {
     /// it, if it exists.
     fn locate(&self, names: &[String]) -> Result<(Vec<String>, Option<usize>), SourceError> {
         let Some((name, parents)) = names.split_last() else {
-            return Err(error(ErrorKind::Unsupported, "the root of a source can't be changed".to_owned()));
+            return Err(error(ErrorKind::Unsupported, "the root of a source can't be replaced, renamed or deleted".to_owned()));
         };
         let parent_at = self.resolve(parents, true)?;
         let parent = self.node(&parent_at)?;
@@ -331,6 +331,9 @@ impl Tree {
 
     /// The existing item at `names`, unfollowed, for a change to it.
     fn existing_mut(&mut self, names: &[String]) -> Result<&mut Node, SourceError> {
+        if names.is_empty() {
+            return Ok(&mut self.root);
+        }
         let (parent_at, found) = self.locate(names)?;
         let name = names.last().map_or("", String::as_str);
         let index = found.ok_or_else(|| not_found(name))?;
@@ -410,6 +413,10 @@ impl DataSource for MemorySource {
         let mut tree = self.lock();
         tree.writable()?;
         let names = segments(path)?;
+        if names.is_empty() {
+            // The root is always a folder.
+            return Ok(());
+        }
         let (parent_at, found) = tree.locate(&names)?;
         let name = names.last().cloned().unwrap_or_default();
         let parent = tree.node_mut(&parent_at)?;

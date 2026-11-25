@@ -3,7 +3,7 @@
 
 use std::collections::BTreeSet;
 use std::io::Read;
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use otd_source::suite::{self, CaseResult, Outcome};
@@ -60,11 +60,40 @@ enum Flaw {
     AlwaysFollowsLinks,
     /// Reports a CRC that doesn't match the content.
     ReportsAWrongCrc,
+    /// Lists items without their attributes.
+    DropsAttributes,
+    /// Resolves `..` in the paths it changes, as joining them onto a root folder would.
+    ResolvesParentNames,
+}
+
+/// `path` with `..` resolved and any root dropped.
+fn lexical(path: &Path) -> PathBuf {
+    let mut resolved = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::Normal(name) => resolved.push(name),
+            Component::ParentDir => {
+                resolved.pop();
+            }
+            _ => {}
+        }
+    }
+    resolved
 }
 
 struct Flawed {
     inner: MemorySource,
     flaw: Flaw,
+}
+
+impl Flawed {
+    /// The path a write goes to.
+    fn changed(&self, path: &Path) -> PathBuf {
+        match self.flaw {
+            Flaw::ResolvesParentNames => lexical(path),
+            _ => path.to_owned(),
+        }
+    }
 }
 
 impl DataSource for Flawed {
@@ -82,6 +111,7 @@ impl DataSource for Flawed {
                 Err(SourceError::new(ErrorKind::Unsupported, "no containers"))
             }
             Flaw::AlwaysFollowsLinks => self.inner.list(folder, Links::Follow),
+            Flaw::DropsAttributes => Ok(self.inner.list(folder, links)?.into_iter().map(|item| Item { attributes: None, ..item }).collect()),
             Flaw::AbortsListingOnABadItem => {
                 let items = self.inner.list(folder, links)?;
                 match items.iter().find_map(|item| item.error.clone()) {
@@ -106,7 +136,7 @@ impl DataSource for Flawed {
     }
 
     fn write(&self, path: &Path, content: &mut dyn Read) -> Result<(), SourceError> {
-        let result = self.inner.write(path, content);
+        let result = self.inner.write(&self.changed(path), content);
         match (self.flaw, result) {
             (Flaw::RefusesReadOnlyWritesAsIo, Err(e)) if e.kind == ErrorKind::AccessDenied => Err(SourceError { kind: ErrorKind::Io, ..e }),
             (_, result) => result,
@@ -114,15 +144,15 @@ impl DataSource for Flawed {
     }
 
     fn create_folder(&self, path: &Path) -> Result<(), SourceError> {
-        self.inner.create_folder(path)
+        self.inner.create_folder(&self.changed(path))
     }
 
     fn delete(&self, path: &Path, how: Delete) -> Result<(), SourceError> {
-        self.inner.delete(path, how)
+        self.inner.delete(&self.changed(path), how)
     }
 
     fn rename(&self, path: &Path, new_name: &str) -> Result<(), SourceError> {
-        self.inner.rename(path, new_name)
+        self.inner.rename(&self.changed(path), new_name)
     }
 
     fn set_modified(&self, path: &Path, time: SystemTime) -> Result<(), SourceError> {
@@ -132,19 +162,19 @@ impl DataSource for Flawed {
                 let old = self.inner.stat(path, Links::Report)?.modified.unwrap_or(SystemTime::UNIX_EPOCH);
                 self.inner.set_modified(path, old)
             }
-            _ => self.inner.set_modified(path, time),
+            _ => self.inner.set_modified(&self.changed(path), time),
         }
     }
 
     fn set_permissions(&self, path: &Path, permissions: Permissions) -> Result<(), SourceError> {
-        self.inner.set_permissions(path, permissions)
+        self.inner.set_permissions(&self.changed(path), permissions)
     }
 }
 
 #[test]
 fn each_broken_fake_fails_exactly_the_cases_that_guard_its_flaw() {
     let insensitive = CONFIGURATIONS[1];
-    let expectations: [(Flaw, &[&str]); 7] = [
+    let expectations: [(Flaw, &[&str]); 9] = [
         (
             Flaw::AbortsListingOnABadItem,
             &[
@@ -161,6 +191,8 @@ fn each_broken_fake_fails_exactly_the_cases_that_guard_its_flaw() {
         (Flaw::WontListContainers, &["a_container_lists_its_children_like_a_folder"]),
         (Flaw::AlwaysFollowsLinks, &["links_report_their_target_unless_followed"]),
         (Flaw::ReportsAWrongCrc, &["a_source_provided_crc_matches_the_content"]),
+        (Flaw::DropsAttributes, &["every_item_reports_its_attributes_and_stat_agrees", "links_report_their_target_unless_followed"]),
+        (Flaw::ResolvesParentNames, &["a_path_that_would_leave_the_root_is_not_found_and_changes_nothing"]),
     ];
     for (flaw, expected) in expectations {
         let results =

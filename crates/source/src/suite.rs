@@ -5,7 +5,12 @@
 //! folder, a built archive). It keeps its own capabilities except [`Capabilities::read_only`],
 //! which it takes from the fixture. It returns `None` when it can't hold the fixture (links,
 //! unreadable items, containers or read-only media it can't make), and that case is skipped with
-//! the reason.
+//! the reason. Attributes a fixture declares only mark which items a memory source reports them
+//! for: another provider reports its own platform's, and the cases check only that they are there
+//! and agree.
+//!
+//! Some write cases try paths that would leave the root, so a harness should put its root at
+//! least one folder below a temporary folder it made.
 //!
 //! Cases never panic: each returns an [`Outcome`], so a caller asserts on the results. Write
 //! cases skip on a read-only source, so a provider that only reads passes the rest.
@@ -64,6 +69,7 @@ type Case = fn(&mut Harness<'_>) -> Result<(), Stop>;
 
 const CASES: &[(&str, Group, Case)] = &[
     ("a_listing_reports_each_child_with_its_name_kind_size_and_time", Group::Listing, listing),
+    ("every_item_reports_its_attributes_and_stat_agrees", Group::Listing, attributes),
     ("stat_agrees_with_the_listing_and_a_missing_path_is_not_found", Group::Listing, stat),
     ("links_report_their_target_unless_followed", Group::Listing, links),
     ("a_link_loop_gives_that_item_an_error_and_the_listing_still_returns", Group::Listing, link_loop),
@@ -80,6 +86,7 @@ const CASES: &[(&str, Group, Case)] = &[
     ("a_modified_time_set_reads_back_within_the_timestamp_resolution", Group::Write, set_modified),
     ("attributes_and_permissions_are_kept_only_where_the_source_supports_them", Group::Write, set_permissions),
     ("a_read_only_source_refuses_every_write_and_changes_nothing", Group::Write, read_only),
+    ("a_path_that_would_leave_the_root_is_not_found_and_changes_nothing", Group::Write, escapes),
     ("a_copy_keeps_content_and_modified_time_within_and_across_sources", Group::Write, copies),
 ];
 
@@ -188,7 +195,33 @@ fn stat(harness: &mut Harness<'_>) -> Result<(), Stop> {
     })?;
     expect_error(source.stat(Path::new("sub/missing.txt"), Links::Report), ErrorKind::NotFound, "stat of a missing file")?;
     expect_error(source.list(Path::new("missing"), Links::Report), ErrorKind::NotFound, "listing a missing folder")?;
-    expect_error(source.stat(Path::new("../sub"), Links::Report), ErrorKind::NotFound, "stat of a path outside the source")
+    expect_error(source.stat(Path::new("../sub"), Links::Report), ErrorKind::NotFound, "stat of a path outside the source")?;
+    // The temporary folder exists, so a provider that joins an absolute path onto its root finds it.
+    expect_error(source.stat(&std::env::temp_dir(), Links::Report), ErrorKind::NotFound, "stat of an absolute path")
+}
+
+fn unix(mode: u32) -> Attributes {
+    Attributes::Unix { mode, owner: "owner".to_owned(), group: "group".to_owned() }
+}
+
+fn attributes(harness: &mut Harness<'_>) -> Result<(), Stop> {
+    let spec = fixture().file("a.txt", "a", at(T1)).folder("sub", at(T1)).attributes("a.txt", unix(0o100_644)).attributes("sub", unix(0o40_755));
+    let source = build(harness, &spec, "files and folders")?;
+    let items = source.list(Path::new(""), Links::Report)?;
+    ensure(names(&items) == ["a.txt", "sub"], || format!("the root lists {:?}", names(&items)))?;
+    for item in &items {
+        let complete = match &item.attributes {
+            Some(Attributes::Unix { owner, group, .. }) => !owner.is_empty() && !group.is_empty(),
+            Some(Attributes::Windows(_)) => true,
+            None => false,
+        };
+        ensure(complete, || format!("{} reports attributes {:?}", item.name, item.attributes))?;
+        let stated = source.stat(Path::new(&item.name), Links::Report)?;
+        ensure(stated.attributes == item.attributes, || {
+            format!("stat reports {} with {:?}, the listing {:?}", item.name, stated.attributes, item.attributes)
+        })?;
+    }
+    Ok(())
 }
 
 fn links(harness: &mut Harness<'_>) -> Result<(), Stop> {
@@ -197,7 +230,9 @@ fn links(harness: &mut Harness<'_>) -> Result<(), Stop> {
         .file("dir/inside.txt", "12345", at(T2))
         .link("to-file", "file.txt", at(T2))
         .link("to-dir", "dir", at(T1))
-        .link("dir/up", "../file.txt", at(T2));
+        .link("dir/up", "../file.txt", at(T2))
+        .attributes("file.txt", unix(0o100_644))
+        .attributes("to-file", unix(0o120_777));
     let source = build(harness, &spec, "links")?;
     let reported = source.list(Path::new(""), Links::Report)?;
     for (name, target) in [("to-file", "file.txt"), ("to-dir", "dir")] {
@@ -209,6 +244,8 @@ fn links(harness: &mut Harness<'_>) -> Result<(), Stop> {
     ensure(file.kind == ItemKind::File && file.size == 3 && within_resolution(&*source, file.modified, at(T1)), || {
         format!("followed, to-file is reported as {file:?}")
     })?;
+    let target = source.stat(Path::new("file.txt"), Links::Report)?.attributes;
+    ensure(target.is_some() && file.attributes == target, || format!("followed, to-file reports {:?}, file.txt {target:?}", file.attributes))?;
     let folder = find(&followed, "to-dir")?;
     ensure(folder.kind == ItemKind::Folder, || format!("followed, to-dir is reported as {folder:?}"))?;
     let stated = source.stat(Path::new("to-dir"), Links::Report)?;
@@ -434,5 +471,45 @@ fn copies(harness: &mut Harness<'_>) -> Result<(), Stop> {
     copy(&*source, Path::new("dir"), &*other, Path::new("dir"))?;
     let inner = other.stat(Path::new("dir/f.txt"), Links::Report)?;
     ensure(read_all(&*other, "dir/f.txt")? == b"inner", || "dir/f.txt doesn't read like the original".to_owned())?;
-    ensure(within_resolution(&*other, inner.modified, at(T2)), || format!("the copied dir/f.txt's time is {:?}", inner.modified))
+    ensure(within_resolution(&*other, inner.modified, at(T2)), || format!("the copied dir/f.txt's time is {:?}", inner.modified))?;
+    // A whole source into another's root: the root already exists as a folder.
+    let whole = writable(harness, &fixture())?;
+    copy(&*source, Path::new(""), &*whole, Path::new(""))?;
+    let root = whole.list(Path::new(""), Links::Report)?;
+    ensure(names(&root) == ["a-copy.txt", "a.txt", "dir"], || format!("after copying the whole source, the root lists {:?}", names(&root)))?;
+    ensure(read_all(&*whole, "dir/f.txt")? == b"inner", || "the whole copy's dir/f.txt doesn't read like the original".to_owned())
+}
+
+fn escapes(harness: &mut Harness<'_>) -> Result<(), Stop> {
+    let spec = fixture().file("a.txt", "a", at(T1)).file("dir/f.txt", "f", at(T1));
+    let source = writable(harness, &spec)?;
+    let caps = source.capabilities();
+    let before = snapshot(&*source)?;
+    // Each `..` path leads back to a.txt or beside it, so a provider that resolves `..` changes the
+    // source instead of writing outside it. The absolute path is a fresh name in the temporary folder.
+    let (back, beside) = (Path::new("dir/../a.txt"), Path::new("dir/../made"));
+    let outside = std::env::temp_dir().join("otd-contract-outside-the-source");
+    let mut attempts: Vec<(&str, Result<(), SourceError>)> = vec![
+        ("writing through ..", source.write(back, &mut Cursor::new("changed"))),
+        ("writing an absolute path", source.write(&outside, &mut Cursor::new("x"))),
+        ("creating a folder through ..", source.create_folder(beside)),
+        ("creating a folder at an absolute path", source.create_folder(&outside)),
+        ("deleting through ..", source.delete(back, Delete::Permanently)),
+        ("renaming through ..", source.rename(back, "b.txt")),
+        ("setting the modified time through ..", source.set_modified(back, at(T2))),
+        ("copying to a path through ..", copy(&*source, Path::new("a.txt"), &*source, Path::new("dir/../copy.txt"))),
+    ];
+    if caps.windows_attributes {
+        attempts.push(("setting Windows attributes through ..", source.set_permissions(back, Permissions::Windows(0x2))));
+    }
+    if caps.unix_permissions {
+        attempts.push(("setting Unix permissions through ..", source.set_permissions(back, Permissions::UnixMode(0o600))));
+    }
+    for (what, result) in attempts {
+        expect_error(result, ErrorKind::NotFound, what)?;
+    }
+    for new_name in ["../b.txt", "dir/b.txt"] {
+        ensure(source.rename(Path::new("a.txt"), new_name).is_err(), || format!("renaming a.txt to {new_name} succeeded"))?;
+    }
+    ensure(snapshot(&*source)? == before, || "a refused path changed the source".to_owned())
 }
