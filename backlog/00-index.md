@@ -533,6 +533,7 @@ Settle each one in product review, for example with a prototype or a user test, 
 | E01-S2 | A macOS build runs natively on both Apple silicon and Intel Macs and opens on a clean machine without security warnings (*inferred* distribution requirement). |
 | E02-S1 | **Fallback.** A file that matches no format resolves by content: text-like content gets the built-in catch-all Text format, and binary content gets the Hex kind when one is regi… |
 | E02-S1 | AC: the catalogue rename example passes, and a reference to a missing group produces an empty string (*inferred*). |
+| E02-S1 | A.1 doesn't say whether masks ignore case or what an edge `-` or an empty set in `[...]` means. Proposed default: a mask compares names with the data source's case sensitivity, so `*.txt` matches `README.TXT` on a case-insens… |
 | E03-S2 | Items are aligned by name within each folder. Matching is case-insensitive on case-insensitive sources and case-sensitive otherwise (*inferred*, from "case sensitivity follows t… |
 | E04-S1 | The modified time, Windows attributes and Unix permissions can be set. Copying keeps the modified time (*inferred*). |
 | E04-S2 | The default is "As folders once opened" (*inferred* from "treated as files when copying or comparing; double-clicking expands them"). |

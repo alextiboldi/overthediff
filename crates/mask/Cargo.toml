@@ -1,0 +1,17 @@
+[package]
+name = "otd-mask"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "OverTheDiff's file masks: wildcard matching of names"
+
+[lints]
+workspace = true
+
+# No egui, eframe, winit or other UI dependency: `cargo xtask ci` fails if one reaches a crate
+# under crates/ (AGENTS.md "## This repository").
+[dependencies]
+
+[dev-dependencies]
+craft-testkit = { workspace = true }

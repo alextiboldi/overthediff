@@ -18,6 +18,7 @@ This epic is the shared matching layer: file masks, regular expressions and the 
 - **Integrations**: features consume the engines, and viewers register format kinds and built-in formats at start-up. User edits to formats and their order belong to E10-S1.
 - **Rules/states**:
   - Mask semantics follow A.1. The base folder is always included, and folders containing included files are included.
+  - A.1 doesn't say whether masks ignore case or what an edge `-` or an empty set in `[...]` means. Proposed default: a mask compares names with the data source's case sensitivity, so `*.txt` matches `README.TXT` on a case-insensitive source, as names align in E03-S2. A `-` at the start or end of a set is literal, and an empty set (`[]`, `[!]`) is an error (*inferred*; E02-S1-T1 takes the case from its caller).
   - Regex semantics follow A.2. Matching is line by line, so `\A`/`\Z` behave like `^`/`$`.
   - Format resolution: scan from the top, and the first enabled format whose mask matches wins. A format with an empty mask never matches automatically but can be picked manually.
   - Unmatched files fall back by content (T7 decision, *inferred*).
@@ -62,8 +63,9 @@ As a developer on the product team, I can match names, text and file types throu
 - [ ] **Fallback.** A file that matches no format resolves by content: text-like content gets the built-in catch-all Text format, and binary content gets the Hex kind when one is registered, otherwise Text (*inferred*, confirmed in T7).
 
 #### Tasks
-- **E02-S1-T1** — Wildcard matcher for `?`, `*`, sets, ranges, negation, `[[]`, `*.*` and `*.` · size: M · depends: — · flags: `craft-libs`
+- **E02-S1-T1** — Wildcard matcher for `?`, `*`, sets, ranges, negation, `[[]`, `*.*` and `*.` · size: M · depends: — · flags: `craft-libs` · status: done
   - AC: a conformance table of mask × name pairs from A.1 passes, including names with no extension and names with several periods.
+  - Implemented: `Wildcard::new(mask, case)` and `Wildcard::matches(name)` in the new UI-free crate `crates/mask` (`otd-mask`, no dependencies), with the caller's `Case` and `WildcardError` for unclosed and empty sets; the A.1 conformance table, case, period-set and error tests and a hostile-input sweep are in `crates/mask/tests/it/`. Checks: `cargo xtask ci` on macOS and pull-request CI on Linux and macOS passed. craft-libs follow-up: #4. Pull request: https://github.com/alextiboldi/overthediff/pull/6
 - **E02-S1-T2** — Mask-list evaluation over tree paths: include/exclude, folder masks, relative masks, base folder always included · size: M · depends: E02-S1-T1 · flags: `craft-libs`
   - AC: the seven catalogue examples give the specified results on a sample tree that has nested `Windows` and `Backup` folders.
 - **E02-S1-T3** — Regex engine meeting A.2: escapes, classes, alternation, anchors, quantifiers, groups, backreferences, `(?i)` scoping, line-by-line matching · size: M · depends: — · flags: `licence-check`, `craft-libs`
