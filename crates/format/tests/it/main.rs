@@ -1,0 +1,3 @@
+//! otd-format's integration tests: one binary, a module per area (AGENTS.md rule 30).
+
+mod registry;
