@@ -192,11 +192,12 @@ fn stat(harness: &mut Harness<'_>) -> Result<(), Stop> {
 }
 
 fn links(harness: &mut Harness<'_>) -> Result<(), Stop> {
-    let spec = fixture().file("file.txt", "abc", at(T1)).file("dir/inside.txt", "12345", at(T2)).link("to-file", "file.txt", at(T2)).link(
-        "to-dir",
-        "dir",
-        at(T1),
-    );
+    let spec = fixture()
+        .file("file.txt", "abc", at(T1))
+        .file("dir/inside.txt", "12345", at(T2))
+        .link("to-file", "file.txt", at(T2))
+        .link("to-dir", "dir", at(T1))
+        .link("dir/up", "../file.txt", at(T2));
     let source = build(harness, &spec, "links")?;
     let reported = source.list(Path::new(""), Links::Report)?;
     for (name, target) in [("to-file", "file.txt"), ("to-dir", "dir")] {
@@ -213,7 +214,11 @@ fn links(harness: &mut Harness<'_>) -> Result<(), Stop> {
     let stated = source.stat(Path::new("to-dir"), Links::Report)?;
     ensure(stated.kind == ItemKind::Link, || format!("stat reports to-dir as {stated:?}"))?;
     let through = source.list(Path::new("to-dir"), Links::Report)?;
-    ensure(names(&through) == ["inside.txt"], || format!("listing through to-dir gives {:?}", names(&through)))
+    ensure(names(&through) == ["inside.txt", "up"], || format!("listing through to-dir gives {:?}", names(&through)))?;
+    // A relative target resolves from the link's own folder.
+    let inner = source.list(Path::new("dir"), Links::Follow)?;
+    let up = find(&inner, "up")?;
+    ensure(up.kind == ItemKind::File && up.size == 3, || format!("followed, dir/up is reported as {up:?}"))
 }
 
 fn link_loop(harness: &mut Harness<'_>) -> Result<(), Stop> {
@@ -381,7 +386,13 @@ fn set_permissions(harness: &mut Harness<'_>) -> Result<(), Stop> {
 type Snapshot = (Vec<Item>, Vec<Item>, Vec<u8>);
 
 fn snapshot(source: &dyn DataSource) -> Result<Snapshot, Stop> {
-    Ok((source.list(Path::new(""), Links::Report)?, source.list(Path::new("dir"), Links::Report)?, read_all(source, "a.txt")?))
+    // Listings come in no particular order, so sort them before comparing.
+    let listing = |folder: &str| -> Result<Vec<Item>, Stop> {
+        let mut items = source.list(Path::new(folder), Links::Report)?;
+        items.sort_by(|a, b| a.name.cmp(&b.name));
+        Ok(items)
+    };
+    Ok((listing("")?, listing("dir")?, read_all(source, "a.txt")?))
 }
 
 fn read_only(harness: &mut Harness<'_>) -> Result<(), Stop> {
