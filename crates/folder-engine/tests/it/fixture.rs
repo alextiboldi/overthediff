@@ -9,11 +9,11 @@ use std::time::{Duration, SystemTime};
 use otd_source::suite::{self, Group, Outcome};
 use otd_source::{Capabilities, DataSource, ErrorKind, Links, MemorySource};
 
-fn at(seconds: u64) -> SystemTime {
+pub(crate) fn at(seconds: u64) -> SystemTime {
     SystemTime::UNIX_EPOCH + Duration::from_secs(seconds)
 }
 
-fn caps(case_sensitive: bool) -> Capabilities {
+pub(crate) fn caps(case_sensitive: bool) -> Capabilities {
     Capabilities {
         read_only: false,
         case_sensitive,
