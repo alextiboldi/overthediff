@@ -12,7 +12,8 @@ workspace = true
 [dependencies]
 otd-core = { path = "../../crates/core" }
 otd-launch = { path = "../../crates/launch" }
-eframe = { workspace = true, features = ["wgpu", "accesskit", "wayland", "x11"] }
+otd-ui = { path = "../../crates/ui" }
+eframe = { workspace = true, features = ["wgpu", "accesskit", "wayland", "x11", "default_fonts"] }
 
 [dev-dependencies]
 egui_kittest = { workspace = true }
