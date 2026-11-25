@@ -1,9 +1,9 @@
 //! Character-level differences inside a changed row.
 //!
 //! The two lines lose their common start and end, and a shortest edit between what remains (an
-//! O(ND) search for the fewest characters to delete and insert) leaves the rest unmarked. So the
-//! marked characters are exactly what a shortest edit changes: drop them from both lines and the
-//! two read the same. A pair is searched in one fixed order, so swapping the sides only swaps the
+//! O(ND) search for the fewest characters to delete and insert) leaves the rest unmarked. So when
+//! the result is [exact](CharDifferences::exact), the marked characters are exactly what a
+//! shortest edit changes: drop them from both lines and the two read the same. A pair is searched in one fixed order, so swapping the sides only swaps the
 //! ranges.
 //!
 //! Characters are Unicode scalar values (`char`), so a changed combining mark is marked on its own,
@@ -25,6 +25,18 @@ pub struct CharRange {
     pub end: usize,
 }
 
+/// The characters that differ inside a changed row.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CharDifferences {
+    /// The left ranges, then the right ones, each in order, with no two touching.
+    pub ranges: Vec<CharRange>,
+    /// Whether `ranges` are the fewest characters a shortest edit changes. When the search gives
+    /// up, they are one range per side over everything between the lines' common start and end:
+    /// that still covers every difference, but marks unchanged characters too, and a caller that
+    /// shows them should say they are approximate.
+    pub exact: bool,
+}
+
 /// The most characters a pair may differ by for the search to stay exact. It bounds the search's
 /// memory, which grows with its square.
 const MAX_EDITS: usize = 2048;
@@ -33,26 +45,23 @@ const MAX_EDITS: usize = 2048;
 /// search's time, which grows with the length of the lines times the characters they differ by.
 const MAX_STEPS: usize = 1 << 26;
 
-/// The characters that differ between `left` and `right`, the texts of a changed row's two lines:
-/// the left ranges, then the right ones, each in order, with no two touching. Equal texts give none,
-/// so a row that differs only in its line ending has no character ranges.
+/// The characters that differ between `left` and `right`, the texts of a changed row's two lines.
+/// Equal texts give no ranges, so a row that differs only in its line ending has none.
 ///
-/// Lines that differ by more than [`MAX_EDITS`] characters, or that would take more than
-/// [`MAX_STEPS`] to search, get one range per side over everything between their common start and
-/// end. That still covers every difference, but isn't the fewest characters.
+/// Lines that differ by more than 2,048 characters, or that would take more than 2^26 search steps,
+/// come back not [exact](CharDifferences::exact).
 // ponytail: the limits are fixed guesses; E03-S1-T6 sets the budgets for large inputs.
-pub fn char_differences(left: &str, right: &str) -> Vec<CharRange> {
+pub fn char_differences(left: &str, right: &str) -> CharDifferences {
     within(left, right, MAX_EDITS, MAX_STEPS)
 }
 
-fn within(left: &str, right: &str, max_edits: usize, max_steps: usize) -> Vec<CharRange> {
+fn within(left: &str, right: &str, max_edits: usize, max_steps: usize) -> CharDifferences {
     if left > right {
-        let mut ranges: Vec<CharRange> = within(right, left, max_edits, max_steps)
-            .into_iter()
-            .map(|r| CharRange { side: if r.side == Side::Left { Side::Right } else { Side::Left }, ..r })
-            .collect();
+        let CharDifferences { ranges, exact } = within(right, left, max_edits, max_steps);
+        let mut ranges: Vec<CharRange> =
+            ranges.into_iter().map(|r| CharRange { side: if r.side == Side::Left { Side::Right } else { Side::Left }, ..r }).collect();
         ranges.sort_by_key(|r| (r.side, r.start));
-        return ranges;
+        return CharDifferences { ranges, exact };
     }
     let a: Vec<char> = left.chars().collect();
     let b: Vec<char> = right.chars().collect();
@@ -65,7 +74,10 @@ fn within(left: &str, right: &str, max_edits: usize, max_steps: usize) -> Vec<Ch
     // Everything in the middle is marked, then the characters a shortest edit keeps are unmarked.
     let mut a_marks: Vec<bool> = (0..a.len()).map(|k| k >= head && k < head + a_mid.len()).collect();
     let mut b_marks: Vec<bool> = (0..b.len()).map(|k| k >= head && k < head + b_mid.len()).collect();
-    for (x, y) in shortest_edit_keeps(a_mid, b_mid, max_edits, max_steps).unwrap_or_default() {
+    // With one middle empty, the whole other middle is the shortest edit, so there is nothing to search.
+    let keeps = if a_mid.is_empty() || b_mid.is_empty() { Some(Vec::new()) } else { shortest_edit_keeps(a_mid, b_mid, max_edits, max_steps) };
+    let exact = keeps.is_some();
+    for (x, y) in keeps.unwrap_or_default() {
         if let Some(m) = a_marks.get_mut(head + x) {
             *m = false;
         }
@@ -75,7 +87,7 @@ fn within(left: &str, right: &str, max_edits: usize, max_steps: usize) -> Vec<Ch
     }
     let mut ranges = runs(Side::Left, left, &a_marks);
     ranges.extend(runs(Side::Right, right, &b_marks));
-    ranges
+    CharDifferences { ranges, exact }
 }
 
 /// The maximal runs of marked characters in `text`, as byte ranges.
@@ -195,9 +207,10 @@ mod tests {
     fn past_a_limit_the_whole_differing_middle_is_marked() {
         // Exact, only `X` and `Y` are marked; with no room to search, all of `XdefY` is.
         let (left, right) = ("abcXdefYghi", "abcdefghi");
-        let ranges = within(left, right, 0, usize::MAX);
-        assert_eq!(marked(left, Side::Left, &ranges), "XdefY");
-        let ranges = within(left, right, usize::MAX, 1);
-        assert_eq!(marked(left, Side::Left, &ranges), "XdefY");
+        for (max_edits, max_steps) in [(0, usize::MAX), (usize::MAX, 1)] {
+            let result = within(left, right, max_edits, max_steps);
+            assert!(!result.exact);
+            assert_eq!(marked(left, Side::Left, &result.ranges), "XdefY");
+        }
     }
 }

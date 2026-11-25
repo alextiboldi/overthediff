@@ -21,7 +21,7 @@ use std::collections::HashMap;
 use std::ops::Range;
 
 mod chars;
-pub use chars::{CharRange, Side, char_differences};
+pub use chars::{CharDifferences, CharRange, Side, char_differences};
 
 mod importance;
 pub use importance::{Classification, Importance, Outcome, Rule, Statistics, classify};

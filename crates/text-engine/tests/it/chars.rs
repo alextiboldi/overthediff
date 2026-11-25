@@ -52,7 +52,7 @@ fn ranges_run_left_then_right_in_order_without_touching_on_character_boundaries(
     let all = short_strings();
     for left in &all {
         for right in &all {
-            let ranges = char_differences(left, right);
+            let ranges = char_differences(left, right).ranges;
             assert!(ranges.windows(2).all(|w| (w[0].side, w[0].end) < (w[1].side, w[1].start)), "{left:?} {right:?}: {ranges:?}");
             for r in &ranges {
                 let text = if r.side == Side::Left { left } else { right };
@@ -67,7 +67,9 @@ fn the_ranges_cover_exactly_the_characters_a_shortest_edit_changes() {
     let all = short_strings();
     for left in &all {
         for right in &all {
-            let ranges = char_differences(left, right);
+            let result = char_differences(left, right);
+            assert!(result.exact, "{left:?} {right:?}");
+            let ranges = result.ranges;
             let (left_kept, left_marked) = unmarked(left, Side::Left, &ranges);
             let (right_kept, right_marked) = unmarked(right, Side::Right, &ranges);
             assert_eq!(left_kept, right_kept, "{left:?} {right:?}: {ranges:?}");
@@ -82,12 +84,12 @@ fn swapping_the_sides_only_swaps_the_ranges() {
     let all = short_strings();
     for left in &all {
         for right in &all {
-            let mut swapped: Vec<CharRange> = char_differences(right, left)
-                .into_iter()
-                .map(|r| CharRange { side: if r.side == Side::Left { Side::Right } else { Side::Left }, ..r })
-                .collect();
+            let reversed = char_differences(right, left);
+            let mut swapped: Vec<CharRange> =
+                reversed.ranges.into_iter().map(|r| CharRange { side: if r.side == Side::Left { Side::Right } else { Side::Left }, ..r }).collect();
             swapped.sort_by_key(|r| (r.side, r.start));
-            assert_eq!(char_differences(left, right), swapped, "{left:?} {right:?}");
+            let result = char_differences(left, right);
+            assert_eq!((result.ranges, result.exact), (swapped, reversed.exact), "{left:?} {right:?}");
         }
     }
 }
@@ -98,7 +100,7 @@ fn changed_words_in_a_long_line_mark_only_those_words_characters() {
     let one_word = "The quick green fox jumps over the lazy dog, then naps in the warm afternoon sun by the river.";
     let two_words = "The quick green fox jumps over the lazy dog, then sleeps in the warm afternoon sun by the river.";
     for (right, words) in [(one_word, &[("brown", "green")][..]), (two_words, &[("brown", "green"), ("naps", "sleeps")][..])] {
-        let ranges = char_differences(left, right);
+        let ranges = char_differences(left, right).ranges;
         for &(old, new) in words {
             let (old, new) = (span(left, old), span(right, new));
             assert!(ranges.iter().any(|r| r.side == Side::Left && old.contains(&r.start)), "{right:?}: {ranges:?}");
@@ -118,11 +120,26 @@ fn changed_words_in_a_long_line_mark_only_those_words_characters() {
 fn changed_whitespace_marks_only_whitespace() {
     let pairs = [("a  b  c", "a b c"), ("\tlet x = 1;", "    let x = 1;"), ("x = 1;  // y", "x =\t1; // y"), ("end;   ", "end;")];
     for (left, right) in pairs {
-        let ranges = char_differences(left, right);
+        let ranges = char_differences(left, right).ranges;
         assert!(!ranges.is_empty(), "{left:?} {right:?}");
         for r in &ranges {
             let text = if r.side == Side::Left { left } else { right };
             assert!(text[r.start..r.end].chars().all(char::is_whitespace), "{left:?} {right:?}: {r:?}");
         }
     }
+}
+
+#[test]
+fn lines_too_different_to_search_are_reported_as_not_exact_but_still_covered() {
+    let (left, right) = ("a".repeat(20_000), "b".repeat(20_000));
+    let result = char_differences(&left, &right);
+    assert!(!result.exact);
+    assert_eq!(unmarked(&left, Side::Left, &result.ranges).0, unmarked(&right, Side::Right, &result.ranges).0);
+}
+
+#[test]
+fn a_long_insertion_is_exact() {
+    let left = "start end";
+    let right = format!("start {}end", "x".repeat(20_000));
+    assert!(char_differences(left, &right).exact);
 }
