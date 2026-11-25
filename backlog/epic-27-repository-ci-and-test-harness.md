@@ -33,10 +33,10 @@ This epic sets up the repository so several people and agents can work at once. 
 As a contributor, I can work on one feature without colliding with every other open pull request. I can also test interface behaviour without a person at the keyboard.
 
 **Acceptance criteria**
-- [ ] The repository is a Cargo workspace. Engines, data sources and pattern services live in library crates that don't depend on the UI, separate from the app crate.
-- [ ] CI runs format, lint and test checks on every pull request through storytold/craft-common-actions.
-- [ ] UI tests drive the app by keyboard and read its accessibility tree.
-- [ ] AGENTS.md `## This repository` describes the layout, the checks and how to run each kind of test.
+- [x] The repository is a Cargo workspace. Engines, data sources and pattern services live in library crates that don't depend on the UI, separate from the app crate.
+- [x] CI runs format, lint and test checks on every pull request through storytold/craft-common-actions.
+- [x] UI tests drive the app by keyboard and read its accessibility tree.
+- [x] AGENTS.md `## This repository` describes the layout, the checks and how to run each kind of test.
 
 #### Tasks
 - **E27-S1-T1** — Cargo workspace with a UI-free library crate and the app crate · size: S · depends: — · status: needs-verification
@@ -47,5 +47,7 @@ As a contributor, I can work on one feature without colliding with every other o
   - AC: a pull request runs workspace-wide format, clippy and test checks on Linux and macOS, and Windows runs on `main`. A new crate is covered without changing the workflow.
   - Implemented: `.github/workflows/ci.yml` calls storytold/craft-common-actions `gate.yml@main`, which runs `cargo xtask ci` (fmt, clippy with warnings denied, workspace tests, the `ui-free` check) across the whole workspace, so new crates under `apps/` or `crates/` are covered without editing it. Pull requests run `ubuntu-24.04` and `macos-latest`; pushes to `main` and manual runs add `windows-latest`. Linux installs the Wayland and X11 build packages; AGENTS.md `## This repository` names the workflow. The pull request's own run passed on Linux and macOS. https://github.com/alextiboldi/overthediff/pull/2
   - Verify by hand: after merge, the first push to `main` shows a `gate (windows-latest)` check in its CI run and it passes; this also covers E27-S1-T1's Linux and Windows check.
-- **E27-S1-T3** — Test layout, a keyboard-and-accessibility UI harness, and a hostile-input sweep · size: M · depends: E27-S1-T1 · flags: `accessibility`, `licence-check`
+- **E27-S1-T3** — Test layout, a keyboard-and-accessibility UI harness, and a hostile-input sweep · size: M · depends: E27-S1-T1 · flags: `accessibility`, `licence-check` · status: needs-verification
   - AC: each crate with integration tests has one `tests/it/main.rs` binary. A UI test opens a test command by its shortcut, and after each step it checks where focus is and the focused node's role and name. A hostile-input sweep runs a sample parser over truncated and damaged input without a panic or a hang.
+  - Implemented: one integration binary per crate with integration tests, `apps/otd/tests/it/main.rs` and `crates/core/tests/it/main.rs`. `apps/otd/tests/it/keyboard.rs` drives a test window of its own with egui_kittest (storytold egui fork, renderless): it opens a find bar by its Cmd/Ctrl shortcut and gives focus back with Esc, and after each step checks the focused node's role and name in the accessibility tree. `crates/core/tests/it/hostile.rs` runs a sample record parser through craft-testkit's `hostile::hammer` (pinned craft-libs rev: every truncation, damaged copies, a time limit per case). egui_kittest and craft-testkit are dev dependencies, named in NOTICE; AGENTS.md `## This repository` says how to run and write each kind of test. `cargo xtask ci` passed on macOS, and the pull request's CI passed on Linux and macOS. https://github.com/alextiboldi/overthediff/pull/3
+  - Verify by hand: after merge, the first push to `main` shows `gate (windows-latest)` passing, including `keyboard::the_find_bar_shortcut_moves_focus_into_it_and_esc_gives_focus_back` and `hostile::the_sample_parser_never_panics_or_hangs_on_truncated_or_damaged_input`.

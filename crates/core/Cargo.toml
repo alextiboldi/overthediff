@@ -12,3 +12,6 @@ workspace = true
 # No egui, eframe, winit or other UI dependency: `cargo xtask ci` fails if one reaches a crate
 # under crates/ (AGENTS.md "## This repository").
 [dependencies]
+
+[dev-dependencies]
+craft-testkit = { workspace = true }
