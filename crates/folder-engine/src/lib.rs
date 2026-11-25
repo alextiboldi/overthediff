@@ -3,5 +3,7 @@
 //! fixture for both sides. It has no UI and runs without a window.
 
 mod align;
+mod scan;
 
 pub use align::{Aligned, align, case_sensitive};
+pub use scan::{Folder, ScanEvent, ScanState, TreeScan};

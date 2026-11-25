@@ -2,3 +2,4 @@
 
 mod align;
 mod fixture;
+mod scan;
