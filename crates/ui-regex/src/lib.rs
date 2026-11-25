@@ -29,7 +29,11 @@ pub const ELEMENTS: &[&[Entry]] = &[
         ("Space or tab", r"\s"),
         ("Not a space or tab", r"\S"),
         ("Tab", r"\t"),
+        ("Form feed", r"\f"),
+        ("Bell", r"\a"),
+        ("Escape character", r"\e"),
         ("Character by hex code", r"\x20"),
+        ("Character by Unicode code", r"\x{263A}"),
         ("Literal period", r"\."),
     ],
     &[("One of a set", "[abc]"), ("One in a range", "[a-z]"), ("None of a set", "[^abc]")],
@@ -44,6 +48,7 @@ pub const ELEMENTS: &[&[Entry]] = &[
         ("Zero or more, fewest first", "*?"),
         ("One or more, fewest first", "+?"),
         ("Optional, skipped first", "??"),
+        ("Between n and m times, fewest first", "{2,4}?"),
     ],
     &[("Group", "()"), ("Or", "|"), ("Same text as group 1", r"\1"), ("Ignore case from here", "(?i)"), ("Match case from here", "(?-i)")],
 ];
@@ -65,7 +70,7 @@ pub const EXAMPLES: &[Entry] = &[
 pub fn regex_aid(ui: &mut Ui, field: Id, text: &mut String) -> bool {
     let mut chosen = None;
     ui.horizontal(|ui| {
-        ui.menu_button(ELEMENTS_LABEL, |ui| {
+        menu(ui, ELEMENTS_LABEL, |ui| {
             for (n, group) in ELEMENTS.iter().enumerate() {
                 if n > 0 {
                     ui.separator();
@@ -73,11 +78,22 @@ pub fn regex_aid(ui: &mut Ui, field: Id, text: &mut String) -> bool {
                 entries(ui, group, &mut chosen);
             }
         });
-        ui.menu_button(EXAMPLES_LABEL, |ui| entries(ui, EXAMPLES, &mut chosen));
+        menu(ui, EXAMPLES_LABEL, |ui| entries(ui, EXAMPLES, &mut chosen));
     });
     let Some(snippet) = chosen else { return false };
     insert(ui, field, text, snippet);
     true
+}
+
+/// A menu button that, when its menu closes and leaves focus nowhere (Esc, a click elsewhere),
+/// takes focus back, so the keyboard user is where they were.
+fn menu(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui)) {
+    let menu = ui.menu_button(label, add);
+    let open = menu.inner.is_some();
+    let was_open = ui.data_mut(|d| std::mem::replace(d.get_temp_mut_or_default::<bool>(menu.response.id), open));
+    if was_open && !open && ui.memory(|m| m.focused().is_none()) {
+        menu.response.request_focus();
+    }
 }
 
 fn entries(ui: &mut Ui, entries: &[Entry], chosen: &mut Option<&'static str>) {

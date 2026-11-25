@@ -106,3 +106,16 @@ fn every_entry_the_aid_offers_is_a_valid_pattern() {
         assert!(Regex::new(&pattern).is_ok(), "element {caption:?} in {pattern:?}");
     }
 }
+
+#[test]
+fn esc_closes_a_menu_without_changing_the_field_and_focus_returns_to_its_button() {
+    let mut harness = harness(&["abc"]);
+    tab_to(&mut harness, ELEMENTS_LABEL);
+    press(&mut harness, Key::Enter, 1);
+    press(&mut harness, Key::ArrowDown, 1);
+    press(&mut harness, Key::Escape, 1);
+
+    assert!(harness.query_by_label_contains("Digit").is_none(), "the menu is closed");
+    assert_eq!(harness.state().fields[0], "abc");
+    assert_eq!(focused(&harness), Some((Role::Button, ELEMENTS_LABEL.to_owned())));
+}
