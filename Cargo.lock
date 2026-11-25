@@ -636,6 +636,11 @@ dependencies = [
 ]
 
 [[package]]
+name = "craft-testkit"
+version = "0.1.0"
+source = "git+https://github.com/storytold/craft-libs?rev=2c81ed850319ef3504ce56d82379b346522af18e#2c81ed850319ef3504ce56d82379b346522af18e"
+
+[[package]]
 name = "crc32fast"
 version = "1.5.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -823,6 +828,18 @@ dependencies = [
  "log",
  "profiling",
  "winit",
+]
+
+[[package]]
+name = "egui_kittest"
+version = "0.37.0"
+source = "git+https://github.com/storytold/egui.git?rev=6d518fc799681571963842f95b55a6b68431b15a#6d518fc799681571963842f95b55a6b68431b15a"
+dependencies = [
+ "egui",
+ "kittest",
+ "log",
+ "serde",
+ "toml",
 ]
 
 [[package]]
@@ -1441,6 +1458,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 
 [[package]]
+name = "kittest"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0bb81a721ba76aa095b7f45deb180504f786904e56ca4b8e141f66eb89a78b75"
+dependencies = [
+ "accesskit",
+ "accesskit_consumer",
+]
+
+[[package]]
 name = "kurbo"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2055,12 +2082,16 @@ name = "otd"
 version = "0.1.0"
 dependencies = [
  "eframe",
+ "egui_kittest",
  "otd-core",
 ]
 
 [[package]]
 name = "otd-core"
 version = "0.1.0"
+dependencies = [
+ "craft-testkit",
+]
 
 [[package]]
 name = "parking"
@@ -2538,6 +2569,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_spanned"
+version = "1.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9c187e0a369471c550af028cba56d4f4fa2a489ad28151ae95a4d340a2a8b782"
+dependencies = [
+ "serde_core",
+]
+
+[[package]]
 name = "shlex"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2766,6 +2806,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b52fd3255258d26fac7264ab5a76b53c13367136dc011d3d6ad4f8ed070396a3"
 dependencies = [
  "pin-project-lite",
+]
+
+[[package]]
+name = "toml"
+version = "1.2.3+spec-1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "26b1f26e9485c1fa43ee89fe76e9f3fb9e2e52bb227f8594b4d687496b83d073"
+dependencies = [
+ "serde_core",
+ "serde_spanned",
+ "toml_datetime",
+ "toml_parser",
+ "winnow",
 ]
 
 [[package]]
@@ -3877,11 +3930,6 @@ source = "git+https://github.com/storytold/egui.git?rev=6d518fc799681571963842f9
 
 [[patch.unused]]
 name = "egui_inspection"
-version = "0.37.0"
-source = "git+https://github.com/storytold/egui.git?rev=6d518fc799681571963842f95b55a6b68431b15a#6d518fc799681571963842f95b55a6b68431b15a"
-
-[[patch.unused]]
-name = "egui_kittest"
 version = "0.37.0"
 source = "git+https://github.com/storytold/egui.git?rev=6d518fc799681571963842f95b55a6b68431b15a#6d518fc799681571963842f95b55a6b68431b15a"
 

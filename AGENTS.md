@@ -94,7 +94,9 @@ OverTheDiff is a desktop tool for Windows, macOS and Linux that compares text, f
 
 - Unit tests sit beside the code in `#[cfg(test)] mod tests`.
 - Integration tests: one binary per crate, `tests/it/main.rs`, with a module per area (`tests/it/<area>.rs`).
-- UI tests drive the app by keyboard and read its accessibility tree with egui_kittest, in the `tests/it/` of the UI crate they test. Hostile-input sweeps use craft-testkit's `hostile` module. E27-S1-T3 adds both and describes them here.
+- Run every kind with `cargo test -p <crate>` (or `cargo test --workspace`); `cargo test -p <crate> --test it <name>` runs the integration tests whose name contains `<name>`.
+- UI tests drive the app by keyboard and read its accessibility tree with egui_kittest (renderless, so no GPU or display), in the `tests/it/` of the UI crate they test. After each key, assert where focus is and the focused node's role and name; keep kittest's accessibility name check on. Send shortcuts with `Modifiers::COMMAND` (Cmd on macOS, Ctrl elsewhere). The shape to copy is `apps/otd/tests/it/keyboard.rs`, which drives a test window of its own until E01-S1's shell exists.
+- Hostile-input sweeps: every parser or reader of files, settings or network replies gets a test that runs it through craft-testkit's `hostile::hammer` (a valid seed, every truncation, and damaged copies), which fails on a panic or a case that runs past its limit. The shape to copy is `crates/core/tests/it/hostile.rs`. `CRAFT_HOSTILE_MULT=N` runs N times the rounds, `CRAFT_HOSTILE_DIVISOR=N` a fraction of the cases, and `CRAFT_TEST_TIMEOUT_SECS` replaces the 5 s limit per case. A crash fix adds the input that panicked to its crate's sweep (rule 29).
 
 ### Conventions
 
