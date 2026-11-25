@@ -4,6 +4,11 @@
 //! (`apps/otd/src/session_types.rs`) gets a button on Home, which opens its empty [`View`] in a new
 //! tab. A launch-argument handler opens a view with [`Shell::open`]. The shell draws the status
 //! bar from the active view's [`Status`] (the Q25 field model in E01-S1); views never draw it.
+//! Background tasks show their progress and end-of-task summary through [`show_task`].
+
+mod tasks;
+
+pub use tasks::{CANCEL, CANCELLED, CLOSE, FINISHED_WITH_ERRORS, show_task};
 
 use std::time::Duration;
 
@@ -79,12 +84,13 @@ pub struct Shell {
     active: usize,
     /// The active tab changed by a command, so its tab in the strip takes focus on the next draw.
     focus_active: bool,
+    tasks: tasks::Tasks,
 }
 
 impl Shell {
     /// A shell with one Home tab.
     pub fn new(session_types: Vec<SessionType>) -> Self {
-        let mut shell = Self { session_types, tabs: Vec::new(), active: 0, focus_active: false };
+        let mut shell = Self { session_types, tabs: Vec::new(), active: 0, focus_active: false, tasks: tasks::Tasks::default() };
         shell.push(None);
         shell.focus_active = false;
         shell
@@ -157,6 +163,7 @@ impl Shell {
             ui.separator();
             ui.horizontal(|ui| self.status_bar(ui));
         });
+        self.tasks.ui(ui.ctx());
         if self.focus_active {
             // A click changed the active tab after the strip was drawn: draw again to move focus.
             ui.ctx().request_repaint();
