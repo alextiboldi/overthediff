@@ -10,8 +10,15 @@
 //! [`ScanState`] is the state of a folder's own listing. Whether a whole subtree is done is for the
 //! caller to derive from its folders (aggregation, E03-S2-T6).
 //!
-//! ponytail: links are reported, not followed (following them is E08-S11-T5), and expandable
-//! containers are listed only when opened (E03-S2-T9). Rescanning is E08-S1-T6.
+//! An expandable container (E03-S2-T9, an [`Item`] with `container` set) is a file until it is
+//! opened: background scanning never lists it, so it compares as a file by size, time and
+//! content. Opening it expands it: it is listed like a folder, background scanning goes on below
+//! it, and from then on its parent's listing reports it as an [`ItemKind::Folder`] (still with
+//! `container` set, and keeping its own size and time), so alignment, status and aggregation treat
+//! it as one.
+//!
+//! ponytail: links are reported, not followed (following them is E08-S11-T5). Rescanning is
+//! E08-S1-T6.
 
 use std::collections::{HashMap, VecDeque};
 use std::io;
@@ -116,8 +123,16 @@ impl TreeScan {
     }
 
     /// The folder as scanned so far, or `None` if no listing has reported it and nobody opened it.
+    /// An unopened container is `None` too. Among its items, an opened container is a folder.
     pub fn folder(&self, folder: &Path) -> Option<Folder> {
-        self.shared.lock().folders.get(folder).cloned()
+        let state = self.shared.lock();
+        let mut found = state.folders.get(folder).cloned()?;
+        for item in found.items.iter_mut().filter(|item| item.container) {
+            if state.folders.contains_key(&folder.join(&item.name)) {
+                item.kind = ItemKind::Folder;
+            }
+        }
+        Some(found)
     }
 
     /// Lists the next waiting folder on this thread. Returns `false` when nothing was waiting.
