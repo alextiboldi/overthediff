@@ -3,4 +3,5 @@
 mod alignment;
 mod chars;
 mod importance;
+mod progressive;
 mod recompare;

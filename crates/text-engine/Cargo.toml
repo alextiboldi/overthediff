@@ -11,3 +11,8 @@ workspace = true
 
 # No UI dependency: `cargo xtask ui-free` fails if one reaches a crate under crates/.
 [dependencies]
+
+# A timing check outside `cargo test` (testing.md F2): `cargo bench -p otd-text-engine --bench progress`.
+[[bench]]
+name = "progress"
+harness = false

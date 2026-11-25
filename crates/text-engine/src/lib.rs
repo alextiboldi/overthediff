@@ -12,13 +12,17 @@
 //!
 //! Lines align on their text. A pair whose text matches but whose ending differs is a changed row.
 //!
+//! [`compare_progressive`] hands out rows as they are decided and stops when its caller says so;
+//! [`compare`] runs it to the end.
+//!
 //! [`classify`] then marks each difference important or unimportant by a set of [`Rule`]s.
 //!
 //! [`char_differences`] gives the characters that differ inside a changed row. A caller asks for
 //! the rows it needs, so a large comparison doesn't diff every changed line up front.
 
 use std::collections::HashMap;
-use std::ops::Range;
+use std::convert::Infallible;
+use std::ops::{ControlFlow, Range};
 
 mod chars;
 pub use chars::{CharDifferences, CharRange, Side, char_differences};
@@ -85,25 +89,43 @@ const END: u32 = u32::MAX;
 
 /// Aligns `left` against `right` with Standard alignment.
 pub fn compare(left: &[Line], right: &[Line]) -> Comparison {
+    match compare_progressive(left, right, |_| ControlFlow::<Infallible>::Continue(())) {
+        ControlFlow::Continue(comparison) => comparison,
+        ControlFlow::Break(never) => match never {},
+    }
+}
+
+/// Aligns `left` against `right` like [`compare`], calling `step` with each batch of new rows
+/// while it works, so a caller can show the top of a large comparison before the rest is done.
+///
+/// Rows are final when handed out, and the batches, in order, are exactly the finished
+/// comparison's rows. `step` is called often, with an empty batch while the engine searches, so
+/// the work between two calls stays small. When `step` returns [`ControlFlow::Break`], the
+/// comparison stops at once and returns that break instead of a result.
+pub fn compare_progressive<B>(left: &[Line], right: &[Line], mut step: impl FnMut(&[Row]) -> ControlFlow<B>) -> ControlFlow<B, Comparison> {
+    // ponytail: interning and indexing are single hashing passes with no poll, a few milliseconds
+    // per 100,000 lines; poll inside them if inputs reach tens of millions of lines.
     let (l, r) = intern(left, right);
     let index = Index::new(&r);
-    let mut out = Rows { left, right, rows: Vec::with_capacity(left.len().max(right.len())) };
+    let mut out = Rows { left, right, rows: Vec::with_capacity(left.len().max(right.len())), step: &mut step, sent: 0 };
     let (mut i, mut j) = (0, 0);
     loop {
         while l.get(i).is_some_and(|id| r.get(j) == Some(id)) {
             out.pair(i, j);
+            out.poll()?;
             i += 1;
             j += 1;
         }
         if i == l.len() && j == r.len() {
             break;
         }
-        let (ai, aj) = index.next_anchor(&l, &r, i, j).unwrap_or((l.len(), r.len()));
-        fill_hunk(&mut out, (&l, &r), &index, i..ai, j..aj);
+        let (ai, aj) = index.next_anchor(&l, &r, i, j, &mut || out.poll())?.unwrap_or((l.len(), r.len()));
+        fill_hunk(&mut out, (&l, &r), &index, i..ai, j..aj)?;
         (i, j) = (ai, aj);
     }
+    out.poll()?;
     let sections = sections(&out.rows);
-    Comparison { rows: out.rows, sections }
+    ControlFlow::Continue(Comparison { rows: out.rows, sections })
 }
 
 /// Gives each distinct line text a small id, shared by both sides.
@@ -141,18 +163,25 @@ impl Index {
     }
 
     /// The nearest point at or after `(i, j)` where a run of [`RUN`] lines matches.
-    fn next_anchor(&self, left: &[u32], right: &[u32], i: usize, j: usize) -> Option<(usize, usize)> {
-        nearest(left, right, i, j, |p| self.runs.get(&run_at(left, p)).and_then(|at| first_from(at, j)))
+    fn next_anchor<B>(&self, left: &[u32], right: &[u32], i: usize, j: usize, poll: &mut Poll<'_, B>) -> ControlFlow<B, Option<(usize, usize)>> {
+        nearest(left, right, i, j, |p| self.runs.get(&run_at(left, p)).and_then(|at| first_from(at, j)), poll)
     }
 
     /// The nearest single matching line inside `left` × `right`, with the sides agreeing only up to
     /// the ends of those ranges.
-    fn next_match(&self, ids: (&[u32], &[u32]), left: Range<usize>, right: Range<usize>) -> Option<(usize, usize)> {
+    fn next_match<B>(
+        &self,
+        ids: (&[u32], &[u32]),
+        left: Range<usize>,
+        right: Range<usize>,
+        poll: &mut Poll<'_, B>,
+    ) -> ControlFlow<B, Option<(usize, usize)>> {
         let (l, r) = (ids.0.get(..left.end).unwrap_or_default(), ids.1.get(..right.end).unwrap_or_default());
-        nearest(l, r, left.start, right.start, |p| {
+        let find = |p: usize| {
             let id = l.get(p)?;
             self.lines.get(id).and_then(|at| first_from(at, right.start)).filter(|&q| q < right.end)
-        })
+        };
+        nearest(l, r, left.start, right.start, find, poll)
     }
 }
 
@@ -162,13 +191,22 @@ impl Index {
 /// the left; the earlier left line wins a full tie.
 ///
 /// The search stops once skipping more left lines can't match the best point, so its scan follows
-/// the number of lines the point skips.
-fn nearest(left: &[u32], right: &[u32], i: usize, j: usize, find: impl Fn(usize) -> Option<usize>) -> Option<(usize, usize)> {
+/// the number of lines the point skips. It polls once per left line it looks at, and returns the
+/// poll's break.
+fn nearest<B>(
+    left: &[u32],
+    right: &[u32],
+    i: usize,
+    j: usize,
+    find: impl Fn(usize) -> Option<usize>,
+    poll: &mut Poll<'_, B>,
+) -> ControlFlow<B, Option<(usize, usize)>> {
     let mut best: Option<(usize, usize, usize)> = None;
     for p in i..left.len() {
         if best.is_some_and(|(cost, _, _)| p - i > cost) {
             break;
         }
+        poll()?;
         let Some(q) = find(p) else { continue };
         let cost = (p - i) + (q - j);
         // ponytail: a tie measures both agreements in full. Long ties need periodic text, and the
@@ -178,7 +216,7 @@ fn nearest(left: &[u32], right: &[u32], i: usize, j: usize, find: impl Fn(usize)
             best = Some((cost, p, q));
         }
     }
-    best.map(|(_, p, q)| (p, q))
+    ControlFlow::Continue(best.map(|(_, p, q)| (p, q)))
 }
 
 /// How many lines agree from left `p` and right `q` on, plus one when both sides then end together.
@@ -200,24 +238,41 @@ fn first_from(positions: &[usize], from: usize) -> Option<usize> {
 
 /// Aligns the lines between two anchors: single matching lines pair up, nearest first, and the
 /// lines between them pair as changed rows.
-fn fill_hunk(out: &mut Rows<'_>, ids: (&[u32], &[u32]), index: &Index, mut left: Range<usize>, mut right: Range<usize>) {
-    while let Some((p, q)) = index.next_match(ids, left.clone(), right.clone()) {
+fn fill_hunk<B>(out: &mut Rows<'_, B>, ids: (&[u32], &[u32]), index: &Index, mut left: Range<usize>, mut right: Range<usize>) -> ControlFlow<B> {
+    while let Some((p, q)) = index.next_match(ids, left.clone(), right.clone(), &mut || out.poll())? {
         out.unmatched(left.start..p, right.start..q);
         out.pair(p, q);
         left.start = p + 1;
         right.start = q + 1;
     }
+    // ponytail: no poll inside: pushing the leftover rows is one cheap pass, and the next poll
+    // hands them out.
     out.unmatched(left, right);
+    ControlFlow::Continue(())
 }
 
-/// The rows built so far, with the inputs they index.
-struct Rows<'a> {
+/// How a search asks whether to go on: it hands out the rows decided so far.
+type Poll<'p, B> = dyn FnMut() -> ControlFlow<B> + 'p;
+
+/// The rows built so far, with the inputs they index and the caller's step, which gets each row
+/// once.
+struct Rows<'a, B> {
     left: &'a [Line],
     right: &'a [Line],
     rows: Vec<Row>,
+    step: &'a mut dyn FnMut(&[Row]) -> ControlFlow<B>,
+    /// How many rows `step` has had.
+    sent: usize,
 }
 
-impl Rows<'_> {
+impl<B> Rows<'_, B> {
+    /// Hands the rows added since the last poll to the caller's step, and returns its answer.
+    fn poll(&mut self) -> ControlFlow<B> {
+        let new = self.rows.get(self.sent..).unwrap_or_default();
+        self.sent = self.rows.len();
+        (self.step)(new)
+    }
+
     /// A row holding left line `i` and right line `j`.
     fn pair(&mut self, i: usize, j: usize) {
         let kind = if self.left.get(i) == self.right.get(j) { RowKind::Same } else { RowKind::Changed };
