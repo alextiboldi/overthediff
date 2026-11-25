@@ -17,19 +17,18 @@ craft-atomic = { workspace = true }
 trash = "5.4"
 
 # Whether a local path is on a network share, which has no recycle bin, which file system it is
-# on, and whether it is mounted read-only.
-[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
-rustix = { version = "1.1", default-features = false, features = ["std", "fs"] }
-
-# The local provider's owner and group names. No default features, so it needs only libc.
+# on, whether it is mounted read-only, and setting a modified time without following links.
 [target.'cfg(unix)'.dependencies]
+rustix = { version = "1.1", default-features = false, features = ["std", "fs"] }
+# The local provider's owner and group names. No default features, so it needs only libc.
 uzers = { version = "0.12", default-features = false }
 
 # Whether a macOS volume's names differ by case (`pathconf`), which rustix doesn't offer.
 [target.'cfg(target_os = "macos")'.dependencies]
 libc = "0.2"
 
-# The same on Windows: `GetVolumeInformationByHandleW`.
+# The same on Windows (`GetVolumeInformationByHandleW`), and setting attribute codes, which std
+# can't beyond read-only.
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }
 

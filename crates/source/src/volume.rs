@@ -159,9 +159,19 @@ pub(crate) fn capabilities(root: &Path) -> Capabilities {
         case_sensitive: case_sensitive(root, &file_system),
         recycle_bin: false,
         timestamp_resolution: resolution(&file_system),
-        windows_attributes: false,
-        unix_permissions: false,
+        windows_attributes: cfg!(windows),
+        // FAT and exFAT keep no Unix modes: macOS and Linux accept a `chmod` there and change
+        // nothing.
+        //
+        // ponytail: other volumes that ignore modes the same way (an SMB share mounted without
+        // Unix extensions, say) still count as keeping them; name them if that comes up.
+        unix_permissions: cfg!(unix) && !fat(&file_system),
     }
+}
+
+/// FAT and exFAT, by the name macOS or Windows gives them (Linux names come from [`file_system`]).
+fn fat(file_system: &str) -> bool {
+    matches!(file_system.to_ascii_lowercase().as_str(), "msdos" | "fat" | "fat32" | "exfat")
 }
 
 /// The step a file system stores modified times in, by the name macOS or Windows gives it (Linux
@@ -231,7 +241,7 @@ fn case_sensitive(root: &Path, file_system: &str) -> bool {
     if let Some(answer) = macos::case_sensitive(root) {
         return answer;
     }
-    if matches!(file_system.to_ascii_lowercase().as_str(), "msdos" | "fat" | "fat32" | "exfat") {
+    if fat(file_system) {
         return false;
     }
     probe_case(root).unwrap_or(cfg!(not(any(windows, target_os = "macos"))))

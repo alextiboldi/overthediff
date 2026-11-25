@@ -74,6 +74,7 @@ OverTheDiff is a desktop tool for Windows, macOS and Linux that compares text, f
 - Rule 13: `unsafe_code = "deny"` in the workspace, and only these modules may `allow(unsafe_code)`. A change that needs another names its module here.
   - `crates/source/src/volume.rs`, module `windows`: asks Windows for a volume's file system and read-only flag (`GetVolumeInformationByHandleW`), which std and safe crates don't offer.
   - `crates/source/src/volume.rs`, module `macos`: asks macOS whether a volume's names differ by case (`pathconf` with `_PC_CASE_SENSITIVE`), which std and rustix don't offer.
+  - `crates/source/src/local.rs`, module `windows_attributes`: sets Windows attribute codes (`SetFileInformationByHandle` with `FileBasicInfo`), since std sets only the read-only bit.
 - Rule 14: the command registry, colour roles and running commands without the window are E01-S1's. The automation interface is E28: `otd-cli` (E28-S1) and the MCP agent entry point (E28-S2, rule 18). The command line (E11) and scripting (E20) are product features, separate from it.
 - Rule 16: user-facing text goes through the translation system; E01-S1 owns the lookup. Translating it is outside this backlog (PRD non-goals); craft-i18n adds translations.
 - Rule 19: there is no progress log yet.

@@ -1,8 +1,8 @@
 //! The local provider: files on this machine's disks, and network shares the OS has mounted.
 //!
-//! Listing and stat (E04-S1-T2) and reading, writing, creating folders, renaming and deleting,
-//! permanently or to the OS recycle bin or trash (E04-S1-T3), are built. Setting times and
-//! permissions refuses with [`ErrorKind::Unsupported`] until E04-S1-T4.
+//! Listing and stat (E04-S1-T2); reading, writing, creating folders, renaming and deleting,
+//! permanently or to the OS recycle bin or trash (E04-S1-T3); and setting modified times, Windows
+//! attributes and Unix permissions (E04-S1-T4).
 
 use std::fs::{self, Metadata};
 use std::io::{self, Read};
@@ -64,13 +64,10 @@ fn os_error(path: &Path, e: &io::Error) -> SourceError {
     let kind = match e.kind() {
         io::ErrorKind::NotFound => ErrorKind::NotFound,
         io::ErrorKind::PermissionDenied => ErrorKind::AccessDenied,
+        io::ErrorKind::Unsupported => ErrorKind::Unsupported,
         _ => ErrorKind::Io,
     };
     SourceError::new(kind, format!("{}: {e}", path.display()))
-}
-
-fn not_yet() -> SourceError {
-    SourceError::new(ErrorKind::Unsupported, "the local provider can't set times or permissions yet")
 }
 
 /// An item from its unfollowed metadata. When following, a link reports its target's metadata,
@@ -384,16 +381,146 @@ impl DataSource for LocalSource {
         fs::rename(&from, &to).map_err(|e| os_error(&from, &e))
     }
 
-    fn set_modified(&self, path: &Path, _: SystemTime) -> Result<(), SourceError> {
+    /// Sets a link's own time, never its target's. The root and folders take one too, as a copy
+    /// of a folder needs.
+    fn set_modified(&self, path: &Path, time: SystemTime) -> Result<(), SourceError> {
         self.writable()?;
-        self.item_path(path)?;
-        Err(not_yet())
+        let full = self.path(path)?;
+        set_modified(&full, time).map_err(|e| os_error(&full, &e))
     }
 
-    fn set_permissions(&self, path: &Path, _: Permissions) -> Result<(), SourceError> {
+    /// Only the kind the volume keeps (see [`Capabilities`]); the other is refused as
+    /// unsupported, as is a Unix mode on FAT and exFAT, which accept one and drop it. A link
+    /// is refused too, since the change would land on its target, which can be outside the source.
+    fn set_permissions(&self, path: &Path, permissions: Permissions) -> Result<(), SourceError> {
         self.writable()?;
-        self.item_path(path)?;
-        Err(not_yet())
+        let full = self.path(path)?;
+        let kept = match permissions {
+            Permissions::UnixMode(_) => self.capabilities.unix_permissions,
+            Permissions::Windows(_) => self.capabilities.windows_attributes,
+        };
+        if !kept {
+            return Err(SourceError::new(ErrorKind::Unsupported, format!("{}: the volume doesn't keep these permissions", full.display())));
+        }
+        let meta = fs::symlink_metadata(&full).map_err(|e| os_error(&full, &e))?;
+        if meta.is_symlink() {
+            return Err(SourceError::new(ErrorKind::Unsupported, format!("{}: a link's own attributes can't be set", full.display())));
+        }
+        set_permissions(&full, permissions).map_err(|e| os_error(&full, &e))
+    }
+}
+
+/// `utimensat` without following links, keeping the access time.
+#[cfg(unix)]
+fn set_modified(path: &Path, time: SystemTime) -> io::Result<()> {
+    use rustix::fs::{AtFlags, CWD, Timespec, Timestamps, UTIME_OMIT, utimensat};
+    let out_of_range = || io::Error::new(io::ErrorKind::InvalidInput, "the time is out of range");
+    // Before 1970 the seconds are negative and the nanoseconds still count forward.
+    let (seconds, nanos) = match time.duration_since(SystemTime::UNIX_EPOCH) {
+        Ok(after) => (i64::try_from(after.as_secs()).map_err(|_| out_of_range())?, after.subsec_nanos()),
+        Err(e) => {
+            let before = e.duration();
+            let seconds = i64::try_from(before.as_secs()).map_err(|_| out_of_range())?;
+            match before.subsec_nanos() {
+                0 => (-seconds, 0),
+                n => (-seconds - 1, 1_000_000_000 - n),
+            }
+        }
+    };
+    let times = Timestamps {
+        last_access: Timespec { tv_sec: 0, tv_nsec: UTIME_OMIT },
+        last_modification: Timespec { tv_sec: seconds, tv_nsec: nanos.into() },
+    };
+    utimensat(CWD, path, &times, AtFlags::SYMLINK_NOFOLLOW).map_err(io::Error::from)
+}
+
+#[cfg(windows)]
+fn set_modified(path: &Path, time: SystemTime) -> io::Result<()> {
+    attribute_writer(path)?.set_modified(time)
+}
+
+/// Opened for attribute writes only, so a read-only file takes a change too; folders need backup
+/// semantics, and the reparse-point flag keeps a link's change on the link. std's open adds the
+/// `\\?\` prefix a path longer than `MAX_PATH` needs.
+#[cfg(windows)]
+fn attribute_writer(path: &Path) -> io::Result<fs::File> {
+    use std::os::windows::fs::OpenOptionsExt;
+    use windows_sys::Win32::Storage::FileSystem::{FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_WRITE_ATTRIBUTES};
+    fs::OpenOptions::new().access_mode(FILE_WRITE_ATTRIBUTES).custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT).open(path)
+}
+
+#[cfg(not(any(unix, windows)))]
+fn set_modified(_: &Path, _: SystemTime) -> io::Result<()> {
+    Err(io::Error::new(io::ErrorKind::Unsupported, "setting times isn't supported on this system"))
+}
+
+fn unsupported(what: &str) -> io::Error {
+    io::Error::new(io::ErrorKind::Unsupported, format!("{what} can't be set on this system"))
+}
+
+/// The permission bits, set-id and sticky bits of a mode; the file-type bits a reported mode
+/// carries are dropped.
+#[cfg(unix)]
+fn set_permissions(path: &Path, permissions: Permissions) -> io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    match permissions {
+        Permissions::UnixMode(mode) => fs::set_permissions(path, fs::Permissions::from_mode(mode & 0o7777)),
+        Permissions::Windows(_) => Err(unsupported("Windows attributes")),
+    }
+}
+
+#[cfg(windows)]
+fn set_permissions(path: &Path, permissions: Permissions) -> io::Result<()> {
+    match permissions {
+        Permissions::Windows(codes) => windows_attributes::set(path, codes),
+        Permissions::UnixMode(_) => Err(unsupported("Unix permissions")),
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
+fn set_permissions(_: &Path, _: Permissions) -> io::Result<()> {
+    Err(unsupported("attributes"))
+}
+
+/// std sets just the read-only bit, so the other attribute codes go through
+/// `SetFileInformationByHandle`, on a handle std opened.
+#[cfg(windows)]
+#[allow(unsafe_code)] // AGENTS.md "## This repository", rule 13, names this module.
+mod windows_attributes {
+    use std::io;
+    use std::os::windows::io::AsRawHandle;
+    use std::path::Path;
+
+    use windows_sys::Win32::Storage::FileSystem::{
+        FILE_ATTRIBUTE_ARCHIVE, FILE_ATTRIBUTE_HIDDEN, FILE_ATTRIBUTE_NORMAL, FILE_ATTRIBUTE_NOT_CONTENT_INDEXED, FILE_ATTRIBUTE_OFFLINE,
+        FILE_ATTRIBUTE_READONLY, FILE_ATTRIBUTE_SYSTEM, FILE_ATTRIBUTE_TEMPORARY, FILE_BASIC_INFO, FileBasicInfo, SetFileInformationByHandle,
+    };
+
+    /// The codes that can be set. The rest (folder, compressed, reparse point…) are the item's
+    /// nature, not settings, and are dropped, so a reported code can be passed back.
+    const SETTABLE: u32 = FILE_ATTRIBUTE_READONLY
+        | FILE_ATTRIBUTE_HIDDEN
+        | FILE_ATTRIBUTE_SYSTEM
+        | FILE_ATTRIBUTE_ARCHIVE
+        | FILE_ATTRIBUTE_TEMPORARY
+        | FILE_ATTRIBUTE_OFFLINE
+        | FILE_ATTRIBUTE_NOT_CONTENT_INDEXED;
+
+    pub(super) fn set(path: &Path, codes: u32) -> io::Result<()> {
+        // A zero would leave the codes as they are, so none is written `NORMAL`, which is valid
+        // only alone.
+        let codes = match codes & SETTABLE {
+            0 => FILE_ATTRIBUTE_NORMAL,
+            codes => codes,
+        };
+        let file = super::attribute_writer(path)?;
+        // Zero times are left as they are.
+        let info = FILE_BASIC_INFO { CreationTime: 0, LastAccessTime: 0, LastWriteTime: 0, ChangeTime: 0, FileAttributes: codes };
+        // SAFETY: `file` keeps the handle open for the whole call, and `info` is a live local
+        // whose size is passed with it; the call only reads it.
+        let done =
+            unsafe { SetFileInformationByHandle(file.as_raw_handle(), FileBasicInfo, (&raw const info).cast(), size_of::<FILE_BASIC_INFO>() as u32) };
+        if done == 0 { Err(io::Error::last_os_error()) } else { Ok(()) }
     }
 }
 
