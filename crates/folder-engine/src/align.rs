@@ -70,7 +70,8 @@ pub fn align(left: Vec<Item>, right: Vec<Item>, case_sensitive: bool) -> Vec<Ali
 /// only files are aligned; links and unexpanded containers count as files.
 ///
 /// *Unspecified*: when one side has several files with one name, a file at the same path on both
-/// sides pairs first. The others pair in folder order (`a/x.txt` before `b/x.txt`) with the other
+/// sides pairs first (when matching is case-insensitive, a path that differs only in case is the
+/// same path). The others pair in folder order (`a/x.txt` before `b/x.txt`) with the other
 /// side's remaining files of that name, and the rest are orphans of their side. The rows don't
 /// depend on the order the items came in.
 pub fn align_flat(mut left: Vec<Placed>, mut right: Vec<Placed>, case_sensitive: bool) -> Vec<Aligned<Placed>> {
@@ -92,10 +93,15 @@ fn align_by_name<T: Named>(mut left: Vec<T>, mut right: Vec<T>, case_sensitive: 
     // Same folder and name first: within one folder this is the exact-name pass, and when
     // flattened it keeps a file that didn't move paired with itself.
     pair_by(&mut left, &mut right, &mut rows, |item| (item.folder().map(Path::to_path_buf), item.name().to_owned()));
+    // ponytail: `to_lowercase` is Unicode lower-casing, as in `MemorySource`, not the OS's own case
+    // table; E08-S4 owns the filename-case criteria.
+    if !case_sensitive {
+        // On a case-insensitive side a path that differs only in case is the same path, so it
+        // pairs before any cross-folder match. Within one folder this is the case-insensitive pass.
+        pair_by(&mut left, &mut right, &mut rows, |item| (item.folder().map(|f| f.to_string_lossy().to_lowercase()), item.name().to_lowercase()));
+    }
     pair_by(&mut left, &mut right, &mut rows, |item| item.name().to_owned());
     if !case_sensitive {
-        // ponytail: `to_lowercase` is Unicode lower-casing, as in `MemorySource`, not the OS's own
-        // case table; E08-S4 owns the filename-case criteria.
         pair_by(&mut left, &mut right, &mut rows, |item| item.name().to_lowercase());
     }
     rows.extend(left.into_iter().flatten().map(|item| Aligned { name: item.name().to_owned(), left: Some(item), right: None }));

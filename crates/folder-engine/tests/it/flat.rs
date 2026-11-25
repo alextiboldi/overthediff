@@ -62,3 +62,12 @@ fn among_files_of_one_name_the_same_path_pairs_first_then_folder_order_and_the_r
     let reversed = |side: &[Placed]| side.iter().rev().cloned().collect::<Vec<_>>();
     assert_eq!(align_flat(reversed(&left), reversed(&right), true), rows);
 }
+
+/// When matching is case-insensitive, a path that differs only in case, in its name or its folder,
+/// is the same path, so it pairs before an exact-name match in another folder.
+#[test]
+fn a_same_path_match_that_differs_only_in_case_pairs_before_an_exact_name_in_another_folder() {
+    let flat = |l: &[&str], r: &[&str]| paths(&align_flat(placed(&tree(l), Path::new("")), placed(&tree(r), Path::new("")), false));
+    assert_eq!(flat(&["a/X.txt", "b/x.txt"], &["a/x.txt"]), [(some("a/X.txt"), some("a/x.txt")), (some("b/x.txt"), None)]);
+    assert_eq!(flat(&["A/x.txt", "B/x.txt"], &["b/x.txt"]), [(some("B/x.txt"), some("b/x.txt")), (some("A/x.txt"), None)]);
+}
