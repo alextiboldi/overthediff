@@ -17,8 +17,11 @@ Regular expressions (crates/regex) run on fancy-regex (MIT), with regex-automata
 (MIT OR Apache-2.0), aho-corasick and memchr (Unlicense OR MIT), and bit-set and bit-vec
 (Apache-2.0 OR MIT).
 
-The tests also use egui_kittest, kittest and craft-testkit (each MIT OR Apache-2.0), which the app
-doesn't ship.
+On macOS and Linux, the local data source looks up owner and group names with uzers (MIT,
+Copyright (c) 2019 Benjamin Sago and 2023 Sandro-Alessio Gierens), which links libc (MIT OR Apache-2.0).
+
+The tests also use egui_kittest, kittest, craft-testkit and tempfile (each MIT OR Apache-2.0),
+which the app doesn't ship.
 
 OverTheDiff bundles no third-party fonts, images or other assets yet. Each one added is listed
 here with its notice, and in ATTRIBUTION.md.

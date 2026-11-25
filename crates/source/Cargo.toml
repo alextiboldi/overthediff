@@ -9,5 +9,12 @@ description = "OverTheDiff's data-source contract, its in-memory reference sourc
 [lints]
 workspace = true
 
-# Standard library only, and no UI dependency (`cargo xtask ui-free`).
+# No UI dependency (`cargo xtask ui-free`).
 [dependencies]
+
+# The local provider's owner and group names. No default features, so it needs only libc.
+[target.'cfg(unix)'.dependencies]
+uzers = { version = "0.12", default-features = false }
+
+[dev-dependencies]
+tempfile = "3"

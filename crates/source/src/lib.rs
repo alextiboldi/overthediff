@@ -4,6 +4,7 @@
 //!
 //! - [`DataSource`] is the contract, and [`copy`] copies within one source or across two.
 //! - [`MemorySource`] is the in-memory reference source, and the fixture other crates' tests use.
+//! - [`LocalSource`] is the local provider: local disks and mounted network shares.
 //! - [`suite`] is the contract test suite. Every provider runs it.
 //!
 //! Paths are relative to the source's root, with `/` between names (`docs/readme.txt`); the empty
@@ -13,6 +14,7 @@
 //!
 //! ponytail: error messages are English. They go through the translation lookup once E01-S1 has one.
 
+mod local;
 mod memory;
 pub mod suite;
 
@@ -21,6 +23,7 @@ use std::io::Read;
 use std::path::{Component, Path};
 use std::time::{Duration, SystemTime};
 
+pub use local::LocalSource;
 pub use memory::MemorySource;
 
 /// What an item is. An expandable container (an archive, say) is a [`ItemKind::File`] whose

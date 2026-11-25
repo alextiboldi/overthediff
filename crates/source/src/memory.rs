@@ -198,7 +198,7 @@ fn not_found(name: &str) -> SourceError {
 
 /// A contract path as names. `..`, a root or a drive prefix would leave the source, so they are
 /// not found.
-fn segments(path: &Path) -> Result<Vec<String>, SourceError> {
+pub(crate) fn segments(path: &Path) -> Result<Vec<String>, SourceError> {
     let outside = || error(ErrorKind::NotFound, format!("{} is outside the source", path.display()));
     let mut names = Vec::new();
     for component in path.components() {
