@@ -179,6 +179,10 @@ impl Shell {
         let os = ui.ctx().os();
         let ctrl_tab = ui.ctx().data_mut(|data| data.remove_temp::<CtrlTabPresses>(egui::Id::unique(CTRL_TAB)));
         let CtrlTabPresses { mut previous, mut next } = ctrl_tab.unwrap_or_default();
+        // A modal dialog (last frame's top modal layer) keeps the window behind it out of reach.
+        if ui.ctx().memory(|memory| memory.top_modal_layer().is_some()) {
+            return;
+        }
         let [new, close] = ui.input_mut(|i| {
             // Exact modifiers, unlike egui's `consume_key`, which lets extra Shift and Alt through:
             // Ctrl+Alt+W is AltGr+W on Windows, and Cmd+Shift+T isn't New Tab.

@@ -2,8 +2,8 @@
 //! task, and an end-of-task summary listing what failed.
 //!
 //! A feature starts its work with `otd_core::task::Task::spawn` and hands a clone of the handle to
-//! [`show_task`], from a view's `ui` or anywhere else it has the window's `egui::Context`. It keeps
-//! its own clone to read the [`otd_core::task::Outcome`] when the task ends.
+//! [`show_task`] once, when it starts the task, from wherever it has the window's `egui::Context`.
+//! It keeps its own clone to read the [`otd_core::task::Outcome`] when the task ends.
 
 use std::collections::VecDeque;
 use std::time::Duration;
@@ -23,16 +23,22 @@ const NEW_TASKS: &str = "otd-new-tasks";
 /// Shows `task` in the main window: its progress, with Cancel if it is cancellable, and once it
 /// ends cancelled or with errors, a summary of every failed item. A task that completes cleanly
 /// just closes its progress window; the feature reports its own result.
+///
+/// Call it once per task, when the task starts, not every frame: a task already showing is
+/// ignored, but one whose summary has closed would show its summary again.
 pub fn show_task(ctx: &Context, task: Task) {
     ctx.data_mut(|data| data.get_temp_mut_or_default::<Vec<Task>>(Id::unique(NEW_TASKS)).push(task));
     ctx.request_repaint();
 }
 
-/// A task the shell shows, and where focus was when it started, to give it back after the summary.
+/// A task the shell shows, and where focus was when it started, to give it back after the summary
+/// or, if focus was in its progress window, when that window closes.
 #[derive(Clone)]
 struct Shown {
     task: Task,
     focus_back: Option<Id>,
+    /// Its Cancel button had focus last frame.
+    has_focus: bool,
 }
 
 /// An ended task's summary, waiting to show or showing.
@@ -61,20 +67,31 @@ impl Tasks {
         }
         let new = ctx.data_mut(|data| data.remove_temp::<Vec<Task>>(Id::unique(NEW_TASKS))).unwrap_or_default();
         let focused = ctx.memory(|memory| memory.focused());
-        self.running.extend(new.into_iter().map(|task| Shown { task, focus_back: focused }));
+        for task in new {
+            // The same handle twice would draw two windows with one id.
+            let mut showing = self.running.iter().chain(self.summaries.iter().map(|summary| &summary.shown));
+            if !showing.any(|shown| shown.task.id() == task.id()) {
+                self.running.push(Shown { task, focus_back: focused, has_focus: false });
+            }
+        }
 
-        let summaries = &mut self.summaries;
+        let (summaries, focus_back) = (&mut self.summaries, &mut self.focus_back);
         self.running.retain(|shown| match shown.task.outcome() {
             None => true,
             Some(outcome) => {
                 if outcome.end != End::Completed {
                     summaries.push_back(Summary { shown: shown.clone(), outcome, drawn: false });
+                } else if shown.has_focus || focused.is_none() {
+                    // Its window closes with focus in it, or focus was lost when Cancel was
+                    // disabled: give focus back as the summary would.
+                    *focus_back = shown.focus_back;
+                    ctx.request_repaint();
                 }
                 false
             }
         });
-        for shown in &self.running {
-            progress_window(ctx, &shown.task);
+        for shown in &mut self.running {
+            shown.has_focus = progress_window(ctx, &shown.task);
         }
         if !self.running.is_empty() {
             // ponytail: the shell polls running tasks ten times a second; a waker from the task
@@ -95,8 +112,9 @@ impl Tasks {
     }
 }
 
-fn progress_window(ctx: &Context, task: &Task) {
-    egui::Window::new(task.title()).id(Id::unique(("otd-task", task.id()))).collapsible(false).resizable(false).show(ctx, |ui| {
+/// Draws a task's progress window; true if its Cancel button has focus.
+fn progress_window(ctx: &Context, task: &Task) -> bool {
+    let window = egui::Window::new(task.title()).id(Id::unique(("otd-task", task.id()))).collapsible(false).resizable(false).show(ctx, |ui| {
         let progress = task.progress();
         // No `animate` while the total is unknown: an animation repaints every frame.
         let (fraction, text) = match progress.total {
@@ -105,10 +123,16 @@ fn progress_window(ctx: &Context, task: &Task) {
         };
         ui.add(egui::ProgressBar::new(fraction).text(text));
         // Disabled once asked, until the task reaches its next safe point and the window closes.
-        if task.cancellable() && ui.add_enabled(!task.cancel_requested(), egui::Button::new(CANCEL)).clicked() {
+        if !task.cancellable() {
+            return false;
+        }
+        let cancel = ui.add_enabled(!task.cancel_requested(), egui::Button::new(CANCEL));
+        if cancel.clicked() {
             task.cancel();
         }
+        cancel.has_focus()
     });
+    window.and_then(|window| window.inner).unwrap_or(false)
 }
 
 /// Draws the summary dialog; true once it should close. It takes focus when it opens, and Esc or

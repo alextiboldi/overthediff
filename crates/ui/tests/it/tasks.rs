@@ -120,3 +120,46 @@ fn closing_the_summary_puts_focus_back_where_it_was_when_the_task_started() {
     assert!(!dialog_open(&harness, "Copy"));
     assert_eq!(focused(&harness), before);
 }
+
+#[test]
+fn a_clean_completion_gives_focus_back_from_its_cancel_button() {
+    let mut harness = harness();
+    press(&mut harness, Key::Tab);
+    let before = focused(&harness);
+    assert!(before.is_some(), "something has focus before the task starts");
+    let (finish, wait_for_finish) = mpsc::channel::<()>();
+    let task = Task::spawn("Count", true, move |_| {
+        let _ = wait_for_finish.recv();
+    });
+    show_task(&harness.ctx, task.clone());
+    harness.run();
+    tab_to(&mut harness, CANCEL);
+    finish.send(()).unwrap();
+    assert_eq!(task.wait().end, End::Completed);
+    harness.run();
+    assert!(harness.query_by_role(Role::ProgressIndicator).is_none(), "the progress window closed");
+    assert_eq!(focused(&harness), before);
+}
+
+#[test]
+fn tab_shortcuts_do_nothing_behind_the_summary() {
+    let mut harness = harness();
+    show_task(&harness.ctx, three_failures());
+    harness.run();
+    let tabs = harness.query_all_by_role(Role::Tab).count();
+    harness.key_press_modifiers(egui::Modifiers::COMMAND, Key::T);
+    harness.run();
+    assert_eq!(harness.query_all_by_role(Role::Tab).count(), tabs, "Cmd+T opened no tab");
+    assert!(dialog_open(&harness, "Copy"), "the summary is still open");
+}
+
+#[test]
+fn showing_one_task_twice_shows_it_once() {
+    let mut harness = harness();
+    let task = three_failures();
+    show_task(&harness.ctx, task.clone());
+    show_task(&harness.ctx, task);
+    harness.run();
+    press(&mut harness, Key::Escape);
+    assert!(!dialog_open(&harness, "Copy"), "one Esc closed its only summary");
+}
