@@ -6,9 +6,10 @@
 //! - the character differences of one changed row, up to the search's limits, come within 100 ms;
 //! - comparing a 100,000-line pair grows the process by at most 64 MiB beyond its inputs.
 //!
-//! It exits with an error when any figure is over its budget. Memory is read with `ps`, in a
-//! separate untimed pass; where `ps` can't be read it says so and fails, rather than pass a figure
-//! it never measured.
+//! It exits with an error when any figure is over its budget. Memory is the process's resident
+//! set, read with `ps` on macOS and Linux and `tasklist` (the working set) on Windows, in a
+//! separate untimed pass; where neither can be read it says so and fails, rather than pass a
+//! figure it never measured.
 //!
 //! Run it with `cargo bench -p otd-text-engine --bench budgets`. It is not part of `cargo test`,
 //! because timings depend on how busy the machine is.
@@ -73,14 +74,24 @@ fn time_compare(left: &[Line], right: &[Line]) -> (Option<Duration>, Duration, u
     (first_rows, start.elapsed(), rows)
 }
 
-/// This process's resident memory in KiB, or `None` where `ps` can't tell.
+/// This process's resident memory in KiB, or `None` where it can't be read.
 fn resident_kib() -> Option<u64> {
-    let out = Command::new("ps").args(["-o", "rss=", "-p", &std::process::id().to_string()]).output().ok()?;
-    String::from_utf8(out.stdout).ok()?.trim().parse().ok()
+    let pid = std::process::id().to_string();
+    if cfg!(windows) {
+        // One CSV row of quoted fields whose last is the working set, such as "27,104 K"; the
+        // thousands separator depends on the locale, so only that field's digits are kept.
+        let out = Command::new("tasklist").args(["/FI", &format!("PID eq {pid}"), "/FO", "CSV", "/NH"]).output().ok()?;
+        let text = String::from_utf8_lossy(&out.stdout);
+        let digits: String = text.trim().rsplit("\",\"").next()?.chars().filter(char::is_ascii_digit).collect();
+        digits.parse().ok()
+    } else {
+        let out = Command::new("ps").args(["-o", "rss=", "-p", &pid]).output().ok()?;
+        String::from_utf8(out.stdout).ok()?.trim().parse().ok()
+    }
 }
 
 /// How far a comparison grows the process above what it held before, sampled while it works and
-/// again once it holds its result. `None` when `ps` can't be read.
+/// again once it holds its result. `None` when memory can't be read.
 fn growth_kib(left: &[Line], right: &[Line]) -> Option<u64> {
     let before = resident_kib()?;
     let mut peak = before;
@@ -115,7 +126,7 @@ fn main() -> ExitCode {
             ok &= kib <= MEMORY_WITHIN_KIB;
         }
         None => {
-            println!("{LARGE}-line pair, memory: not measured, because `ps` could not be read");
+            println!("{LARGE}-line pair, memory: not measured, because the process's memory could not be read");
             ok = false;
         }
     }
