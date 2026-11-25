@@ -104,27 +104,27 @@ Recorded by E03-S1-T6. The catalogue sets no performance figures, so every budge
 As a developer on the product team, I can hand the engine two folder sources and criteria and get back an aligned, status-coloured tree with content results and selection resolution, so that folder views, sync, merge, snapshots and scripts all agree on what differs.
 
 **Acceptance criteria**
-- [ ] The engine scans both trees through the data-source contract. A folder is scanned when it is opened and also in the background.
+- [x] The engine scans both trees through the data-source contract. A folder is scanned when it is opened and also in the background.
   - Progress events and a per-folder scan state (unscanned, pending, done) are reported.
-- [ ] Items are aligned by name within each folder. Matching is case-insensitive on case-insensitive sources and case-sensitive otherwise (*inferred*, from "case sensitivity follows the file system").
-- [ ] **Quick tests.**
+- [x] Items are aligned by name within each folder. Matching is case-insensitive on case-insensitive sources and case-sensitive otherwise (*inferred*, from "case sensitivity follows the file system").
+- [x] **Quick tests.**
   - Different sizes mean different.
   - Modified times further apart than the tolerance make the later one newer and the other older.
   - Times within the tolerance count as same.
   - An item present on one side only is an orphan of that side.
-- [ ] **Content tests.**
+- [x] **Content tests.**
   - CRC reuses a CRC the source provides and otherwise computes CRC32. Binary compares byte by byte.
   - Results are "binary same" or "binary differences".
   - With skip-if-quick-same, content tests run only for pairs the quick tests call different.
   - With override-quick-results, a content match makes the row same even when the timestamps differ. Override-quick-results is on by default (F-8.1).
-- [ ] Statuses cover same, different, left newer, right newer, left orphan, right orphan, unknown (not compared yet) and error (unreadable item, with the message kept).
-- [ ] A folder carries every cue its visible contents produce, several at once if needed. Its own timestamp never makes it newer.
-- [ ] The visibility predicate is evaluated per side.
+- [x] Statuses cover same, different, left newer, right newer, left orphan, right orphan, unknown (not compared yet) and error (unreadable item, with the message kept).
+- [x] A folder carries every cue its visible contents produce, several at once if needed. Its own timestamp never makes it newer.
+- [x] The visibility predicate is evaluated per side.
   - Hidden items are left out of aggregation and selection.
   - An item hidden on one side only stays visible and is flagged as hidden on that side.
-- [ ] In flattened mode, files are aligned by name regardless of subfolder.
-- [ ] An item flagged as an expandable container compares as a file until it is expanded. Expanding it scans its children like a folder's.
-- [ ] **Selection resolution.** A selected folder resolves to its visible contents. An open folder plus some of its children resolves to those children only. Results are per side.
+- [x] In flattened mode, files are aligned by name regardless of subfolder.
+- [x] An item flagged as an expandable container compares as a file until it is expanded. Expanding it scans its children like a folder's.
+- [x] **Selection resolution.** A selected folder resolves to its visible contents. An open folder plus some of its children resolves to those children only. Results are per side.
 
 #### Tasks
 - **E03-S2-T1** — In-memory data source implementing the E04 contract, used as the engine's test fixture · size: S · depends: — · status: done
@@ -148,8 +148,9 @@ As a developer on the product team, I can hand the engine two folder sources and
 - **E03-S2-T7** — Flattened alignment that ignores folder structure · size: S · depends: E03-S2-T3 · status: done
   - AC: `a/x.txt` on the left aligns with `b/x.txt` on the right in flattened mode and not otherwise.
   - Implemented: `align_flat()` and `Placed` in `crates/folder-engine/src/align.rs` (`otd-folder-engine`) pair the files of two whole trees by name whatever folder each sits in, with the same case rule and exact-match preference as per-folder `align()`, which now shares one generic pass with it. Folders are left out; links and unexpanded containers count as files. Among several files of one name (*unspecified*), a file at the same path on both sides pairs first (a path differing only in case counts as the same path when matching is case-insensitive), the rest pair in folder order, and leftovers are orphans; the rows don't depend on input order. `crates/folder-engine/tests/it/flat.rs` checks the AC (`a/x.txt` pairs with `b/x.txt` when flattened and not through per-folder alignment), same-path-first and folder-order pairing with orphans and order independence, and the case-insensitive same-path rule, on `MemorySource` fixtures. Checks: `cargo xtask ci` on macOS (after rebasing onto `main`) and pull-request CI on Linux and macOS; no `cfg(windows)` code, so the Windows matrix was not run. Pull request: https://github.com/alextiboldi/overthediff/pull/42
-- **E03-S2-T8** — Selection resolution for operations · size: S · depends: E03-S2-T6
+- **E03-S2-T8** — Selection resolution for operations · size: S · depends: E03-S2-T6 · status: done
   - AC: unit cases for a closed folder, an open folder with two selected children, and a folder containing hidden items return exactly the specified item sets.
+  - Implemented: `resolve_selection()` and `Resolved` in `crates/folder-engine/src/select.rs` (`otd-folder-engine`) turn the rows selected on one side, given as paths of `Row::name`s, into the items an operation acts on there, over the rows `compare_trees()` returns: paths relative to the side's base in that side's own spelling, in tree order and once each. A selected file resolves to itself; a selected folder resolves to its visible contents at every depth, not to itself; a selected folder with some of its descendants also selected resolves to those descendants only, which is how an open folder plus some of its children reads. An item hidden on the side being resolved is left out with everything below it, whatever the other side's flag; a path that names no row is ignored and doesn't open its folder. `incomplete` is set when a folder whose contents were taken isn't listed yet or couldn't be, so an operation doesn't quietly do less than asked. *Unspecified*, decided and documented on the function: the selected-descendants rule applies at every depth, and subfolders count as contents. Flattened mode is out of scope, since `align_flat()` yields files, not folder rows. `crates/folder-engine/tests/it/select.rs` checks the AC (a closed folder, an open folder with two selected children, a folder with items hidden on both sides and on one side, each as an exact path set per side) plus an unscanned folder giving `incomplete` and each side's own spelling. Checks: `cargo xtask ci` on macOS (after rebasing onto `main`), pull-request CI on Linux and macOS, and the full matrix with Windows on the branch. Pull request: https://github.com/alextiboldi/overthediff/pull/50
 - **E03-S2-T9** — Expandable containers · size: S · depends: E03-S2-T2 · status: done
   - AC: an in-memory container compares as a file (size, time, content) until expanded. Once expanded, its children align and aggregate like a folder's.
   - Implemented: `TreeScan::folder()` in `crates/folder-engine/src/scan.rs` (`otd-folder-engine`) reports an opened container as `ItemKind::Folder` in its parent's listing, still with `container` set and its own size and time, whether it was opened before or after the parent was listed; an unopened container stays a file item and background scanning never lists it, so status, content tests and aggregation need no container-specific code. `crates/folder-engine/tests/it/container.rs` checks, on `MemorySource` containers, that an opened container scans and lists like a folder with the same children (background scanning on and off, nested containers staying files), that the parent lists it as a folder once opened, that an expanded container aligns with a folder and its children pair up with orphans, and that `quick_test()` gives an unopened container pair a file's status by size and time and an expanded pair a folder's. Content comparison (E03-S2-T5) and aggregation (E03-S2-T6) over a container are not exercised here because those tasks are not built yet; both read the `ItemKind` this change switches. Checks: `cargo xtask ci` on macOS (after rebasing onto `main`), pull-request CI on Linux and macOS, and the full matrix with Windows on the branch. Pull request: https://github.com/alextiboldi/overthediff/pull/44
