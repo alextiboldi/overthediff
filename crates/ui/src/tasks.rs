@@ -90,6 +90,10 @@ impl Tasks {
                 false
             }
         });
+        if !self.summaries.is_empty() {
+            // A summary takes focus itself, and gives it back when it closes.
+            self.focus_back = None;
+        }
         for shown in &mut self.running {
             shown.has_focus = progress_window(ctx, &shown.task);
         }
