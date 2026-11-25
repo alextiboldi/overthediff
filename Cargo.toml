@@ -21,6 +21,8 @@ egui_kittest = { version = "0.37", default-features = false }
 # craft-libs crates all come from this one revision on storytold/craft-libs `main` (AGENTS.md
 # rule 10). Moving it is a pull request of its own.
 craft-testkit = { git = "https://github.com/storytold/craft-libs", rev = "2c81ed850319ef3504ce56d82379b346522af18e" }
+# Single-instance hand-off (otd-launch): local socket or named pipe, token auth, instance records.
+craft-ipc = { git = "https://github.com/storytold/craft-libs", rev = "2c81ed850319ef3504ce56d82379b346522af18e" }
 
 [workspace.lints.rust]
 # `deny`, not `forbid`, so a module AGENTS.md names can `allow(unsafe_code)` (rule 13).
