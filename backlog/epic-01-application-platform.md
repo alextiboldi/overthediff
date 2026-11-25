@@ -96,6 +96,73 @@ Every AC below is verified with a test session type and test commands registered
 - [ ] Captions, labels and messages are looked up through the translation system with English as the key. A missing translation shows the English text.
 - [ ] The default keymap conventions (Q24) and the status-bar field model (Q25) are recorded in this story.
 
+#### Decisions
+Recorded by E01-S1-T1 and confirmed by the operator on 2026-11-25, as proposed: follow each OS's standard shortcuts, keep the product shortcuts named in the catalogue, and have views fill shared status-bar fields. The catalogue names only the product shortcuts and the three status-bar fields. Everything else below is *unspecified* there and is OverTheDiff's own choice.
+
+**Default keymap conventions (Q24)**
+- **Modifiers.** The catalogue's Ctrl is the command modifier: Cmd on macOS and Ctrl on Windows and Linux (craft-keymap's `Cmd`, egui's `Modifiers::COMMAND`), so Copy to Right is Cmd+R on macOS. Alt is Option on macOS. Ctrl+Tab and Ctrl+Shift+Tab keep the Control key on macOS, as macOS tabbed apps do.
+- **Platform-standard shortcuts.** These commands take their OS's chord:
+
+  | Command | macOS | Windows | Linux |
+  |---|---|---|---|
+  | New Tab | Cmd+T | Ctrl+T | Ctrl+T |
+  | Close Tab | Cmd+W | Ctrl+W, Ctrl+F4 | Ctrl+W |
+  | Next / previous tab | Ctrl+Tab / Ctrl+Shift+Tab, Cmd+Shift+] / Cmd+Shift+[ | Ctrl+Tab / Ctrl+Shift+Tab | Ctrl+Tab / Ctrl+Shift+Tab |
+  | Open Session | Cmd+O | Ctrl+O | Ctrl+O |
+  | Save / Save As | Cmd+S / Cmd+Shift+S | Ctrl+S / Ctrl+Shift+S | Ctrl+S / Ctrl+Shift+S |
+  | Undo | Cmd+Z | Ctrl+Z | Ctrl+Z |
+  | Redo | Cmd+Shift+Z | Ctrl+Y, Ctrl+Shift+Z | Ctrl+Shift+Z, Ctrl+Y |
+  | Cut / Copy / Paste / Select All | Cmd+X / C / V / A | Ctrl+X / C / V / A | Ctrl+X / C / V / A |
+  | Find | Cmd+F | Ctrl+F | Ctrl+F |
+  | Find Next / Find Previous | Cmd+G / Cmd+Shift+G | F3 / Shift+F3 | F3 / Shift+F3 |
+  | Replace | Cmd+Alt+F | Ctrl+H | Ctrl+H |
+  | Options | Cmd+, (application menu) | none | none |
+  | Help | Cmd+? | F1 | F1 |
+  | Exit | Cmd+Q (application menu) | none: Alt+F4 is the OS's and closes the window | Ctrl+Q |
+  | Hide / Hide Others / Minimize | Cmd+H / Cmd+Alt+H / Cmd+M | — | — |
+  | Menu bar, next region, context menu | the OS's own | Alt or F10, F6, Shift+F10 or the Menu key | Alt or F10, F6, Shift+F10 or the Menu key |
+  | Close a menu, popup or dialog / its default button | Esc / Enter | Esc / Enter | Esc / Enter |
+
+  While a text field or an editable pane has focus, the platform's text-editing chords go to it (craft-keymap `text_editing_chords`: undo, redo, select all, and moving and deleting by word, line and text), and plain keys type.
+- **Product shortcuts named in the catalogue.** Each applies only where shown:
+
+  | Chord | Command | Where |
+  |---|---|---|
+  | Ctrl+R / Ctrl+L | Copy to Right / Copy to Left, hidden by default (E09-S1) | Folder Compare |
+  | F2 | Rename the selected item | manager lists, such as Manage Workspaces (E06) |
+  | Del | Delete the selected item | manager lists. On macOS, Cmd+Backspace too, since many Mac keyboards have no forward Delete |
+  | Space | Mark the focused item (E08-S10) | the Folder Compare list, while it has focus. Elsewhere Space activates the focused control |
+  | Shift+Left / Shift+Right | Limit a both-sides selection to the left / right side (E08-S7) | the Folder Compare list. In text panes Shift+arrow extends the selection as usual |
+  | Esc | Close the current file view (E22-S5, when *Esc closes file views* is on) | file views such as Text Compare, never a folder view |
+  | Insert | Toggle insert/overwrite | editable panes. Mac keyboards have no Insert key, so the command is also in the menu and the status-bar field toggles it |
+  | Ctrl+arrow | Nudge the crop offset by a larger step (E17) | the Picture Compare difference pane |
+  | Ctrl+Alt+C | Compare the two newest clips, a global hotkey that can be turned off (E26-S3) | Windows only |
+- **Esc, innermost first.** Esc closes an open menu, popup or dialog and puts focus back, then cancels a pending action (Align With in E07), then leaves full screen (E17), then closes the find bar. Only when none of these is open does it close a file view, and then the unsaved-changes prompt still applies.
+- **Reserved chords.** No default uses a chord the OS takes. The keymap reserves craft-keymap's `reserved::system` list for the current OS:
+  - macOS: Cmd+Tab, Cmd+Shift+Tab, Cmd+Alt+Esc, Cmd+\`;
+  - Windows: Alt+Tab, Alt+Shift+Tab, Alt+F4, Ctrl+Alt+Del, Ctrl+Esc, Ctrl+Shift+Esc;
+  - Linux: Alt+Tab, Alt+Shift+Tab, Alt+F4, Ctrl+Alt+Del, Ctrl+Alt+F1 to F12.
+
+  Defaults also avoid:
+  - macOS: Cmd+Space, Ctrl+Space, Control+arrow keys, Cmd+Shift+3, 4 and 5, Ctrl+Cmd+Q;
+  - Windows: every chord with the Windows key;
+  - Linux: every chord with Super, Ctrl+Alt+arrow keys, Ctrl+Alt+T.
+
+  On Windows, AltGr arrives as Ctrl+Alt, so in-app defaults don't use Ctrl+Alt+<a key that types a character>. The E26-S3 global hotkey is the one catalogue-named exception. Shortcuts that users assign (workspaces in E06, customisation in E22-S1) can't take a reserved chord either.
+- **Conflicts.** Within one view type, two commands never share a default chord, and an application-level command holds its chord in every view type. Where a catalogue shortcut clashes with a platform habit in a view type, the catalogue shortcut wins there. A command this list doesn't cover gets a default only when its story names one or a platform standard exists. Otherwise it ships without one, and users can assign one (E22-S1).
+- **Showing chords.** Menus, tooltips and accessibility nodes show a chord in the current platform's form (craft-keymap `Chord::display`: ⇧⌘Z on macOS, Ctrl+Shift+Z elsewhere). Every default chord also has a menu entry, except the hidden-by-default commands the catalogue names. Single-key shortcuts (Space, F2, Del, Insert, Esc) can be remapped or removed through E22-S1.
+
+**Status-bar field model (Q25)**
+- The shell owns the status bar and shows the active view's fields; views never draw it. Switching tabs swaps the fields. Home fills none, so its bar is empty.
+- A view publishes an ordered list of fields. Each field has an id, a translated label and a text value. Every field is optional, and they show in this order:
+  1. **Overall result**: the view's own words, such as Text Compare's result or "Binary differences" in Hex Compare.
+  2. **The view's own fields**, in the view's order, such as cursor line and column, or Folder Compare's scan progress.
+  3. **Insert/overwrite**: "Insert" or "Overwrite", filled only by views that edit. Activating the field toggles it, the same as the Insert key.
+  4. **Load time**: how long the last load and comparison took, in seconds. It is set when a load finishes and kept until the next one.
+- The text carries the meaning. A view may colour the result with a registered colour role, but never with colour alone.
+- Accessibility: each field is a text node whose name starts with its label, and the insert/overwrite field is a button. A change of the overall result that happens away from focus, such as at the end of a load or recompare, is announced through a live region. Load-time changes are not announced.
+- Each view's own contents are decided in its story: Text Compare in E07-S1-T1 (Q25), Folder Compare in E08-S1-T7, Table Compare in E15-S1-T6 and Hex Compare in E16-S1-T6.
+
 #### Tasks
 - **E01-S1-T1** — Decide the default keymap conventions and status-bar field model (Q24, Q25) · size: S · depends: — · flags: `decision`
   - AC: a decision in this story lists platform-standard shortcuts, the product shortcuts named in the catalogue (Ctrl+R/Ctrl+L copy, F2 and Del in managers, Space to mark, Shift+arrow to limit a selection, Esc to close file views) and how views fill status-bar fields (overall result, insert/overwrite, load time). Proposed default: follow each OS's standard shortcuts and keep the product shortcuts named in the catalogue.

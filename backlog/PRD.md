@@ -137,7 +137,7 @@ Each decision sits in its owning story as task T1 with a proposed default. The i
 - The "similar" exit code (Q17), the automatic-refresh interval (Q18), picture metadata (Q21), registry settings (Q22), patch application (Q23).
 
 **Product-wide conventions**
-- **Default keymap and status-bar content** (Q24, Q25, E01-S1).
+- **Default keymap and status-bar content** (Q24, Q25, E01-S1): decided on 2026-11-25. Shortcuts follow each OS's standards plus the catalogue's product shortcuts, and views fill shared status-bar fields. What each view shows stays with its own story (Q25, E07-S1).
 - **Scheduler** (Q15, E20-S6): rely on OS schedulers or build one in.
 - **Password storage** (PO addition): the OS credential store or locally encrypted storage. The lean is the OS credential store where available. Decision task E21-S1-T7 owns it.
 
