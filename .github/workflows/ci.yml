@@ -1,0 +1,31 @@
+name: CI
+
+# The quality gate (`cargo xtask ci`: fmt, clippy, tests, ui-free) for every pull request and every
+# push to main, through the suite's shared gate workflow in craft-common-actions. It runs across the
+# whole workspace, so a new crate under apps/ or crates/ is covered without editing this file.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to a PR branch cancels its older run; every push to main runs to the end.
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  gate:
+    # Tracks @main so suite-wide CI fixes reach every app without a PR in each repository.
+    uses: storytold/craft-common-actions/.github/workflows/gate.yml@main
+    with:
+      # Pull requests run Linux and macOS; pushes to main (and manual runs) add Windows.
+      os: >-
+        ${{ github.event_name == 'pull_request'
+          && '["ubuntu-24.04","macos-latest"]'
+          || '["ubuntu-24.04","macos-latest","windows-latest"]' }}
+      # What winit's Wayland and X11 backends need to build on Linux.
+      packages: pkg-config libwayland-dev libxkbcommon-dev

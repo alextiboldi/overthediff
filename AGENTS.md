@@ -119,7 +119,7 @@ A task whose tests or review won't pass after two different fixes stays open as 
 
 Run them from the workspace root.
 
-- `cargo xtask ci` is the whole gate. It is the command the suite's shared gate workflow (storytold/craft-common-actions) runs by default; E27-S1-T2 adds that CI. It stops at the first failure:
+- `cargo xtask ci` is the whole gate. CI (`.github/workflows/ci.yml`) runs it through the suite's shared gate workflow in storytold/craft-common-actions: on Linux and macOS for every pull request, and on Windows too for pushes to `main`. It covers the whole workspace, so a new crate needs no workflow change. It stops at the first failure:
   - `cargo fmt --all -- --check`;
   - `cargo clippy --workspace --all-targets --locked -- -D warnings`;
   - `cargo test --workspace --locked`;
