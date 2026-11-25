@@ -7,7 +7,7 @@ use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
 use otd_source::suite::{self, Group, Outcome};
-use otd_source::{DataSource, Delete, ErrorKind, ItemKind, Links, LocalSource, MemorySource};
+use otd_source::{DataSource, Delete, ErrorKind, ItemKind, Links, LocalSource, MemorySource, Permissions};
 use tempfile::TempDir;
 
 /// A built fixture's folder. Dropping it unlocks the folders it locked, so the temporary folder
@@ -150,9 +150,8 @@ fn a_junction_is_reported_as_a_link_unless_followed() {
     assert_eq!(followed.kind, ItemKind::Folder, "{followed:?}");
 }
 
-/// The suite cases E04-S1-T3 builds. Listing is E04-S1-T2's, times and permissions (and so copy)
-/// E04-S1-T4's, and read-only media E04-S1-T5's.
-const CASES: [&str; 7] = [
+/// The suite cases E04-S1-T3 and T4 build. Listing is E04-S1-T2's, and read-only media E04-S1-T5's.
+const CASES: [&str; 10] = [
     "content_reads_back_and_a_missing_file_is_not_found",
     "written_content_reads_back_and_a_replacement_changes_it",
     "a_created_folder_lists_as_an_empty_folder",
@@ -160,6 +159,9 @@ const CASES: [&str; 7] = [
     "a_permanent_delete_removes_a_file_and_a_folder_with_its_contents",
     "a_recycle_bin_delete_works_only_where_the_source_has_one",
     "a_path_that_would_leave_the_root_is_not_found_and_changes_nothing",
+    "a_modified_time_set_reads_back_within_the_timestamp_resolution",
+    "attributes_and_permissions_are_kept_only_where_the_source_supports_them",
+    "a_copy_keeps_content_and_modified_time_within_and_across_sources",
 ];
 
 /// A source holding files and folders, one folder below a fresh temporary folder, as the suite asks.
@@ -356,6 +358,19 @@ fn a_read_only_fat_volume_reports_two_second_times_and_read_only() {
     assert!(caps.read_only && !caps.case_sensitive && caps.timestamp_resolution == std::time::Duration::from_secs(2), "{caps:?}");
 }
 
+/// macOS accepts a `chmod` on FAT and keeps nothing, so a mode set there must be refused rather
+/// than reported done.
+#[cfg(target_os = "macos")]
+#[test]
+fn a_fat_volume_refuses_a_unix_mode_it_would_drop() {
+    let volume = Volume::attach("MS-DOS", false);
+    fs::write(volume.mount.join("a.txt"), "a").unwrap();
+    let source = LocalSource::new(&volume.mount);
+    assert!(!source.capabilities().unix_permissions, "{:?}", source.capabilities());
+    let result = source.set_permissions(Path::new("a.txt"), Permissions::UnixMode(0o644));
+    assert_eq!(result.map_err(|e| e.kind), Err(ErrorKind::Unsupported));
+}
+
 #[cfg(target_os = "macos")]
 #[test]
 fn a_case_sensitive_volume_reports_case_sensitive_names() {
@@ -379,4 +394,108 @@ fn a_folder_reached_through_a_unc_path_lists_and_reports_its_volume() {
     assert_eq!(names, ["a.txt"]);
     // The share's file system answered, so the resolution isn't the "exact" fallback.
     assert!(!source.capabilities().timestamp_resolution.is_zero(), "{:?}", source.capabilities());
+}
+
+fn modified(path: &Path) -> std::time::SystemTime {
+    fs::symlink_metadata(path).unwrap().modified().unwrap()
+}
+
+/// The AC: after a copy from one local source to another, the OS reports the same modified time
+/// for each file and folder on both sides.
+#[test]
+fn a_copy_between_local_sources_keeps_every_modified_time() {
+    let (_from_dir, from) = scratch_root();
+    let (_to_dir, to) = scratch_root();
+    fs::create_dir(from.join("dir")).unwrap();
+    fs::write(from.join("dir/f.txt"), "inner").unwrap();
+    let past = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_500_000_000);
+    for path in [from.join("dir/f.txt"), from.join("dir")] {
+        LocalSource::new(&from).set_modified(path.strip_prefix(&from).unwrap(), past).unwrap();
+    }
+    otd_source::copy(&LocalSource::new(&from), Path::new("dir"), &LocalSource::new(&to), Path::new("dir")).unwrap();
+    for name in ["dir/f.txt", "dir"] {
+        assert_eq!(modified(&to.join(name)), modified(&from.join(name)), "{name}");
+        assert_eq!(modified(&to.join(name)), past, "{name}");
+    }
+}
+
+/// Seconds before 1970 count back while nanoseconds still count forward.
+#[test]
+fn a_time_before_1970_reads_back() {
+    let (_dir, root) = scratch_root();
+    fs::write(root.join("old.txt"), "o").unwrap();
+    let time = std::time::SystemTime::UNIX_EPOCH - std::time::Duration::from_millis(1_500);
+    LocalSource::new(&root).set_modified(Path::new("old.txt"), time).unwrap();
+    assert_eq!(modified(&root.join("old.txt")), time);
+}
+
+/// The AC: mode 0644 set through the source is what the OS reports.
+#[cfg(unix)]
+#[test]
+fn a_unix_mode_set_through_the_source_is_what_the_os_reports() {
+    use std::os::unix::fs::PermissionsExt;
+    let (_dir, root) = scratch_root();
+    let file = root.join("a.txt");
+    fs::write(&file, "a").unwrap();
+    // A new file is often 0644 already, so start elsewhere.
+    fs::set_permissions(&file, fs::Permissions::from_mode(0o600)).unwrap();
+    let source = LocalSource::new(&root);
+    assert!(source.capabilities().unix_permissions);
+    source.set_permissions(Path::new("a.txt"), Permissions::UnixMode(0o100_644)).unwrap();
+    assert_eq!(fs::metadata(&file).unwrap().permissions().mode() & 0o7777, 0o644);
+}
+
+/// The AC: read-only set through the source is what the OS reports, and a read-only file still
+/// takes a modified time.
+#[cfg(windows)]
+#[test]
+fn read_only_set_through_the_source_is_what_the_os_reports() {
+    const READ_ONLY: u32 = 0x1;
+    let (_dir, root) = scratch_root();
+    let file = root.join("a.txt");
+    fs::write(&file, "a").unwrap();
+    let source = LocalSource::new(&root);
+    assert!(source.capabilities().windows_attributes);
+    source.set_permissions(Path::new("a.txt"), Permissions::Windows(READ_ONLY)).unwrap();
+    assert!(fs::metadata(&file).unwrap().permissions().readonly());
+    let past = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_500_000_000);
+    source.set_modified(Path::new("a.txt"), past).unwrap();
+    assert_eq!(modified(&file), past);
+    // Cleared again, so the temporary folder can be removed.
+    source.set_permissions(Path::new("a.txt"), Permissions::Windows(0)).unwrap();
+    assert!(!fs::metadata(&file).unwrap().permissions().readonly());
+}
+
+/// An item past `MAX_PATH` (260 characters), as deep trees have, takes attributes like any other.
+#[cfg(windows)]
+#[test]
+fn attributes_are_set_on_an_item_past_max_path() {
+    const HIDDEN: u32 = 0x2;
+    let (_dir, root) = scratch_root();
+    let deep = Path::new(&"d".repeat(100)).join("e".repeat(100)).join("f".repeat(100)).join("a.txt");
+    fs::create_dir_all(root.join(deep.parent().unwrap())).unwrap();
+    fs::write(root.join(&deep), "a").unwrap();
+    assert!(root.join(&deep).as_os_str().len() > 260);
+    let source = LocalSource::new(&root);
+    source.set_permissions(&deep, Permissions::Windows(HIDDEN)).unwrap();
+    let attributes = source.stat(&deep, Links::Report).unwrap().attributes;
+    assert!(matches!(attributes, Some(otd_source::Attributes::Windows(codes)) if codes & HIDDEN == HIDDEN), "{attributes:?}");
+}
+
+/// A link's target can be outside the source, so changes stop at the link.
+#[cfg(unix)]
+#[test]
+fn setting_times_and_permissions_on_a_link_never_changes_its_target() {
+    use std::os::unix::fs::PermissionsExt;
+    let (_dir, root) = scratch_root();
+    let outside = root.parent().unwrap().join("outside.txt");
+    fs::write(&outside, "o").unwrap();
+    std::os::unix::fs::symlink(&outside, root.join("link")).unwrap();
+    let (time, mode) = (modified(&outside), fs::metadata(&outside).unwrap().permissions().mode());
+    let source = LocalSource::new(&root);
+    let past = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_500_000_000);
+    source.set_modified(Path::new("link"), past).unwrap();
+    assert!(source.set_permissions(Path::new("link"), Permissions::UnixMode(0o777)).is_err());
+    assert_eq!(modified(&root.join("link")), past);
+    assert_eq!((modified(&outside), fs::metadata(&outside).unwrap().permissions().mode()), (time, mode));
 }
