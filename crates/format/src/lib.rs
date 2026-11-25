@@ -10,11 +10,18 @@
 //!   the exclude-only `-*.bak` or the folder-only `Source\`, matches every other name.
 //! - A format with an empty mask never resolves automatically, but [`Registry::by_name`] picks it,
 //!   as it picks any format, enabled or not.
+//! - A file no format matches falls back by content: [`Registry::fallback`] gives binary content
+//!   ([`is_binary`]) the first enabled Hex format when Hex is registered, and anything else the
+//!   built-in catch-all Text format.
 //!
-//! Not here: the fallback for files no format matches (E02-S1-T7), editing and reordering formats
-//! (E10-S1), and kind-specific properties, which the owning feature keeps by format name.
+//! Not here: editing and reordering formats (E10-S1), and kind-specific properties, which the
+//! owning feature keeps by format name.
+
+mod content;
 
 use std::fmt;
+
+pub use content::{SAMPLE_LEN, is_binary};
 
 use otd_mask::MaskList;
 pub use otd_mask::{Case, MaskListError};
@@ -92,11 +99,31 @@ impl fmt::Display for RegisterError {
 
 impl std::error::Error for RegisterError {}
 
-/// The single ordered list of formats, and the kinds features have registered.
-#[derive(Clone, Debug, Default)]
+/// The name of [`Registry::catch_all`].
+pub const CATCH_ALL: &str = "Plain text";
+
+/// The single ordered list of formats, the kinds features have registered, and the catch-all
+/// Text format.
+#[derive(Clone, Debug)]
 pub struct Registry {
     kinds: Vec<Kind>,
     formats: Vec<Format>,
+    catch_all: Format,
+}
+
+impl Default for Registry {
+    fn default() -> Self {
+        let catch_all = Format {
+            name: CATCH_ALL.to_owned(),
+            kind: Kind::Text,
+            description: String::new(),
+            enabled: true,
+            built_in: true,
+            masks: String::new(),
+            compiled: None,
+        };
+        Self { kinds: Vec::new(), formats: Vec::new(), catch_all }
+    }
 }
 
 impl Registry {
@@ -139,8 +166,23 @@ impl Registry {
         self.formats.iter().find(|f| f.enabled && f.matches(file_name, case))
     }
 
-    /// The format called `name`, for a manual pick: its mask and enabled flag don't matter.
+    /// The format for a file no format matched, from its `content`: when the content
+    /// [`is_binary`], the first enabled Hex format, if Hex is registered and one is; otherwise
+    /// [`Registry::catch_all`]. The first [`SAMPLE_LEN`] bytes of the file are enough.
+    pub fn fallback(&self, content: &[u8]) -> &Format {
+        let hex = || self.formats.iter().find(|f| f.enabled && f.kind == Kind::Hex);
+        is_binary(content).then(hex).flatten().unwrap_or(&self.catch_all)
+    }
+
+    /// The built-in Text format that [`Registry::fallback`] gives unmatched text. It is always
+    /// there, has an empty mask, and sits outside the ordered list, so it never shadows a format.
+    pub fn catch_all(&self) -> &Format {
+        &self.catch_all
+    }
+
+    /// The format called `name`, for a manual pick: its mask and enabled flag don't matter. The
+    /// catch-all answers to [`CATCH_ALL`], so no other format takes that name.
     pub fn by_name(&self, name: &str) -> Option<&Format> {
-        self.formats.iter().find(|f| f.name == name)
+        self.formats.iter().find(|f| f.name == name).or_else(|| (self.catch_all.name == name).then_some(&self.catch_all))
     }
 }

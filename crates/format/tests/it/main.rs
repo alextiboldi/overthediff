@@ -1,3 +1,5 @@
 //! otd-format's integration tests: one binary, a module per area (AGENTS.md rule 30).
 
+mod fallback;
+mod hostile;
 mod registry;

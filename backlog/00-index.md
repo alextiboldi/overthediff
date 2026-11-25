@@ -449,7 +449,7 @@ These are behaviours the catalogue leaves open beyond §30. Each one is a decisi
 | Story | Decision task |
 |---|---|
 | E01-S2-T1 | Decide supported OS versions, CPU architectures, package formats and the executable name |
-| E02-S1-T7 | Decide and implement the fallback for unmatched files (text vs binary detection) |
+| E02-S1-T7 | Decide and implement the fallback for unmatched files (text vs binary detection): **decided**, confirmed by the operator on 2026-11-25. A NUL or invalid text encoding in the first 8 KB makes a file binary, and an unmatched binary file gets a Hex format when the Hex kind is registered; any other unmatched file gets the built-in catch-all Text format. |
 | E04-S3-T1 | Decide which formats beyond zip are writable |
 | E05-S3-T1 | Decide what dropping one item, more than two items, or a file with a folder does |
 | E05-S4-T1 | Decide the Favorites buttons for each view |

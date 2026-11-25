@@ -12,3 +12,6 @@ workspace = true
 # No UI dependency (`cargo xtask ui-free`).
 [dependencies]
 otd-mask = { path = "../mask" }
+
+[dev-dependencies]
+craft-testkit = { workspace = true }
