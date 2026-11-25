@@ -19,6 +19,7 @@ This epic is the shared matching layer: file masks, regular expressions and the 
 - **Rules/states**:
   - Mask semantics follow A.1. The base folder is always included, and folders containing included files are included.
   - A.1 doesn't say whether masks ignore case or what an edge `-` or an empty set in `[...]` means. Proposed default: a mask compares names with the data source's case sensitivity, so `*.txt` matches `README.TXT` on a case-insensitive source, as names align in E03-S2. A `-` at the start or end of a set is literal, and an empty set (`[]`, `[!]`) is an error (*inferred*; E02-S1-T1 takes the case from its caller).
+  - A.1 doesn't say where a path mask starts, how file and folder masks combine, or how excludes rank. Proposed default: a path mask without `.\` may start at any depth, so `Windows\*.txt` and `...\Windows\*.txt` select the same files. A file is included when it passes the file masks and sits in an included folder; the base folder's own files count as in one. An exclude wins over any include, and a kind with no include masks includes everything of that kind not excluded. Spaces around a token are dropped and empty tokens skipped (*inferred*; E02-S1-T2).
   - Regex semantics follow A.2. Matching is line by line, so `\A`/`\Z` behave like `^`/`$`.
   - Format resolution: scan from the top, and the first enabled format whose mask matches wins. A format with an empty mask never matches automatically but can be picked manually.
   - Unmatched files fall back by content (T7 decision, *inferred*).

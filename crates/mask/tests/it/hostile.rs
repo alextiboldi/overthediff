@@ -2,7 +2,7 @@
 //! panics or hangs, whatever the bytes.
 
 use craft_testkit::hostile::{HammerConfig, hammer};
-use otd_mask::{Case, Wildcard};
+use otd_mask::{Case, MaskList, Wildcard};
 
 #[test]
 fn compiling_and_matching_a_damaged_mask_never_panics_or_hangs() {
@@ -16,6 +16,22 @@ fn compiling_and_matching_a_damaged_mask_never_panics_or_hangs() {
             if let Ok(w) = Wildcard::new(&String::from_utf8_lossy(data), case) {
                 let _ = w.matches(name);
             }
+        }
+    });
+}
+
+#[test]
+fn compiling_and_evaluating_a_damaged_mask_list_never_panics_or_hangs() {
+    let seed = br"*.pas;-Backup\;.\W*\...\[a-c]?.txt; -\;";
+    let path = ["W", "x", "b1.txt"];
+    assert!(
+        MaskList::new(std::str::from_utf8(seed).unwrap(), Case::Sensitive).is_ok_and(|m| m.includes_file(&path)),
+        "the seed compiles and matches"
+    );
+
+    hammer(&HammerConfig::new("mask lists", 2_000), seed, move |data| {
+        if let Ok(masks) = MaskList::new(&String::from_utf8_lossy(data), Case::Insensitive) {
+            let _ = (masks.includes_file(&path), masks.folder(&path));
         }
     });
 }
