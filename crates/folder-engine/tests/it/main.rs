@@ -6,5 +6,6 @@ mod content;
 mod fixture;
 mod flat;
 mod scan;
+mod select;
 mod status;
 mod tree;

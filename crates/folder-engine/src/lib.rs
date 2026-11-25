@@ -5,11 +5,13 @@
 mod align;
 mod content;
 mod scan;
+mod select;
 mod status;
 mod tree;
 
 pub use align::{Aligned, Placed, align, align_flat, case_sensitive};
 pub use content::{Compared, ContentOptions, ContentResult, ContentTest, Side, compare};
 pub use scan::{Folder, ScanEvent, ScanState, TreeScan};
+pub use select::{Resolved, resolve_selection};
 pub use status::{Criteria, Status, quick_test};
 pub use tree::{Cues, Row, TreeSide, Visibility, compare_trees};
