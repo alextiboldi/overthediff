@@ -198,4 +198,8 @@ fn runaway_backtracking_is_reported_not_endured() {
     let regex = Regex::new(r"(a*)*\1b").unwrap_or_else(|e| panic!("{e}"));
     let text = "a".repeat(64);
     assert_eq!(regex.is_match(&text), Err(RegexError::TooComplex));
+
+    let lines = vec![text; 3].join("\n");
+    let found: Vec<_> = regex.matches(&lines).collect();
+    assert_eq!(found, [Err(RegexError::TooComplex)], "the first error ends the search");
 }

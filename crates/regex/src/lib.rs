@@ -82,14 +82,25 @@ impl Regex {
         Ok(Self { inner: fancy_regex::Regex::new(&syntax::translate(pattern)?)? })
     }
 
-    /// Every non-overlapping match in `text`, line by line, in order.
+    /// Every non-overlapping match in `text`, line by line, in order. An error ends the search:
+    /// it is the last item, so a runaway pattern doesn't spend its backtracking budget again on
+    /// every following line.
     pub fn matches<'a>(&'a self, text: &'a str) -> impl Iterator<Item = Result<Match, RegexError>> + 'a {
-        lines(text).flat_map(move |(start, line)| {
+        let mut found = lines(text).flat_map(move |(start, line)| {
             self.inner.captures_iter(line).map(move |found| {
                 let found = found?;
                 let shift = |m: fancy_regex::Match<'_>| m.start() + start..m.end() + start;
                 Ok(Match { range: found.get(0).map(shift).unwrap_or_default(), groups: found.iter().skip(1).map(|m| m.map(shift)).collect() })
             })
+        });
+        let mut failed = false;
+        std::iter::from_fn(move || {
+            if failed {
+                return None;
+            }
+            let next = found.next()?;
+            failed = next.is_err();
+            Some(next)
         })
     }
 
