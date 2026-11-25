@@ -142,7 +142,8 @@ impl<S: ?Sized> Registry<S> {
         self.handlers.push(Box::new(handler));
     }
 
-    /// The handler that claims `args`: the first switch handler matching any argument, else the
+    /// The handler that claims `args`: the handler of the first argument, in command-line order,
+    /// that names a registered switch (the earlier registered one if two share that name), else the
     /// bare-paths handler when no argument is a switch. `Ok(None)` for no arguments, and
     /// `Err(argument)` for an argument nobody claims.
     pub fn claim<'a>(&self, args: &'a [String]) -> Result<Option<&dyn Handler<S>>, &'a str> {

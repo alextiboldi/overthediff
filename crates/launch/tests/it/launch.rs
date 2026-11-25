@@ -282,7 +282,9 @@ fn a_launch_requesting_a_new_instance_becomes_one_and_later_launches_still_reach
     assert!(first.try_next().is_none(), "nothing reached the first instance");
 
     assert_eq!(code(dir.launch(&["b.txt"], Requested::Default)), 0);
-    assert_eq!(next(&first).request.args, ["b.txt"], "a later launch hands off to the first instance");
+    let handed = next(&first).request;
+    assert_eq!(handed.args, ["b.txt"], "a later launch hands off to the first instance");
+    assert_eq!(handed.cwd, std::env::current_dir().expect("working folder"), "with the launching process's working folder");
 }
 
 #[test]
