@@ -6,8 +6,8 @@
 //!   with [`Registry::register`]. Formats keep registration order, so a feature's formats follow
 //!   the built-ins registered before them.
 //! - [`Registry::resolve`] scans from the top, and the first enabled format whose mask matches the
-//!   file name wins. Masks follow A.1 through `otd-mask`, so an exclude-only mask such as `-*.bak`
-//!   matches every other name.
+//!   file name wins. Masks follow A.1 through `otd-mask`, so a mask with no file include, such as
+//!   the exclude-only `-*.bak` or the folder-only `Source\`, matches every other name.
 //! - A format with an empty mask never resolves automatically, but [`Registry::by_name`] picks it,
 //!   as it picks any format, enabled or not.
 //!
