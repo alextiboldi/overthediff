@@ -85,11 +85,16 @@ pub fn regex_aid(ui: &mut Ui, field: Id, text: &mut String) -> bool {
     true
 }
 
-/// A menu button that, when its menu closes and leaves focus nowhere (Esc, a click elsewhere),
-/// takes focus back, so the keyboard user is where they were.
+/// A menu button that tells assistive technology it opens a menu and whether that menu is open,
+/// and that, when its menu closes and leaves focus nowhere (Esc, a click elsewhere), takes focus
+/// back, so the keyboard user is where they were.
 fn menu(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui)) {
     let menu = ui.menu_button(label, add);
     let open = menu.inner.is_some();
+    ui.ctx().accesskit_node_builder(menu.response.id, |node| {
+        node.set_has_popup(egui::accesskit::HasPopup::Menu);
+        node.set_expanded(open);
+    });
     let was_open = ui.data_mut(|d| std::mem::replace(d.get_temp_mut_or_default::<bool>(menu.response.id), open));
     if was_open && !open && ui.memory(|m| m.focused().is_none()) {
         menu.response.request_focus();
@@ -100,6 +105,8 @@ fn entries(ui: &mut Ui, entries: &[Entry], chosen: &mut Option<&'static str>) {
     for &(caption, snippet) in entries {
         if ui.button(format!("{caption}   {snippet}")).clicked() {
             *chosen = Some(snippet);
+            // egui's menu closes itself on a pointer click only; this closes it on Enter too.
+            ui.close();
         }
     }
 }

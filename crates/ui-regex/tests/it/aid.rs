@@ -1,6 +1,6 @@
 //! The aid driven by keyboard in a host window, read back through the accessibility tree.
 
-use egui::accesskit::Role;
+use egui::accesskit::{HasPopup, Role};
 use egui::{Event, Key};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
@@ -107,15 +107,36 @@ fn every_entry_the_aid_offers_is_a_valid_pattern() {
     }
 }
 
+/// Whether the accessibility tree says the menu behind the button `label` is open.
+fn expanded(harness: &Harness<'_, Host>, label: &str) -> Option<bool> {
+    let button = harness.get_by_role_and_label(Role::Button, label);
+    let node = button.accesskit_node();
+    assert_eq!(node.has_popup(), Some(HasPopup::Menu), "{label:?} says it opens a menu");
+    node.data().is_expanded()
+}
+
 #[test]
 fn esc_closes_a_menu_without_changing_the_field_and_focus_returns_to_its_button() {
     let mut harness = harness(&["abc"]);
     tab_to(&mut harness, ELEMENTS_LABEL);
+    assert_eq!(expanded(&harness, ELEMENTS_LABEL), Some(false), "collapsed before Enter");
     press(&mut harness, Key::Enter, 1);
+    assert_eq!(expanded(&harness, ELEMENTS_LABEL), Some(true), "expanded after Enter");
     press(&mut harness, Key::ArrowDown, 1);
     press(&mut harness, Key::Escape, 1);
 
     assert!(harness.query_by_label_contains("Digit").is_none(), "the menu is closed");
+    assert_eq!(expanded(&harness, ELEMENTS_LABEL), Some(false), "collapsed after Esc");
     assert_eq!(harness.state().fields[0], "abc");
     assert_eq!(focused(&harness), Some((Role::Button, ELEMENTS_LABEL.to_owned())));
+}
+
+#[test]
+fn choosing_an_entry_by_keyboard_closes_its_menu() {
+    let mut harness = harness(&[""]);
+    tab_to(&mut harness, EXAMPLES_LABEL);
+    choose(&mut harness, EXAMPLES[0].0);
+
+    assert!(harness.query_by_label_contains(EXAMPLES[1].0).is_none(), "the menu is closed");
+    assert_eq!(expanded(&harness, EXAMPLES_LABEL), Some(false));
 }
