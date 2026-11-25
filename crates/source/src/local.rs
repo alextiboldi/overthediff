@@ -98,6 +98,13 @@ fn item(name: String, path: &Path, own: Metadata, links: Links) -> Item {
     } else {
         ItemKind::File
     };
+    // lstat on a folder needs only the parent's permission, so a folder that can't be listed
+    // looks fine until something tries. ponytail: one extra open per folder; files aren't
+    // probed (opening one can block on a pipe or download a cloud placeholder), so a file that
+    // can't be read reports its error when it is opened.
+    if kind == ItemKind::Folder && error.is_none() {
+        error = fs::read_dir(path).err().map(|e| os_error(path, &e));
+    }
     Item {
         name,
         kind,
@@ -109,6 +116,27 @@ fn item(name: String, path: &Path, own: Metadata, links: Links) -> Item {
         crc32: None,
         container: false,
         error,
+    }
+}
+
+/// An entry whose metadata the OS refused: its kind if the folder entry records one, and the error.
+fn unreadable(name: String, entry: &fs::DirEntry, error: SourceError) -> Item {
+    let kind = match entry.file_type() {
+        Ok(t) if t.is_symlink() => ItemKind::Link,
+        Ok(t) if t.is_dir() => ItemKind::Folder,
+        _ => ItemKind::File,
+    };
+    Item {
+        name,
+        kind,
+        size: 0,
+        modified: None,
+        created: None,
+        attributes: None,
+        link_target: None,
+        crc32: None,
+        container: false,
+        error: Some(error),
     }
 }
 
@@ -252,13 +280,28 @@ impl DataSource for LocalSource {
     fn list(&self, folder: &Path, links: Links) -> Result<Vec<Item>, SourceError> {
         let full = self.path(folder)?;
         let mut items = Vec::new();
-        // ponytail: an entry the OS can't read ends the listing, and names that aren't UTF-8 are
-        // reported lossily; E04-S1-T6 gives each bad item its own error.
         for entry in fs::read_dir(&full).map_err(|e| os_error(&full, &e))? {
+            // An entry the OS can't return has no name to carry the error, and skipping it could
+            // spin on a broken stream, so it ends the listing.
             let entry = entry.map_err(|e| os_error(&full, &e))?;
             let path = entry.path();
-            let own = fs::symlink_metadata(&path).map_err(|e| os_error(&path, &e))?;
-            items.push(item(entry.file_name().to_string_lossy().into_owned(), &path, own, links));
+            // No contract path reaches a name that isn't Unicode, and two such names can share
+            // one lossy spelling, so the item says so.
+            let (name, name_error) = match entry.file_name().into_string() {
+                Ok(name) => (name, None),
+                Err(raw) => (
+                    raw.to_string_lossy().into_owned(),
+                    Some(SourceError::new(ErrorKind::Unsupported, format!("{}: the name isn't valid Unicode", path.display()))),
+                ),
+            };
+            let mut found = match fs::symlink_metadata(&path) {
+                Ok(own) => item(name, &path, own, links),
+                Err(e) => unreadable(name, &entry, os_error(&path, &e)),
+            };
+            if name_error.is_some() {
+                found.error = name_error;
+            }
+            items.push(found);
         }
         Ok(items)
     }
@@ -377,5 +420,45 @@ mod tests {
         assert_eq!(mount_fstype(mountinfo, rustix::fs::makedev(0, 45)), Some("fuse.gvfsd-fuse"));
         assert_eq!(mount_fstype(mountinfo, rustix::fs::makedev(8, 17)), Some("fuseblk"));
         assert_eq!(mount_fstype(mountinfo, rustix::fs::makedev(9, 9)), None);
+    }
+
+    #[test]
+    fn a_child_whose_metadata_is_denied_carries_the_error_and_the_rest_still_list() {
+        use std::io::Write;
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::TempDir::new().unwrap();
+        let names = dir.path().join("names-only");
+        fs::create_dir(&names).unwrap();
+        fs::write(names.join("a.txt"), "a").unwrap();
+        fs::write(names.join("b.txt"), "b").unwrap();
+        // Readable but not searchable: the names list, but nothing can stat them.
+        fs::set_permissions(&names, fs::Permissions::from_mode(0o444)).unwrap();
+        if fs::symlink_metadata(names.join("a.txt")).is_ok() {
+            fs::set_permissions(&names, fs::Permissions::from_mode(0o755)).unwrap();
+            // Straight to stderr, past the test harness's capture, so a passing run still lists it.
+            let _ = writeln!(std::io::stderr(), "skipped the denied-metadata case: this account stats children of an unsearchable folder");
+            return;
+        }
+        let listed = LocalSource::new(dir.path()).list(Path::new("names-only"), Links::Report);
+        fs::set_permissions(&names, fs::Permissions::from_mode(0o755)).unwrap();
+        let mut items = listed.unwrap();
+        items.sort_by(|a, b| a.name.cmp(&b.name));
+        assert_eq!(items.iter().map(|i| i.name.as_str()).collect::<Vec<_>>(), ["a.txt", "b.txt"]);
+        assert!(items.iter().all(|i| i.error.as_ref().is_some_and(|e| e.kind == ErrorKind::AccessDenied)), "{items:#?}");
+    }
+
+    // macOS file systems refuse names that aren't UTF-8, so this runs on Linux.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_name_that_isnt_unicode_carries_an_error_and_the_rest_still_list() {
+        use std::os::unix::ffi::OsStrExt;
+        let dir = tempfile::TempDir::new().unwrap();
+        fs::write(dir.path().join(std::ffi::OsStr::from_bytes(b"bad\xff")), "x").unwrap();
+        fs::write(dir.path().join("good.txt"), "g").unwrap();
+        let items = LocalSource::new(dir.path()).list(Path::new(""), Links::Report).unwrap();
+        assert_eq!(items.len(), 2, "{items:#?}");
+        for item in &items {
+            assert_eq!(item.error.is_some(), item.name != "good.txt", "{item:?}");
+        }
     }
 }

@@ -3,16 +3,34 @@
 
 use std::collections::BTreeSet;
 use std::fs::{self, File};
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
 use otd_source::suite::{self, Group, Outcome};
-use otd_source::{DataSource, Delete, ItemKind, Links, LocalSource, MemorySource};
+use otd_source::{DataSource, Delete, ErrorKind, ItemKind, Links, LocalSource, MemorySource};
 use tempfile::TempDir;
 
-/// Builds a fixture's tree on disk. `None` for what this task can't make: containers (archives
-/// come with E04-S2), unreadable items (E04-S1-T6) and read-only media.
-fn materialise(fixture: &MemorySource, scratch: &mut Vec<TempDir>) -> Option<Box<dyn DataSource>> {
+/// A built fixture's folder. Dropping it unlocks the folders it locked, so the temporary folder
+/// can be removed.
+struct Scratch {
+    locked: Vec<PathBuf>,
+    /// A lock didn't stop this account listing the folder: Windows CI runs with the backup
+    /// privilege on, which reads past any permission.
+    lock_ignored: bool,
+    _dir: TempDir,
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        for path in &self.locked {
+            unlock(path);
+        }
+    }
+}
+
+/// Builds a fixture's tree on disk. `None` for what this provider can't make here: containers
+/// (archives come with E04-S2), unreadable files and read-only media.
+fn materialise(fixture: &MemorySource, scratch: &mut Vec<Scratch>) -> Option<Box<dyn DataSource>> {
     if fixture.capabilities().read_only {
         return None;
     }
@@ -20,17 +38,34 @@ fn materialise(fixture: &MemorySource, scratch: &mut Vec<TempDir>) -> Option<Box
     // One folder below the temporary one, as the suite asks.
     let root = dir.path().join("root");
     fs::create_dir(&root).ok()?;
-    copy_tree(fixture, Path::new(""), &root)?;
-    scratch.push(dir);
+    let mut built = Scratch { locked: Vec::new(), lock_ignored: false, _dir: dir };
+    let made = copy_tree(fixture, Path::new(""), &root, &mut built);
+    scratch.push(built);
+    made?;
     Some(Box::new(LocalSource::new(root)))
 }
 
-fn copy_tree(fixture: &MemorySource, folder: &Path, to: &Path) -> Option<()> {
+fn copy_tree(fixture: &MemorySource, folder: &Path, to: &Path, scratch: &mut Scratch) -> Option<()> {
     for item in fixture.list(folder, Links::Report).ok()? {
-        if item.error.is_some() || item.container {
+        let (from, path) = (folder.join(&item.name), to.join(&item.name));
+        if let Some(error) = item.error {
+            // An unreadable folder is made empty, since the fixture won't list it either, then
+            // locked. Unless the lock took, the case skips.
+            if item.kind != ItemKind::Folder || error.kind != ErrorKind::AccessDenied {
+                return None;
+            }
+            fs::create_dir(&path).ok()?;
+            scratch.locked.push(path.clone());
+            lock(&path)?;
+            if fs::read_dir(&path).is_ok() {
+                scratch.lock_ignored = true;
+                return None;
+            }
+            continue;
+        }
+        if item.container {
             return None;
         }
-        let (from, path) = (folder.join(&item.name), to.join(&item.name));
         match item.kind {
             ItemKind::File => {
                 let mut content = Vec::new();
@@ -40,7 +75,7 @@ fn copy_tree(fixture: &MemorySource, folder: &Path, to: &Path) -> Option<()> {
             }
             ItemKind::Folder => {
                 fs::create_dir(&path).ok()?;
-                copy_tree(fixture, &from, &path)?;
+                copy_tree(fixture, &from, &path, scratch)?;
             }
             ItemKind::Link => link(&item.link_target?, &path, || fixture.stat(&from, Links::Follow).is_ok_and(|t| t.kind == ItemKind::Folder))?,
         }
@@ -60,6 +95,29 @@ fn link(target: &str, path: &Path, to_folder: impl FnOnce() -> bool) -> Option<(
     if to_folder() { std::os::windows::fs::symlink_dir(target, path) } else { std::os::windows::fs::symlink_file(target, path) }.ok()
 }
 
+#[cfg(unix)]
+fn lock(path: &Path) -> Option<()> {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(path, fs::Permissions::from_mode(0o000)).ok()
+}
+
+#[cfg(unix)]
+fn unlock(path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o755));
+}
+
+/// Denies everyone listing the folder. Its owner can still change its permissions.
+#[cfg(windows)]
+fn lock(path: &Path) -> Option<()> {
+    std::process::Command::new("icacls").arg(path).args(["/deny", "*S-1-1-0:(RD)"]).output().ok()?.status.success().then_some(())
+}
+
+#[cfg(windows)]
+fn unlock(path: &Path) {
+    let _ = std::process::Command::new("icacls").arg(path).args(["/remove:d", "*S-1-1-0"]).output();
+}
+
 #[test]
 fn the_local_provider_passes_every_listing_case_it_can_hold() {
     let mut scratch = Vec::new();
@@ -67,10 +125,14 @@ fn the_local_provider_passes_every_listing_case_it_can_hold() {
     let listing: Vec<_> = results.iter().filter(|r| r.group == Group::Listing).collect();
     let failed: Vec<_> = listing.iter().filter(|r| matches!(r.outcome, Outcome::Failed(_))).collect();
     assert!(failed.is_empty(), "{failed:#?}");
-    // Exactly these skip, so a link the OS refused to make can't skip the link cases unnoticed.
+    // Exactly these skip, so a link or a lock the OS refused to make can't skip a case unnoticed.
     let skipped: BTreeSet<&str> = listing.iter().filter(|r| matches!(r.outcome, Outcome::Skipped(_))).map(|r| r.name).collect();
-    let expected =
-        BTreeSet::from(["a_container_lists_its_children_like_a_folder", "an_unreadable_item_carries_its_error_and_the_rest_of_the_listing_returns"]);
+    let mut expected = BTreeSet::from(["a_container_lists_its_children_like_a_folder"]);
+    if scratch.iter().any(|s| s.lock_ignored) {
+        // Straight to stderr, past the test harness's capture, so a passing run still lists it.
+        let _ = writeln!(std::io::stderr(), "skipped the unreadable-item case: this account lists folders whatever their permissions");
+        expected.insert("an_unreadable_item_carries_its_error_and_the_rest_of_the_listing_returns");
+    }
     assert_eq!(skipped, expected, "{listing:#?}");
 }
 
