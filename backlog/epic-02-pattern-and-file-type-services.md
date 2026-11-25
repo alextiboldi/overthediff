@@ -63,8 +63,9 @@ As a developer on the product team, I can match names, text and file types throu
 - [ ] **Fallback.** A file that matches no format resolves by content: text-like content gets the built-in catch-all Text format, and binary content gets the Hex kind when one is registered, otherwise Text (*inferred*, confirmed in T7).
 
 #### Tasks
-- **E02-S1-T1** — Wildcard matcher for `?`, `*`, sets, ranges, negation, `[[]`, `*.*` and `*.` · size: M · depends: — · flags: `craft-libs`
+- **E02-S1-T1** — Wildcard matcher for `?`, `*`, sets, ranges, negation, `[[]`, `*.*` and `*.` · size: M · depends: — · flags: `craft-libs` · status: done
   - AC: a conformance table of mask × name pairs from A.1 passes, including names with no extension and names with several periods.
+  - Implemented: `Wildcard::new(mask, case)` and `Wildcard::matches(name)` in the new UI-free crate `crates/mask` (`otd-mask`, no dependencies), with the caller's `Case` and `WildcardError` for unclosed and empty sets; the A.1 conformance table, case, period-set and error tests and a hostile-input sweep are in `crates/mask/tests/it/`. Checks: `cargo xtask ci` on macOS and pull-request CI on Linux and macOS passed. craft-libs follow-up: #4. Pull request: https://github.com/alextiboldi/overthediff/pull/6
 - **E02-S1-T2** — Mask-list evaluation over tree paths: include/exclude, folder masks, relative masks, base folder always included · size: M · depends: E02-S1-T1 · flags: `craft-libs`
   - AC: the seven catalogue examples give the specified results on a sample tree that has nested `Windows` and `Backup` folders.
 - **E02-S1-T3** — Regex engine meeting A.2: escapes, classes, alternation, anchors, quantifiers, groups, backreferences, `(?i)` scoping, line-by-line matching · size: M · depends: — · flags: `licence-check`, `craft-libs`
