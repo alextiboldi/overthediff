@@ -81,9 +81,10 @@ OverTheDiff is a desktop tool for Windows, macOS and Linux that compares text, f
 ### Layout
 
 - `Cargo.toml`: the workspace. Members are the globs `apps/*`, `crates/*` and `xtask`, so a new crate joins without editing it. Workspace crates depend on each other by relative `path` in their own manifest (`otd-core = { path = "../../crates/core" }`), not through `[workspace.dependencies]`. Lints, `rustfmt.toml` and `clippy.toml` apply to every crate (`[lints] workspace = true`).
-- `apps/otd`: the desktop app, package and executable `otd`. All egui, eframe and winit code lives under `apps/`: the window, menus, toolbars, shortcuts and painting. `otd-cli` (E28-S1) goes in `apps/otd-cli`.
+- `apps/otd`: the desktop app, package and executable `otd`. `otd-cli` (E28-S1) goes in `apps/otd-cli`. The app is built without eframe's `default_fonts`: the first task that draws text enables it and adds egui's font notices to `NOTICE` and `ATTRIBUTION.md`.
+- egui, eframe and winit code (the window, menus, toolbars, shortcuts, views and painting) lives in `apps/` or in UI library crates named `crates/ui` or `crates/ui-<name>` (`otd-ui`, `otd-ui-<name>`). A UI library crate is what a UI integration test links, since an app crate has only a binary.
 - `crates/core` (`otd-core`): the UI-free platform library. E01-S1 puts here what must run without a window: the command registry (stable ids, typed arguments, results, run by id) and the colour-role table (each role's light and dark values). The app binds commands to menus, toolbars and shortcuts and paints with the roles.
-- `crates/<name>` (`otd-<name>`): engines (E03), data sources (E04), pattern and file-type services (E02) and other UI-free libraries each get a crate of their own here. Nothing under `crates/` may depend on egui, eframe, epaint, emath or winit; `cargo xtask ui-free` fails if one does, so their suites run headlessly.
+- `crates/<name>` (`otd-<name>`): engines (E03), data sources (E04), pattern and file-type services (E02) and other UI-free libraries each get a crate of their own here. Nothing under `crates/` except `crates/ui` and `crates/ui-*` may depend on egui, eframe, epaint, emath or winit; `cargo xtask ui-free` fails if one does, so their suites run headlessly.
 - `xtask`: workspace tooling, `cargo xtask <command>` (standard library only).
 - `backlog/PRD.md`: the readable summary: users, capabilities, releases, non-functional requirements, non-goals and open decisions.
 - `backlog/00-index.md`: epics, the release plan layer by layer, hub surfaces, open questions with proposed defaults, the roadmap, assumptions and traceability. Before you add, change or build a story, read its "How to read this backlog": IDs, priority vs layer, the independence rule and the Definition of Done.
@@ -93,7 +94,7 @@ OverTheDiff is a desktop tool for Windows, macOS and Linux that compares text, f
 
 - Unit tests sit beside the code in `#[cfg(test)] mod tests`.
 - Integration tests: one binary per crate, `tests/it/main.rs`, with a module per area (`tests/it/<area>.rs`).
-- UI tests drive the app by keyboard and read its accessibility tree with egui_kittest, in `apps/otd/tests/it/`. Hostile-input sweeps use craft-testkit's `hostile` module. E27-S1-T3 adds both and describes them here.
+- UI tests drive the app by keyboard and read its accessibility tree with egui_kittest, in the `tests/it/` of the UI crate they test. Hostile-input sweeps use craft-testkit's `hostile` module. E27-S1-T3 adds both and describes them here.
 
 ### Conventions
 
@@ -118,11 +119,11 @@ A task whose tests or review won't pass after two different fixes stays open as 
 
 Run them from the workspace root.
 
-- `cargo xtask ci` is the whole gate, and the command CI runs. It stops at the first failure:
+- `cargo xtask ci` is the whole gate. It is the command the suite's shared gate workflow (storytold/craft-common-actions) runs by default; E27-S1-T2 adds that CI. It stops at the first failure:
   - `cargo fmt --all -- --check`;
   - `cargo clippy --workspace --all-targets --locked -- -D warnings`;
   - `cargo test --workspace --locked`;
-  - `cargo xtask ui-free`: no crate under `crates/` depends on a UI package.
+  - `cargo xtask ui-free`: no crate under `crates/`, except `crates/ui` and `crates/ui-*`, depends on a UI package.
 - While iterating, run `cargo test -p <crate>` and `cargo clippy -p <crate> --all-targets -- -D warnings` for the crates you changed. Run `cargo xtask ci` before every push.
 - `Cargo.lock` is committed; the checks run with `--locked`, so commit the lock file with any dependency change.
 - Only the local platform builds locally. For `cfg(windows)` code, `cargo check --target x86_64-pc-windows-msvc -p <crate>` catches most errors.

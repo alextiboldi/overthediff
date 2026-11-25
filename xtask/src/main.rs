@@ -9,11 +9,12 @@ usage: cargo xtask <command>
 
 commands:
   ci       fmt --check, clippy -D warnings, test, ui-free (stops at the first failure)
-  ui-free  check that no crate under crates/ pulls in egui, eframe or winit
+  ui-free  check that no crate under crates/, except crates/ui and crates/ui-*, pulls in egui, eframe or winit
 ";
 
-/// Package-name prefixes that mark a UI dependency. Crates under `crates/` must not reach any of
-/// them through normal dependencies, so engines, data sources and pattern services test headlessly.
+/// Package-name prefixes that mark a UI dependency. Crates under `crates/`, except the UI crates
+/// `crates/ui` and `crates/ui-*`, must not reach any of them through normal dependencies, so engines,
+/// data sources and pattern services test headlessly.
 const UI_PREFIXES: [&str; 5] = ["egui", "eframe", "epaint", "emath", "winit"];
 
 fn main() -> ExitCode {
@@ -63,14 +64,17 @@ fn ci() -> Result<(), String> {
     Ok(())
 }
 
-/// Fails if any crate under `crates/` has a UI package in its normal dependency tree, on any target.
+/// Fails if any crate under `crates/`, except `crates/ui` and `crates/ui-*`, has a UI package in its
+/// normal dependency tree, on any target.
 fn ui_free() -> Result<(), String> {
     let dir = root().join("crates");
     let entries = std::fs::read_dir(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let mut offenders = Vec::new();
     for entry in entries {
-        let manifest = entry.map_err(|e| format!("{}: {e}", dir.display()))?.path().join("Cargo.toml");
-        if !manifest.is_file() {
+        let path = entry.map_err(|e| format!("{}: {e}", dir.display()))?.path();
+        let manifest = path.join("Cargo.toml");
+        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        if name == "ui" || name.starts_with("ui-") || !manifest.is_file() {
             continue;
         }
         let manifest = manifest.to_string_lossy().into_owned();
@@ -88,9 +92,9 @@ fn ui_free() -> Result<(), String> {
         }
     }
     if offenders.is_empty() {
-        eprintln!("ui-free: no crate under crates/ depends on a UI package");
+        eprintln!("ui-free: no crate under crates/, except crates/ui and crates/ui-*, depends on a UI package");
         Ok(())
     } else {
-        Err(format!("UI dependencies in crates/ (UI code belongs in apps/):\n  {}", offenders.join("\n  ")))
+        Err(format!("UI dependencies in crates/ (UI code belongs in apps/, crates/ui or crates/ui-*):\n  {}", offenders.join("\n  ")))
     }
 }
