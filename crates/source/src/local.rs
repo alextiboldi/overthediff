@@ -176,9 +176,35 @@ fn on_network_share(path: &Path) -> bool {
     /// `statfs` magic numbers (`<linux/magic.h>` and the file systems' own headers): NFS, SMB,
     /// CIFS, SMB2, AFS, Coda, NCP and 9P.
     const NETWORK: [u32; 8] = [0x6969, 0x517B, 0xFF53_4D42, 0xFE53_4D42, 0x5346_414F, 0x7375_7245, 0x564C, 0x0102_1997];
+    /// FUSE, which serves desktop `smb://` mounts (GVFS), sshfs and rclone, and also local disks
+    /// through `fuseblk` (ntfs-3g, exFAT).
+    const FUSE: u32 = 0x6573_5546;
     // The magic numbers are 32-bit; the field is wider on 64-bit targets.
-    let network = |info: rustix::fs::StatFs| NETWORK.contains(&(info.f_type as u32));
-    rustix::fs::statfs(path).map_or(true, network)
+    match rustix::fs::statfs(path).map(|info| info.f_type as u32) {
+        Ok(FUSE) => {
+            use std::os::unix::fs::MetadataExt;
+            // ponytail: every FUSE mount but a block device counts as a share, so a local FUSE
+            // overlay (bindfs, encfs) gets no recycle bin either; name them if that matters.
+            let fstype = fs::metadata(path).ok().and_then(|meta| {
+                let mountinfo = fs::read_to_string("/proc/self/mountinfo").ok()?;
+                mount_fstype(&mountinfo, meta.dev()).map(str::to_owned)
+            });
+            fstype.as_deref() != Some("fuseblk")
+        }
+        Ok(magic) => NETWORK.contains(&magic),
+        Err(_) => true,
+    }
+}
+
+/// The file-system type `/proc/self/mountinfo` gives the mount with device `dev`: the field after
+/// the ` - ` separator, matched on the third field, `major:minor`.
+#[cfg(target_os = "linux")]
+fn mount_fstype(mountinfo: &str, dev: u64) -> Option<&str> {
+    let id = format!("{}:{}", rustix::fs::major(dev), rustix::fs::minor(dev));
+    mountinfo.lines().find_map(|line| {
+        let (fields, rest) = line.split_once(" - ")?;
+        if fields.split(' ').nth(2)? == id { rest.split(' ').next() } else { None }
+    })
 }
 
 /// UNC paths (`\\server\share\…`). A mapped drive is expected to resolve to one through
@@ -341,5 +367,16 @@ mod tests {
         let Some(Attributes::Unix { owner, group, .. }) = item.attributes else { panic!("{item:?}") };
         assert_eq!(Some(owner.as_str()), uzers::get_current_username().as_deref().and_then(|n| n.to_str()));
         assert!(group.parse::<u32>().is_err(), "group {group} is a number, not a name");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_mount_is_found_by_its_device() {
+        let mountinfo = "22 1 8:1 / / rw - ext4 /dev/sda1 rw\n\
+            40 22 0:45 / /run/user/1000/gvfs rw,nosuid - fuse.gvfsd-fuse gvfsd-fuse rw\n\
+            41 22 8:17 / /media/usb rw - fuseblk /dev/sdb1 rw\n";
+        assert_eq!(mount_fstype(mountinfo, rustix::fs::makedev(0, 45)), Some("fuse.gvfsd-fuse"));
+        assert_eq!(mount_fstype(mountinfo, rustix::fs::makedev(8, 17)), Some("fuseblk"));
+        assert_eq!(mount_fstype(mountinfo, rustix::fs::makedev(9, 9)), None);
     }
 }
