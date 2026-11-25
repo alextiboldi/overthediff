@@ -71,7 +71,9 @@ OverTheDiff is a desktop tool for Windows, macOS and Linux that compares text, f
 - Rule 9: when a task needs a pull request in craft-libs, defer it to a new ticket. The ticket explains why the pull request is needed and links the original task, and the pull request is raised from it later. Meanwhile the task does what it can inside OverTheDiff.
 - Rule 10: craft-libs crates come from `rev = "2c81ed850319ef3504ce56d82379b346522af18e"` (storytold/craft-libs `main`, 2026-11-25), written as `{ git = "https://github.com/storytold/craft-libs", rev = "..." }`. The egui family (0.37) is patched onto storytold/egui `6d518fc799681571963842f95b55a6b68431b15a` and winit onto storytold/winit `a517b3846ee8457d84ee4975110bfda6797c44dc`, in the root `Cargo.toml`'s `[patch.crates-io]`: the same revisions craft-libs uses.
 - Rule 11: the Webpages panel (E07-S21, E24-S6) shows rendered web pages, which needs a webview. That departure is open; settle it before those stories start.
-- Rule 13: no module may use `unsafe` yet (`unsafe_code = "deny"` in the workspace). A change that needs it names its module here.
+- Rule 13: `unsafe_code = "deny"` in the workspace, and only these modules may `allow(unsafe_code)`. A change that needs another names its module here.
+  - `crates/source/src/volume.rs`, module `windows`: asks Windows for a volume's file system and read-only flag (`GetVolumeInformationByHandleW`), which std and safe crates don't offer.
+  - `crates/source/src/volume.rs`, module `macos`: asks macOS whether a volume's names differ by case (`pathconf` with `_PC_CASE_SENSITIVE`), which std and rustix don't offer.
 - Rule 14: the command registry, colour roles and running commands without the window are E01-S1's. The automation interface is E28: `otd-cli` (E28-S1) and the MCP agent entry point (E28-S2, rule 18). The command line (E11) and scripting (E20) are product features, separate from it.
 - Rule 16: user-facing text goes through the translation system; E01-S1 owns the lookup. Translating it is outside this backlog (PRD non-goals); craft-i18n adds translations.
 - Rule 19: there is no progress log yet.

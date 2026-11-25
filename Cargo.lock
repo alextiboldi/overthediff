@@ -2325,10 +2325,13 @@ name = "otd-source"
 version = "0.1.0"
 dependencies = [
  "craft-atomic",
+ "craft-testkit",
+ "libc",
  "rustix 1.1.6",
  "tempfile",
  "trash",
  "uzers",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

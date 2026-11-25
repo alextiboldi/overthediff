@@ -244,3 +244,77 @@ fn a_network_path_has_no_recycle_bin_and_a_recycle_bin_delete_keeps_the_file() {
     assert_eq!(result.map_err(|e| e.kind), Err(ErrorKind::Unsupported));
     assert!(root.join("a.txt").exists());
 }
+
+/// A disk image formatted with `file_system`, attached at a temporary mount point and detached
+/// when dropped. hdiutil needs no root, so these run on every Mac, CI included. Each takes about
+/// a second, most of it hdiutil's.
+#[cfg(target_os = "macos")]
+struct Volume {
+    mount: std::path::PathBuf,
+    _dir: TempDir,
+}
+
+#[cfg(target_os = "macos")]
+impl Volume {
+    fn attach(file_system: &str, read_only: bool) -> Self {
+        let dir = TempDir::new().unwrap();
+        let (image, mount) = (dir.path().join("volume.dmg"), dir.path().join("mount"));
+        let mut create = hdiutil(&["create", "-size", "4m", "-fs", file_system, "-layout", "NONE"]);
+        assert!(create.arg(&image).status().unwrap().success(), "hdiutil create -fs {file_system}");
+        fs::create_dir(&mount).unwrap();
+        let mut attach = hdiutil(&["attach", "-nobrowse", "-noverify", "-mountpoint"]);
+        attach.arg(&mount).arg(&image);
+        if read_only {
+            attach.arg("-readonly");
+        }
+        assert!(attach.status().unwrap().success(), "hdiutil attach {file_system}");
+        Self { mount, _dir: dir }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn hdiutil(args: &[&str]) -> std::process::Command {
+    let mut command = std::process::Command::new("hdiutil");
+    command.args(args).stdout(std::process::Stdio::null());
+    command
+}
+
+#[cfg(target_os = "macos")]
+impl Drop for Volume {
+    fn drop(&mut self) {
+        let _ = hdiutil(&["detach", "-force"]).arg(&self.mount).status();
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn a_read_only_fat_volume_reports_two_second_times_and_read_only() {
+    let volume = Volume::attach("MS-DOS", true);
+    let caps = LocalSource::new(&volume.mount).capabilities();
+    assert!(caps.read_only && !caps.case_sensitive && caps.timestamp_resolution == std::time::Duration::from_secs(2), "{caps:?}");
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn a_case_sensitive_volume_reports_case_sensitive_names() {
+    // Empty, as a fresh sync or copy target is: there is no name in it to probe.
+    let volume = Volume::attach("Case-sensitive HFS+", false);
+    let caps = LocalSource::new(&volume.mount).capabilities();
+    assert!(caps.case_sensitive && !caps.read_only, "{caps:?}");
+}
+
+/// Windows shares every drive as an administrative share, so a temporary folder can be reached
+/// through a UNC path (`\\localhost\C$\…`) without setting a share up.
+#[cfg(windows)]
+#[test]
+fn a_folder_reached_through_a_unc_path_lists_and_reports_its_volume() {
+    let dir = TempDir::new().unwrap();
+    fs::write(dir.path().join("a.txt"), "a").unwrap();
+    let local = dir.path().to_str().unwrap();
+    let (drive, rest) = local.split_once(':').unwrap();
+    let source = LocalSource::open(&format!(r"\\localhost\{drive}${rest}")).unwrap();
+    let names: Vec<_> = source.list(Path::new(""), Links::Report).unwrap().into_iter().map(|item| item.name).collect();
+    assert_eq!(names, ["a.txt"]);
+    // The share's file system answered, so the resolution isn't the "exact" fallback.
+    assert!(!source.capabilities().timestamp_resolution.is_zero(), "{:?}", source.capabilities());
+}

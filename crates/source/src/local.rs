@@ -7,24 +7,32 @@
 use std::fs::{self, Metadata};
 use std::io::{self, Read};
 use std::path::{Component, Path, PathBuf};
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 use crate::memory::segments;
+use crate::volume;
 use crate::{Attributes, Capabilities, DataSource, Delete, ErrorKind, Item, ItemKind, Links, Permissions, SourceError};
 
 /// A folder on a local disk or a mounted share, as a source. Contract paths resolve below it.
 #[derive(Debug, Clone)]
 pub struct LocalSource {
     root: PathBuf,
-    recycle_bin: bool,
+    /// The root's volume's, found once (E04-S1-T5).
+    capabilities: Capabilities,
 }
 
 impl LocalSource {
     /// A source rooted at `root`, a folder path in the OS's own syntax.
     pub fn new(root: impl Into<PathBuf>) -> Self {
         let root = root.into();
-        let recycle_bin = !on_network_share(&root);
-        Self { root, recycle_bin }
+        let capabilities = Capabilities { recycle_bin: !on_network_share(&root), ..volume::capabilities(&root) };
+        Self { capabilities, root }
+    }
+
+    /// A source rooted at a path as people write it: an OS path, `~/…`, or
+    /// `smb://[user@]server/share/…` for a share the OS has mounted.
+    pub fn open(path: &str) -> Result<Self, SourceError> {
+        Ok(Self::new(volume::resolve(path)?))
     }
 
     /// The OS path for a contract path. `..` and absolute paths are not found.
@@ -238,16 +246,7 @@ fn to_recycle_bin(path: &Path) -> Result<(), trash::Error> {
 
 impl DataSource for LocalSource {
     fn capabilities(&self) -> Capabilities {
-        Capabilities {
-            read_only: false,
-            // ponytail: the OS's usual default (APFS and NTFS ignore case, Linux file systems
-            // don't); E04-S1-T5 detects it, and the timestamp resolution, per volume.
-            case_sensitive: cfg!(not(any(windows, target_os = "macos"))),
-            recycle_bin: self.recycle_bin,
-            timestamp_resolution: Duration::ZERO,
-            windows_attributes: false,
-            unix_permissions: false,
-        }
+        self.capabilities
     }
 
     fn list(&self, folder: &Path, links: Links) -> Result<Vec<Item>, SourceError> {
@@ -313,7 +312,7 @@ impl DataSource for LocalSource {
             Delete::Permanently => remove_entry(&full, &meta),
             Delete::ToRecycleBin => {
                 // A share can be mounted below a local root, so the item's own folder decides.
-                if !self.recycle_bin || full.parent().is_none_or(on_network_share) {
+                if !self.capabilities.recycle_bin || full.parent().is_none_or(on_network_share) {
                     return Err(SourceError::new(ErrorKind::Unsupported, format!("the recycle bin is unavailable for {}", full.display())));
                 }
                 return to_recycle_bin(&full)
