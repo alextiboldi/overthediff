@@ -107,8 +107,9 @@ As a developer on the product team, I can hand the engine two folder sources and
 - [ ] **Selection resolution.** A selected folder resolves to its visible contents. An open folder plus some of its children resolves to those children only. Results are per side.
 
 #### Tasks
-- **E03-S2-T1** — In-memory data source implementing the E04 contract, used as the engine's test fixture · size: S · depends: —
+- **E03-S2-T1** — In-memory data source implementing the E04 contract, used as the engine's test fixture · size: S · depends: — · status: done
   - AC: fixtures can declare trees with sizes, times, links and unreadable items. The in-memory source satisfies the written E04 contract for the operations the engine uses (list, stat, read, source-provided CRC), checked by this story's own cases.
+  - Implemented: the new UI-free crate `crates/folder-engine` (`otd-folder-engine`, depending only on `otd-source`) uses `otd_source::MemorySource` unchanged as the engine's fixture; its builder already declares sizes, times, links, unreadable items, source-provided CRCs and containers, so no second contract was defined. `crates/folder-engine/tests/it/fixture.rs` runs the E04 contract suite's listing and read cases on both case rules, checks that an unreadable file lists with its access-denied message and refuses reading while its neighbours read, and checks that a declared CRC lists as declared even when it disagrees with the content. Checks: `cargo xtask ci` on macOS and pull-request CI on Linux and macOS passed; no `cfg(windows)` code, so the Windows matrix was not run. Pull request: https://github.com/alextiboldi/overthediff/pull/23
 - **E03-S2-T2** — Tree scanning on demand and in the background, with progress events and scan states · size: M · depends: E03-S2-T1
   - AC: opening a folder scans it first. Background scanning completes the rest of the tree. Scan states move from unscanned through pending to done.
 - **E03-S2-T3** — Name alignment per folder using the source's case sensitivity, plus orphans · size: S · depends: E03-S2-T1
