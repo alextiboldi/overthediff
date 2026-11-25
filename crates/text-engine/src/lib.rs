@@ -6,7 +6,9 @@
 //! nearest point where both sides agree again for [`RUN`] lines (or both end together), so a common
 //! line such as a blank or a closing brace doesn't pull the alignment off course. Between two such
 //! points it pairs single matching lines, nearest first, and pairs whatever is left over as changed
-//! lines from the top, with the surplus on one side against gaps.
+//! lines from the top, with the surplus on one side against gaps. Of two equally near points, the
+//! one where the sides agree for longer wins, so a single edit aligns the same way whichever file
+//! is on which side.
 //!
 //! Lines align on their text. A pair whose text matches but whose ending differs is a changed row.
 
@@ -82,8 +84,8 @@ pub fn compare(left: &[Line], right: &[Line]) -> Comparison {
         if i == l.len() && j == r.len() {
             break;
         }
-        let (ai, aj) = index.next_anchor(&l, i, j).unwrap_or((l.len(), r.len()));
-        fill_hunk(&mut out, &l, &index, i..ai, j..aj);
+        let (ai, aj) = index.next_anchor(&l, &r, i, j).unwrap_or((l.len(), r.len()));
+        fill_hunk(&mut out, (&l, &r), &index, i..ai, j..aj);
         (i, j) = (ai, aj);
     }
     let sections = sections(&out.rows);
@@ -124,44 +126,52 @@ impl Index {
         Self { lines, runs }
     }
 
-    /// The nearest point at or after `(i, j)`, by lines skipped on both sides together, where a run
-    /// of [`RUN`] lines matches. Ties go to the point that skips fewer left lines.
-    ///
-    /// The search stops once skipping more left lines can't beat the best point, so its cost
-    /// follows the number of lines the anchor skips.
-    fn next_anchor(&self, left: &[u32], i: usize, j: usize) -> Option<(usize, usize)> {
-        let mut best: Option<(usize, usize, usize)> = None;
-        for p in i..left.len() {
-            if best.is_some_and(|(cost, _, _)| p - i >= cost) {
-                break;
-            }
-            let Some(q) = self.runs.get(&run_at(left, p)).and_then(|at| first_from(at, j)) else { continue };
-            let cost = (p - i) + (q - j);
-            if best.is_none_or(|(c, _, _)| cost < c) {
-                best = Some((cost, p, q));
-            }
-        }
-        best.map(|(_, p, q)| (p, q))
+    /// The nearest point at or after `(i, j)` where a run of [`RUN`] lines matches.
+    fn next_anchor(&self, left: &[u32], right: &[u32], i: usize, j: usize) -> Option<(usize, usize)> {
+        nearest(left, right, i, j, |p| self.runs.get(&run_at(left, p)).and_then(|at| first_from(at, j)))
     }
 
-    /// The nearest single matching line inside `left` × `right`, measured the same way.
-    fn next_match(&self, ids: &[u32], left: Range<usize>, right: Range<usize>) -> Option<(usize, usize)> {
-        let mut best: Option<(usize, usize, usize)> = None;
-        for p in left.clone() {
-            if best.is_some_and(|(cost, _, _)| p - left.start >= cost) {
-                break;
-            }
-            let id = ids.get(p)?;
-            let Some(q) = self.lines.get(id).and_then(|at| first_from(at, right.start)).filter(|&q| q < right.end) else {
-                continue;
-            };
-            let cost = (p - left.start) + (q - right.start);
-            if best.is_none_or(|(c, _, _)| cost < c) {
-                best = Some((cost, p, q));
-            }
-        }
-        best.map(|(_, p, q)| (p, q))
+    /// The nearest single matching line inside `left` × `right`, with the sides agreeing only up to
+    /// the ends of those ranges.
+    fn next_match(&self, ids: (&[u32], &[u32]), left: Range<usize>, right: Range<usize>) -> Option<(usize, usize)> {
+        let (l, r) = (ids.0.get(..left.end).unwrap_or_default(), ids.1.get(..right.end).unwrap_or_default());
+        nearest(l, r, left.start, right.start, |p| {
+            let id = l.get(p)?;
+            self.lines.get(id).and_then(|at| first_from(at, right.start)).filter(|&q| q < right.end)
+        })
     }
+}
+
+/// The nearest point `(p, q)` at or after `(i, j)`, by lines skipped on both sides together, where
+/// `find(p)` gives the first right line at or after `j` that matches from left line `p`. Of equally
+/// near points, the one where the sides then agree for longer wins, rather than whichever sits on
+/// the left; the earlier left line wins a full tie.
+///
+/// The search stops once skipping more left lines can't match the best point, so its scan follows
+/// the number of lines the point skips.
+fn nearest(left: &[u32], right: &[u32], i: usize, j: usize, find: impl Fn(usize) -> Option<usize>) -> Option<(usize, usize)> {
+    let mut best: Option<(usize, usize, usize)> = None;
+    for p in i..left.len() {
+        if best.is_some_and(|(cost, _, _)| p - i > cost) {
+            break;
+        }
+        let Some(q) = find(p) else { continue };
+        let cost = (p - i) + (q - j);
+        // ponytail: a tie measures both agreements in full. Long ties need periodic text, and the
+        // winner's agreement is consumed next, so the extra work is ties × that agreement.
+        let wins = best.is_none_or(|(c, bp, bq)| cost < c || (cost == c && agreement(left, right, p, q) > agreement(left, right, bp, bq)));
+        if wins {
+            best = Some((cost, p, q));
+        }
+    }
+    best.map(|(_, p, q)| (p, q))
+}
+
+/// How many lines agree from left `p` and right `q` on, plus one when both sides then end together.
+fn agreement(left: &[u32], right: &[u32], p: usize, q: usize) -> usize {
+    let (l, r) = (left.get(p..).unwrap_or_default(), right.get(q..).unwrap_or_default());
+    let same = l.iter().zip(r).take_while(|(a, b)| a == b).count();
+    same + usize::from(same == l.len() && same == r.len())
 }
 
 /// The ids of the [`RUN`] lines starting at `p`, padded with [`END`] past the end.
@@ -176,7 +186,7 @@ fn first_from(positions: &[usize], from: usize) -> Option<usize> {
 
 /// Aligns the lines between two anchors: single matching lines pair up, nearest first, and the
 /// lines between them pair as changed rows.
-fn fill_hunk(out: &mut Rows<'_>, ids: &[u32], index: &Index, mut left: Range<usize>, mut right: Range<usize>) {
+fn fill_hunk(out: &mut Rows<'_>, ids: (&[u32], &[u32]), index: &Index, mut left: Range<usize>, mut right: Range<usize>) {
     while let Some((p, q)) = index.next_match(ids, left.clone(), right.clone()) {
         out.unmatched(left.start..p, right.start..q);
         out.pair(p, q);

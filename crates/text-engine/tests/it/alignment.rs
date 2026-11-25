@@ -107,6 +107,20 @@ const CORPUS: &[Case] = &[
         sections: 3,
     },
     Case {
+        name: "a line deleted among alternating lines",
+        left: &["h", "y", "x", "y", "x", "y", "t"],
+        right: &["h", "x", "y", "x", "y", "t"],
+        expect: Expect::Rows(&["h", "y <", "x", "y", "x", "y", "t"]),
+        sections: 1,
+    },
+    Case {
+        name: "a deletion next to a change",
+        left: &["h1", "h2", "h3", "}", "b", "}", "c", "t1", "t2", "t3"],
+        right: &["h1", "h2", "h3", "b", "}", "x", "t1", "t2", "t3"],
+        expect: Expect::Rows(&["h1", "h2", "h3", "} <", "b", "}", "c ~ x", "t1", "t2", "t3"]),
+        sections: 2,
+    },
+    Case {
         // Either copy can be the one against a gap; only the shape is fixed.
         name: "a repeated line removed",
         left: &["x", "x", "x"],
@@ -205,4 +219,24 @@ fn lines_align_on_their_text_and_a_different_line_ending_makes_the_row_changed()
     use RowKind::{Changed, RightOnly};
     assert_eq!(kinds, [Changed, Changed, RightOnly, Changed, Changed]);
     assert_eq!(c.rows.get(2).and_then(|r| r.right), Some(2), "the inserted line is the one against the gap");
+}
+
+#[test]
+fn one_deleted_line_among_repeated_lines_is_one_gap_either_way_round() {
+    let mut texts: Vec<Vec<&str>> = vec![vec![]];
+    for len in 1..=8 {
+        let shorter: Vec<Vec<&str>> = texts.iter().filter(|t| t.len() == len - 1).cloned().collect();
+        texts.extend(shorter.into_iter().flat_map(|t| ["x", "y"].map(|s| [t.as_slice(), &[s]].concat())));
+    }
+    for full in &texts {
+        for k in 0..full.len() {
+            let mut cut = full.clone();
+            cut.remove(k);
+            for (left, right) in [(side(full), side(&cut)), (side(&cut), side(full))] {
+                let c = compare(&left, &right);
+                let same = c.rows.iter().filter(|r| r.kind == RowKind::Same).count();
+                assert!(same == cut.len() && c.sections.len() == 1, "{full:?} without line {k}: {:?}", picture(&c, &left, &right));
+            }
+        }
+    }
 }
