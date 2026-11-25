@@ -5,6 +5,8 @@
 //! tab. A launch-argument handler opens a view with [`Shell::open`]. The shell draws the status
 //! bar from the active view's [`Status`] (the Q25 field model in E01-S1); views never draw it.
 
+pub mod colour;
+
 use std::time::Duration;
 
 use egui::accesskit::{Live, Role};
