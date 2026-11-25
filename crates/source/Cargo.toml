@@ -1,0 +1,13 @@
+[package]
+name = "otd-source"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "OverTheDiff's data-source contract, its in-memory reference source and the contract suite every provider runs"
+
+[lints]
+workspace = true
+
+# Standard library only, and no UI dependency (`cargo xtask ui-free`).
+[dependencies]
