@@ -55,7 +55,7 @@ fn walk(rows: &[Row], side: TreeSide, at: &Path, path: &Path, selected: &[&Path]
             }
         } else if selected.iter().any(|s| s.strip_prefix(&at).is_ok_and(|below| names_row(&row.children, below))) {
             walk(&row.children, side, &at, &path, selected, out);
-        } else {
+        } else if selected.contains(&at.as_path()) {
             contents(row, side, &path, out);
         }
     }

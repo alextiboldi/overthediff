@@ -100,3 +100,14 @@ fn a_selected_path_that_names_no_row_does_not_open_its_folder() {
     let stale = resolve_selection(&rows, TreeSide::Left, &[Path::new("d"), Path::new("d/gone.txt"), Path::new("d/sub/gone")]);
     assert_eq!(paths(&stale), paths(&closed));
 }
+
+/// A stale path alone, below a folder nobody selected, resolves to nothing, not to that folder's
+/// contents.
+#[test]
+fn a_selection_of_only_paths_that_name_no_row_resolves_to_nothing() {
+    let rows = rows(tree(), tree(), true, &all);
+    for stale in ["d/gone.txt", "d/sub/gone", "gone/x"] {
+        let resolved = resolve_selection(&rows, TreeSide::Left, &[Path::new(stale)]);
+        assert!(resolved.items.is_empty(), "{stale} resolved to {:?}", paths(&resolved));
+    }
+}
