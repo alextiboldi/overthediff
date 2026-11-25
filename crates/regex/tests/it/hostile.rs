@@ -17,3 +17,12 @@ fn damaged_patterns_never_panic_or_hang() {
         }
     });
 }
+
+#[test]
+fn damaged_templates_never_panic() {
+    let regex = Regex::new(r"(\w)(☺)?").unwrap_or_else(|e| panic!("the pattern compiles: {e}"));
+    let seed = "x$1é$$9$0☺$2$";
+    hammer(&HammerConfig::new("replacement templates", 2_000), seed.as_bytes(), move |data| {
+        drop(regex.replace("a☺b\nc", &String::from_utf8_lossy(data)));
+    });
+}

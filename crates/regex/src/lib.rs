@@ -16,6 +16,10 @@
 //!
 //! A text is matched one line at a time: lines end at `\n`, `\r\n` or `\r`, and no match spans a
 //! line break, so a pattern containing `\n` never matches.
+//!
+//! A replacement template is plain text in which `$1`…`$9` stand for the match's groups. A group
+//! the pattern lacks, or one that took no part in the match, inserts nothing. Any other `$` is
+//! itself, so `$0` and `$$` stay as written and `$12` is group 1 followed by `2`.
 
 use std::fmt;
 use std::ops::Range;
@@ -75,6 +79,26 @@ impl Match {
     pub fn group(&self, n: usize) -> Option<Range<usize>> {
         self.groups.get(n.checked_sub(1)?).cloned().flatten()
     }
+
+    /// `template` with `$1`…`$9` replaced by this match's groups. `text` is the text the match
+    /// was found in.
+    pub fn expand(&self, text: &str, template: &str) -> String {
+        let mut out = String::with_capacity(template.len());
+        let mut rest = template;
+        while let Some(at) = rest.find('$') {
+            out.push_str(&rest[..at]);
+            rest = &rest[at + 1..];
+            match rest.as_bytes().first() {
+                Some(&digit @ b'1'..=b'9') => {
+                    out.push_str(self.group(usize::from(digit - b'0')).and_then(|group| text.get(group)).unwrap_or_default());
+                    rest = &rest[1..];
+                }
+                _ => out.push('$'),
+            }
+        }
+        out.push_str(rest);
+        out
+    }
 }
 
 impl Regex {
@@ -102,6 +126,21 @@ impl Regex {
             failed = next.is_err();
             Some(next)
         })
+    }
+
+    /// `text` with every match replaced by `template` expanded for it ([`Match::expand`]); the
+    /// rest of the text, line breaks included, stays as it was.
+    pub fn replace(&self, text: &str, template: &str) -> Result<String, RegexError> {
+        let mut out = String::with_capacity(text.len());
+        let mut kept = 0;
+        for found in self.matches(text) {
+            let found = found?;
+            out.push_str(&text[kept..found.range.start]);
+            out.push_str(&found.expand(text, template));
+            kept = found.range.end;
+        }
+        out.push_str(&text[kept..]);
+        Ok(out)
     }
 
     pub fn is_match(&self, text: &str) -> Result<bool, RegexError> {
