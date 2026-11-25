@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
-use otd_folder_engine::{Folder, ScanState, TreeScan, align};
+use otd_folder_engine::{Criteria, Folder, ScanState, TreeScan, align, quick_test};
 use otd_source::{Capabilities, Item, ItemKind, MemorySource};
 
 fn path(names: &[&str]) -> PathBuf {
@@ -121,4 +121,36 @@ fn an_expanded_container_aligns_with_a_folder_and_its_children_pair_up_like_a_fo
         [("a.txt".to_owned(), file, None), ("b.txt".to_owned(), file, file), ("c.txt".to_owned(), None, file)],
         "the container's children pair with the folder's and leave orphans"
     );
+}
+
+#[test]
+fn an_unopened_container_pair_gets_a_files_status_and_an_expanded_one_a_folders() {
+    let criteria = Criteria { size: true, modified: true, tolerance: Duration::from_secs(2) };
+    // Right-side content and time against the left's "ab" at 10 s: different size, newer, within tolerance.
+    let mut seen = Vec::new();
+    for (content, time) in [("abc", 10), ("ab", 20), ("ab", 11)] {
+        let side = |content: &str, time: u64| {
+            let spec =
+                source().container("pack", content, at(time)).file("pack/x.txt", "x", at(1)).file("plain", content, at(time)).folder("dir", at(time));
+            TreeScan::new(Arc::new(spec), "", false).0
+        };
+        let (left, right) = (side("ab", 10), side(content, time));
+        let status = |name: &str| {
+            let items = |scan: &TreeScan| scan.folder(Path::new("")).map(|f| f.items).unwrap_or_default();
+            let row = align(items(&left), items(&right), true).into_iter().find(|row| row.name == name).expect("the row is aligned");
+            quick_test(&row, &criteria)
+        };
+        for scan in [&left, &right] {
+            while scan.step() {}
+        }
+        assert_eq!(status("pack"), status("plain"), "unopened, {content} at {time}");
+        seen.push(status("pack"));
+        for scan in [&left, &right] {
+            scan.open(Path::new("pack"));
+            while scan.step() {}
+        }
+        assert_eq!(status("pack"), status("dir"), "expanded, {content} at {time}");
+    }
+    seen.dedup();
+    assert_eq!(seen.len(), 3, "each case gets its own status: {seen:?}");
 }
