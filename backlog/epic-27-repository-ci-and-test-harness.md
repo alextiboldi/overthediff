@@ -39,8 +39,10 @@ As a contributor, I can work on one feature without colliding with every other o
 - [ ] AGENTS.md `## This repository` describes the layout, the checks and how to run each kind of test.
 
 #### Tasks
-- **E27-S1-T1** — Cargo workspace with a UI-free library crate and the app crate · size: S · depends: —
+- **E27-S1-T1** — Cargo workspace with a UI-free library crate and the app crate · size: S · depends: — · status: needs-verification
   - AC: the workspace builds. The library crate's manifest has no egui or other UI dependency. AGENTS.md `## This repository` names the crates, the checks, and where commands, colour roles and tests live.
+  - Implemented: a Cargo workspace with member globs `apps/*` and `crates/*`, the app crate `apps/otd` (executable `otd`, a minimal entry point that E01-S1 replaces), the UI-free library crate `crates/core` (`otd-core`), and `xtask` (`cargo xtask ci`: fmt check, clippy with warnings denied, workspace tests, and the `ui-free` dependency check); workspace lints, `rustfmt.toml`, `clippy.toml`, the egui and winit `[patch.crates-io]` forks, the recorded craft-libs rev for later crates, NOTICE and ATTRIBUTION.md; AGENTS.md `## This repository` names the crates, pins, checks and where commands, colour roles and tests live. `cargo xtask ci` passed on macOS; no PR CI exists until E27-S1-T2. https://github.com/alextiboldi/overthediff/pull/1
+  - Verify by hand: once E27-S1-T2 is on `main`, confirm the workspace builds and `cargo xtask ci` passes on the Linux and Windows CI legs.
 - **E27-S1-T2** — CI through craft-common-actions, in its own pull request · size: S · depends: E27-S1-T1
   - AC: a pull request runs workspace-wide format, clippy and test checks on Linux and macOS, and Windows runs on `main`. A new crate is covered without changing the workflow.
 - **E27-S1-T3** — Test layout, a keyboard-and-accessibility UI harness, and a hostile-input sweep · size: M · depends: E27-S1-T1 · flags: `accessibility`, `licence-check`
