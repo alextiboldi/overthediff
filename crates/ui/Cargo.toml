@@ -4,13 +4,15 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
-description = "OverTheDiff's main-window shell: the tab strip, the Home launcher tab, the status bar, background-task progress and the Session Settings dialog"
+description = "OverTheDiff's main-window shell: menus, toolbar and shortcuts, the tab strip, the Home launcher tab, the status bar, background-task progress and the Session Settings dialog"
 
 [lints]
 workspace = true
 
 [dependencies]
 egui = { workspace = true }
+craft-keymap = { workspace = true, features = ["egui"] }
+craft-menu = { workspace = true }
 otd-core = { path = "../core" }
 otd-format = { path = "../format" }
 

@@ -13,6 +13,7 @@ workspace = true
 # under crates/ (AGENTS.md "## This repository").
 [dependencies]
 craft-i18n = { workspace = true }
+craft-keymap = { workspace = true }
 
 [dev-dependencies]
 craft-testkit = { workspace = true }

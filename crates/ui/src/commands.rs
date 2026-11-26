@@ -1,0 +1,309 @@
+//! Registered commands in the window (E01-S1-T4): the menus, the toolbar and the shortcuts of the
+//! active view type, all running commands by id through [`Shell::run`].
+//!
+//! A feature declares its [`Command`]s (otd-core) and adds them to the app's command list
+//! (`apps/otd/src/commands.rs`), one line each. Its view reports its type ([`crate::View::view_type`]),
+//! and its commands name the view types they apply to. Each frame the shell lays the menus out for
+//! the platform with craft-menu (an in-window bar, or the native bar on macOS that the app drives
+//! through [`Shell::menu_layout`]), draws a toolbar row of the commands that have a button, and
+//! matches key presses against a craft-keymap keymap scoped by view type.
+
+use craft_keymap::{Active, Bindable, Binding, CommandRef, Keymap, Lookup, Scope, Scopes};
+use craft_menu::{BarStyle, Gate, ItemKind, Layout, LayoutOptions, MenuBarUi, MenuRole, Row, Target};
+use egui::accesskit::Role;
+use egui::os::OperatingSystem;
+use egui::{Key as EguiKey, Modifiers, Ui};
+use otd_core::command::{Chord, Command, Key, Mods, Placement, Platform, Views};
+
+use otd_core::i18n::t;
+
+use crate::{NEW_TAB, Shell};
+
+/// The application's name: the macOS application menu's title.
+pub const APP_NAME: &str = "OverTheDiff";
+/// The Close Tab command's caption (the tab strip's close buttons are named per tab).
+pub const CLOSE_CURRENT_TAB: &str = "Close Tab";
+pub const NEXT_TAB: &str = "Next Tab";
+pub const PREVIOUS_TAB: &str = "Previous Tab";
+
+/// The top-level menus in bar order, with the role each has in the platform layouts. A command's
+/// menu path starts with one of them; a menu not listed here follows them, in registration order.
+const MENUS: [(&str, MenuRole); 6] = [
+    ("Session", MenuRole::File),
+    ("Edit", MenuRole::Edit),
+    ("View", MenuRole::View),
+    ("Tools", MenuRole::Other),
+    ("Window", MenuRole::Window),
+    ("Help", MenuRole::Help),
+];
+
+/// The shell's own commands: the tab commands of the keymap conventions (Q24 in E01-S1).
+pub(crate) fn shell_commands() -> Vec<Command<Shell>> {
+    const MAC: &[Platform] = &[Platform::Mac];
+    let several_tabs = |shell: &Shell| otd_core::command::State::enabled(shell.tabs.len() > 1);
+    vec![
+        Command::new("otd.new_tab", NEW_TAB, Shell::new_tab).icon("plus").menu(&["Session"]).shortcut(Mods::CMD, Key::T),
+        Command::new("otd.close_tab", CLOSE_CURRENT_TAB, Shell::close_tab).icon("x").menu(&["Session"]).shortcut(Mods::CMD, Key::W).shortcut_on(
+            &[Platform::Windows],
+            Mods::CTRL,
+            Key::F4,
+        ),
+        Command::new("otd.next_tab", NEXT_TAB, Shell::next_tab).menu(&["Window"]).state(several_tabs).shortcut(Mods::CTRL, Key::Tab).shortcut_on(
+            MAC,
+            Mods { shift: true, ..Mods::CMD },
+            Key::CloseBracket,
+        ),
+        Command::new("otd.previous_tab", PREVIOUS_TAB, Shell::previous_tab)
+            .menu(&["Window"])
+            .state(several_tabs)
+            .shortcut(Mods { shift: true, ..Mods::CTRL }, Key::Tab)
+            .shortcut_on(MAC, Mods { shift: true, ..Mods::CMD }, Key::OpenBracket),
+    ]
+}
+
+/// The default keymap of `commands` on `platform`. A command's shortcuts work in each of its
+/// view types, and an application-wide command's in all of them; the OS's reserved chords are
+/// never bound.
+// ponytail: built every frame, which is cheap for a few hundred commands; keep one once E22-S1's
+// user overrides need it kept.
+pub fn keymap(commands: &[Command<Shell>], platform: Platform) -> Keymap {
+    let catalog = commands
+        .iter()
+        .map(|command| {
+            let scopes: Vec<Scope> = match command.views {
+                Views::All => vec![Scope::app()],
+                Views::Only(types) => types.iter().filter_map(|t| Scope::new(*t)).collect(),
+            };
+            let home = scopes.first().cloned().unwrap_or_else(Scope::app);
+            let mut bindable = Bindable::new(command.id, command.caption, home);
+            for shortcut in command.shortcuts.iter().filter(|s| s.applies_on(platform)) {
+                for scope in &scopes {
+                    bindable = bindable.with_default(Binding::in_scope(shortcut.chord, scope.clone()));
+                }
+            }
+            bindable
+        })
+        .collect();
+    // Without fallthrough, another view type's shortcut never runs in this one.
+    let scopes = Scopes::new().with_panel_fallthrough(false);
+    Keymap::new(catalog, scopes, platform).with_reserved(craft_keymap::reserved::system(platform))
+}
+
+/// craft-menu's own English labels (Exit, Window, ⋯), through the lookup.
+fn translate(english: &'static str) -> String {
+    t(english).to_owned()
+}
+
+/// The menu layout of the platform `os` stands for.
+fn target(os: OperatingSystem) -> Target {
+    match os {
+        OperatingSystem::Mac | OperatingSystem::IOS => Target::Mac,
+        OperatingSystem::Windows => Target::Windows,
+        _ => Target::Linux,
+    }
+}
+
+impl Shell {
+    /// Adds a feature's commands. A command whose id is already registered is left out.
+    pub fn with_commands(mut self, commands: Vec<Command<Shell>>) -> Self {
+        for command in commands {
+            if !self.commands.iter().any(|c| c.id == command.id) {
+                self.commands.push(command);
+            }
+        }
+        self
+    }
+
+    /// Every registered command, the shell's own first.
+    pub fn commands(&self) -> &[Command<Shell>] {
+        &self.commands
+    }
+
+    /// The menus have a native bar (macOS), so the window draws no menu bar of its own.
+    pub fn hide_in_window_menu(&mut self) {
+        self.in_window_menu = false;
+    }
+
+    /// Runs the command `id` if it applies to the active view type and is enabled, and the Session
+    /// Settings dialog isn't open (a native menu click reaches here past the dialog). Returns
+    /// whether it ran.
+    pub fn run(&mut self, id: &str) -> bool {
+        if self.dialog.is_some() {
+            return false;
+        }
+        let view = self.view_type();
+        let Some(command) = self.commands.iter().find(|c| c.id == id && c.applies_to(view)) else { return false };
+        if !(command.state)(self).enabled {
+            return false;
+        }
+        (command.run)(self);
+        true
+    }
+
+    fn enabled(&self, id: &str) -> bool {
+        let view = self.view_type();
+        self.commands.iter().find(|c| c.id == id && c.applies_to(view)).is_some_and(|c| (c.state)(self).enabled)
+    }
+
+    /// The menus of the active view type, laid out for the platform `os` stands for: what the
+    /// in-window bar draws, and what the app hands the native bar on macOS.
+    pub fn menu_layout(&self, os: OperatingSystem) -> Layout {
+        self.layout_with(&keymap(&self.commands, Platform::from(os)), target(os))
+    }
+
+    fn layout_with(&self, keymap: &Keymap, target: Target) -> Layout {
+        let mac = target == Target::Mac;
+        // Menu titles, captions and the layout's own labels are English keys, shown through `t`.
+        let mut tops: Vec<&str> = mac.then_some(APP_NAME).into_iter().chain(MENUS.iter().map(|(title, _)| t(title))).collect();
+        let mut rows = Vec::new();
+        let view = self.view_type();
+        for command in self.commands.iter().filter(|c| c.applies_to(view)) {
+            let path: &[&str] = match command.placement {
+                Placement::Hidden => continue,
+                Placement::Application(_) if mac => &[APP_NAME],
+                Placement::Menu(path) | Placement::Application(path) => path,
+            };
+            let Some(top) = path.first().map(|top| if *top == APP_NAME { APP_NAME } else { t(top) }) else { continue };
+            if !tops.contains(&top) {
+                tops.push(top);
+            }
+            let state = (command.state)(self);
+            rows.push(Row {
+                path: path.iter().map(|part| if *part == APP_NAME { APP_NAME } else { t(part) }.to_owned()).collect(),
+                command: CommandRef::new(command.id),
+                label: state.caption.unwrap_or_else(|| t(command.caption).to_owned()),
+                shortcut: None,
+                enabled: state.enabled,
+                kind: ItemKind::Plain,
+            });
+        }
+        let mut bar = craft_menu::from_items(&tops, &rows);
+        bar.tag_menu(APP_NAME, MenuRole::App);
+        for (title, role) in MENUS {
+            bar.tag_menu(t(title), role);
+        }
+        craft_menu::apply_keymap(&mut bar, keymap);
+        craft_menu::layout(&bar, target, &LayoutOptions { label: &translate, ..LayoutOptions::new(APP_NAME) })
+    }
+
+    /// Runs the commands this frame's key presses stand for, before any widget reads the keys.
+    /// While the in-window menu bar has the keyboard, the keys are the bar's.
+    pub(crate) fn shortcuts(&mut self, ui: &Ui, keymap: &Keymap) {
+        let ctx = ui.ctx().clone();
+        // Idempotent: egui adds a plugin type once.
+        ctx.add_plugin(CtrlTab);
+        let ctrl_tabs = ctx.data_mut(|data| data.remove_temp::<Vec<Modifiers>>(egui::Id::unique(CTRL_TAB))).unwrap_or_default();
+        // A modal dialog (last frame's top modal layer) keeps the window behind it out of reach, and so
+        // does the Session Settings dialog from the frame it opens.
+        if self.dialog.is_some() || ctx.memory(|memory| memory.top_modal_layer().is_some()) {
+            return;
+        }
+        craft_menu::bar::leave_for_shortcut(&ctx);
+        if craft_menu::bar::is_open(&ctx) || craft_menu::bar::is_focused(&ctx) {
+            return;
+        }
+        let platform = keymap.platform();
+        let view = self.view_type();
+        let active = Active { panel: Some(view), contexts: &[], typing: ctx.text_edit_focused() };
+        let mut ids: Vec<String> = ctrl_tabs
+            .iter()
+            .filter_map(|held| match keymap.lookup(&Chord::new(Mods::from_egui(held, platform), Key::Tab), false, &active) {
+                Lookup::Run(command) => Some(command.id),
+                _ => None,
+            })
+            .collect();
+        let mut dispatcher = std::mem::take(&mut self.dispatcher);
+        let hits = ctx.input_mut(|input| dispatcher.dispatch_filtered(input, keymap, &active, |hit| self.enabled(&hit.command.id)));
+        self.dispatcher = dispatcher;
+        ids.extend(hits.into_iter().map(|hit| hit.command.id));
+        for id in ids {
+            self.run(&id);
+        }
+    }
+
+    /// The in-window menu bar, unless the app shows a native one.
+    pub(crate) fn menu_bar(&mut self, ui: &mut Ui, keymap: &Keymap) {
+        if !self.in_window_menu {
+            return;
+        }
+        let target = target(ui.ctx().os());
+        let layout = self.layout_with(keymap, target);
+        let gate = Gate { text_editing: ui.ctx().text_edit_focused(), ..Gate::default() };
+        // ponytail: marks egui's default fonts have (they lack ✓ and ●), until the app has fonts of
+        // its own.
+        let style = BarStyle { check_mark: "√".to_owned(), radio_mark: "•".to_owned(), ..BarStyle::from_style(ui.style()) };
+        let chosen = egui::Panel::top("otd-menu-bar")
+            .show(ui, |ui| MenuBarUi::new(&layout.bar).target(target).gate(gate).style(style).label(&translate).show(ui))
+            .inner;
+        for command in chosen {
+            self.run(&command.id);
+        }
+    }
+
+    /// The toolbar of the active view type: a button per command that has one, in registration
+    /// order. No row when there are none.
+    pub(crate) fn toolbar(&mut self, ui: &mut Ui, keymap: &Keymap) {
+        let view = self.view_type();
+        let platform = keymap.platform();
+        let buttons: Vec<_> = self
+            .commands
+            .iter()
+            .filter(|c| c.toolbar && c.applies_to(view))
+            .map(|c| {
+                let state = (c.state)(self);
+                let shortcut = keymap.bindings(&CommandRef::new(c.id)).first().map(|b| b.trigger.display(platform));
+                (c.id, state.caption.unwrap_or_else(|| t(c.caption).to_owned()), state.icon.or(c.icon), state.enabled, shortcut)
+            })
+            .collect();
+        if buttons.is_empty() {
+            return;
+        }
+        let mut chosen = None;
+        egui::Panel::top("otd-toolbar").show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.ctx().accesskit_node_builder(ui.unique_id(), |node| node.set_role(Role::Toolbar));
+                for (id, caption, icon, enabled, shortcut) in &buttons {
+                    let response = crate::tool_button(ui, caption, icon.and_then(crate::lucide), *enabled);
+                    if let Some(shortcut) = shortcut {
+                        ui.ctx().accesskit_node_builder(response.id, |node| node.set_keyboard_shortcut(shortcut.clone()));
+                    }
+                    if response.clicked() {
+                        chosen = Some(*id);
+                    }
+                }
+            });
+        });
+        if let Some(id) = chosen {
+            self.run(id);
+        }
+    }
+}
+
+const CTRL_TAB: &str = "otd-ctrl-tab";
+
+/// Takes Ctrl+Tab and Ctrl+Shift+Tab out of the input before egui's focus handling sees them, and
+/// leaves their modifiers for [`Shell::shortcuts`]. egui counts Ctrl+Shift+Tab as Shift+Tab on
+/// macOS (`Modifiers::shift_only` ignores Ctrl), so it would also move focus back one widget.
+struct CtrlTab;
+
+impl egui::Plugin for CtrlTab {
+    fn debug_name(&self) -> &'static str {
+        CTRL_TAB
+    }
+
+    fn input_hook(&mut self, ctx: &egui::Context, input: &mut egui::RawInput) {
+        let mut presses = Vec::new();
+        input.events.retain(|event| match event {
+            egui::Event::Key { key: EguiKey::Tab, pressed, modifiers, .. } if modifiers.ctrl && !modifiers.alt => {
+                if *pressed {
+                    presses.push(*modifiers);
+                }
+                false
+            }
+            _ => true,
+        });
+        if !presses.is_empty() {
+            ctx.data_mut(|data| data.insert_temp(egui::Id::unique(CTRL_TAB), presses));
+        }
+    }
+}
