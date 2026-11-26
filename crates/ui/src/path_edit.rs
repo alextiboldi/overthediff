@@ -98,6 +98,8 @@ struct Shared {
     requests: Vec<(Id, FileDialog)>,
     /// Picker answers, for the asking edit to take on its next draw.
     answers: Vec<(Id, Answer)>,
+    /// The edits drawn since the last [`PathEdits::frame`].
+    drawn: Vec<Id>,
 }
 
 fn shared<R>(ctx: &Context, f: impl FnOnce(&mut Shared) -> R) -> R {
@@ -108,6 +110,8 @@ fn shared<R>(ctx: &Context, f: impl FnOnce(&mut Shared) -> R) -> R {
 /// and saves their recent paths. One per window.
 pub struct PathEdits {
     dialogs: Dialogs<Id>,
+    /// The edit whose picker is open, and whether a frame went by without drawing it.
+    asker: Option<(Id, bool)>,
 }
 
 impl PathEdits {
@@ -120,7 +124,7 @@ impl PathEdits {
         }
         shared(ctx, |shared| shared.recent = recent);
         let wake = ctx.clone();
-        Self { dialogs: Dialogs::new(Arc::new(move || wake.request_repaint())) }
+        Self { dialogs: Dialogs::new(Arc::new(move || wake.request_repaint())), asker: None }
     }
 
     /// Answers every picker with `answer_with` instead of showing the OS one (tests and
@@ -132,17 +136,33 @@ impl PathEdits {
     /// Call at the end of every frame, with the window as `parent`: shows the pickers asked for,
     /// passes their answers to the edits and saves changed recent paths to `store`.
     pub fn frame<W: HasWindowHandle + HasDisplayHandle>(&mut self, ctx: &Context, parent: Option<&W>, store: &mut Store) {
-        let (requests, changed) = shared(ctx, |shared| {
+        let (requests, drawn, changed) = shared(ctx, |shared| {
             let changed = std::mem::take(&mut shared.changed).then(|| shared.recent.clone());
-            (std::mem::take(&mut shared.requests), changed)
+            (std::mem::take(&mut shared.requests), std::mem::take(&mut shared.drawn), changed)
         });
+        // An edit that went undrawn has gone (its dialog or tab closed); one drawn later with the
+        // same id is another, so the old picker's answer mustn't fill it.
+        if let Some((asker, gone)) = &mut self.asker {
+            *gone |= !drawn.contains(asker);
+        }
         for (id, dialog) in requests {
-            self.dialogs.ask(dialog, id);
+            if self.dialogs.is_open() || self.dialogs.queued() > 0 {
+                // One picker at a time: Browse while the macOS panel is open brings it forward.
+                self.dialogs.raise();
+            } else {
+                self.dialogs.ask(dialog, id);
+                self.asker = Some((id, false));
+            }
         }
         self.dialogs.show_pending(parent);
-        let answers = self.dialogs.take_answers();
+        let mut answers = self.dialogs.take_answers();
         if !answers.is_empty() {
             ctx.request_repaint();
+        }
+        if !self.dialogs.is_open()
+            && let Some((asker, true)) = self.asker.take()
+        {
+            answers.retain(|(id, _)| *id != asker);
         }
         // Answers posted last frame that no edit took were for an edit no longer drawn (its
         // dialog or tab closed while the picker was open), so they go rather than fill a later one.
@@ -172,6 +192,11 @@ impl<'a> PathEdit<'a> {
         let Self { field, path, browse } = self;
         let id = ui.make_persistent_id(("otd-path-edit", field));
         let ctx = ui.ctx().clone();
+        shared(&ctx, |shared| {
+            if !shared.drawn.contains(&id) {
+                shared.drawn.push(id);
+            }
+        });
         let mut chosen = None;
         let mut error: Option<String> = ctx.data(|data| data.get_temp(id.with("error")));
         let answers: Vec<Answer> = shared(&ctx, |shared| {
