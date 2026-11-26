@@ -11,12 +11,14 @@
 //! Tab and Exit then ask Save / Don't Save / Cancel first (`unsaved.rs`).
 //! A feature takes a typed or browsed path with a [`PathEdit`], which keeps the field's recent paths.
 //! Features contribute program options to the Options dialog's pages ([`OptionSpec`], [`Shell::with_options`]).
+//! The Appearance page's theme choice ([`theme`]) sets the active colour palette every frame.
 
 mod tasks;
 
 pub use tasks::{CANCEL, CANCELLED, CLOSE, FINISHED_WITH_ERRORS, show_task};
 
 pub mod colour;
+pub mod theme;
 
 pub mod path_edit;
 pub use path_edit::{Browse, PathEdit, PathEdits};
@@ -279,6 +281,7 @@ impl Shell {
         // already holds its style, and the restyle requests that frame.
         colour::sync_system(ui.ctx());
         self.options.publish(ui.ctx());
+        theme::apply(ui.ctx());
         let keymap = keymap(&self.commands, ui.ctx().os().into());
         self.shortcuts(ui, &keymap);
         self.menu_bar(ui, &keymap);

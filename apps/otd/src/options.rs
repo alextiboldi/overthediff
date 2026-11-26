@@ -5,9 +5,9 @@
 use otd_ui::OptionSpec;
 
 pub fn options() -> Vec<OptionSpec> {
-    // ponytail: no feature contributes options yet; the first are E05-S1's Appearance page and
-    // E07-S1's Text Editing page.
-    Vec::new()
+    let mut options = Vec::new();
+    options.extend(otd_ui::theme::options());
+    options
 }
 
 #[cfg(test)]
