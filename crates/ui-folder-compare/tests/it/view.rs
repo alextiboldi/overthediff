@@ -272,3 +272,31 @@ fn up_and_down_select_as_a_click_does_shift_extends_ctrl_only_moves_and_ctrl_spa
     harness.run();
     assert_eq!(selected(&harness), items(&left[1..=3]), "Ctrl+Space adds the focused item");
 }
+
+#[test]
+fn shift_down_before_any_pick_selects_from_the_focused_item() {
+    let root = tempfile::tempdir().unwrap();
+    fixture(root.path());
+    let mut harness = harness(FolderCompare::of_folders(&["left".into(), "right".into()], root.path()));
+    let left = names(&rows(&harness), "left");
+    tab_to(&mut harness, Role::Cell, &left[0]);
+
+    harness.key_press_modifiers(Modifiers::SHIFT, Key::ArrowDown);
+    harness.run();
+    assert_eq!(selected(&harness), items(&left[0..=1]), "the focused item and the next");
+    harness.key_press_modifiers(Modifiers::SHIFT, Key::ArrowDown);
+    harness.run();
+    assert_eq!(selected(&harness), items(&left[0..=2]), "the range keeps its start");
+}
+
+#[test]
+fn a_screen_readers_activate_selects_as_a_click_does() {
+    let root = tempfile::tempdir().unwrap();
+    fixture(root.path());
+    let mut harness = harness(FolderCompare::of_folders(&["left".into(), "right".into()], root.path()));
+    let right = names(&rows(&harness), "right");
+
+    harness.get_by_label(&right[3]).click_accesskit();
+    harness.run();
+    assert_eq!(selected(&harness), [right[3].as_str()], "an AccessKit Click on a cell that isn't current selects its item");
+}

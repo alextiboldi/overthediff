@@ -28,7 +28,7 @@ use std::sync::Arc;
 use std::sync::mpsc::Receiver;
 use std::time::Duration;
 
-use egui::accesskit::{Live, Role};
+use egui::accesskit::{Action, Live, Role};
 use egui::{
     Color32, EventFilter, Key, Modifiers, PointerButton, Rect, Response, Sense, StrokeKind, TextStyle, TextWrapMode, Ui, Vec2, WidgetInfo, WidgetText,
 };
@@ -122,7 +122,8 @@ pub struct FolderCompare {
     /// Each side's selected rows, as row-name paths from the base: the shape
     /// [`otd_folder_engine::resolve_selection`] takes. Only rows with an item on that side.
     selected: [BTreeSet<PathBuf>; 2],
-    /// Each side's last plain or Ctrl click (or key), where a Shift range starts.
+    /// Each side's last plain or Ctrl click (or key), where a Shift range starts. With none, a range
+    /// starts at the focused cell when it is on that side.
     anchor: [Option<PathBuf>; 2],
     /// Reports the close to a launcher waiting for this view.
     done: Option<Completion>,
@@ -198,12 +199,15 @@ impl FolderCompare {
             }
             Pick::Range => {
                 let anchor = self.anchor[side].as_ref().and_then(|anchor| self.rows.iter().position(|row| row_path(row) == *anchor));
-                let from = anchor.unwrap_or(index);
+                // With no anchor yet, the range starts at the focused cell on this side, so Shift+Down
+                // after Tab takes the focused item too.
+                let from = anchor.or((self.current.1 == side).then_some(self.current.0)).unwrap_or(index).min(self.rows.len().saturating_sub(1));
                 let range = &self.rows[from.min(index)..=from.max(index)];
                 *selected = range.iter().filter(|row| has(row)).map(row_path).collect();
-                if anchor.is_some() {
-                    return;
+                if anchor.is_none() {
+                    self.anchor[side] = Some(row_path(&self.rows[from]));
                 }
+                return;
             }
         }
         self.anchor[side] = Some(path);
@@ -334,12 +338,13 @@ impl FolderCompare {
                             if response.has_focus() {
                                 moved = moved.or_else(|| arrow(ui, &response, index, side, self.rows.len()));
                             }
-                            let mut clicked = response.clicked_by(PointerButton::Primary);
+                            // A click on any of the side's cells.
+                            let mut clicked = activated(&response);
                             for column in COLUMNS {
                                 // A blank cell is still allocated, so it takes the item spacing a filled one does.
                                 let text = item.as_ref().and_then(column.cell).unwrap_or_default();
                                 let response = cell(ui, &text, Vec2::new(pane * column.width, height), Sense::CLICK, selected == Some(true));
-                                clicked |= response.clicked_by(PointerButton::Primary);
+                                clicked |= activated(&response);
                             }
                             if clicked {
                                 picked = Some(((index, side), Some(Pick::of_click(ui.input(|input| input.modifiers)))));
@@ -358,6 +363,12 @@ impl FolderCompare {
             ui.ctx().request_repaint();
         }
     }
+}
+
+/// A pointer click, or a screen reader's activate (AccessKit `Click`). Not `clicked()`, which also
+/// counts Space and Enter on the focused cell: those stay free for E08-S10.
+fn activated(response: &Response) -> bool {
+    response.clicked_by(PointerButton::Primary) || response.ctx.input(|input| input.has_accesskit_action_request(response.id, Action::Click))
 }
 
 /// What a click or key does to one side's selection.
