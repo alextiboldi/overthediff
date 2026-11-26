@@ -129,8 +129,8 @@ impl Pane {
         self.history.typing = false;
     }
 
-    /// Selects every line. With display filters (E07-S3) it will be the lines the pane shows; until
-    /// then the pane shows them all.
+    /// Selects every line. Under a display filter the view's Select All selects only from the first
+    /// shown line to the last (E07-S3-T2).
     pub fn select_all(&mut self) {
         self.selection = Selection { anchor: Pos::default(), head: self.end() };
         self.history.typing = false;

@@ -46,6 +46,7 @@ pub fn commands() -> Vec<Command<Shell>> {
         .chain(crate::whitespace::commands())
         .chain(crate::arrows::commands())
         .chain(crate::find_next::commands())
+        .chain(crate::filter::commands())
         .collect()
 }
 

@@ -41,6 +41,9 @@
 //! [`file_format`] adds each side's file-format picker to the Session Settings dialog's Format tab
 //! (E07-S10-T1).
 //!
+//! `filter.rs` holds the View menu's display filters: Show All Lines, Show Different Lines, Show
+//! Matching Lines, Show Different Lines in Context and the hidden Hide All Lines (E07-S3-T2).
+//!
 //! [`encoding`] adds each side's encoding override to the Session Settings dialog's Format tab
 //! (E07-S10-T2).
 //!
@@ -65,6 +68,7 @@ mod edit;
 mod edited;
 pub mod encoding;
 pub mod file_format;
+mod filter;
 pub mod filtered;
 mod find_next;
 mod font_size;
@@ -90,6 +94,7 @@ pub use bookmarks::{BOOKMARK, CLEAR_BOOKMARKS, GO_TO_BOOKMARK, TOGGLE_BOOKMARK};
 pub use edit::{COPY, CUT, DELETE, INSERT_TEXT, PASTE, REDO, SELECT_ALL, UNDO};
 pub use edited::{NEXT_EDIT, PREVIOUS_EDIT};
 pub use file_format::{DETECTED, FORMAT_PICKERS, FORMAT_TAB, formats, session_settings};
+pub use filter::{SHOW_ALL, SHOW_CONTEXT, SHOW_DIFFERENCES, SHOW_NONE, SHOW_SAME};
 pub use find_next::{CURRENT_WORD, CURRENT_WORD_LABEL, FIND_NEXT, FIND_PREVIOUS, NOT_FOUND, TEXT_EDITING, options};
 pub use font_size::{DECREASE_FONT_SIZE, INCREASE_FONT_SIZE, RESET_FONT_SIZE};
 pub use go_to::{COLUMN, GO_TO, GO_TO_LINE, LINE, NOT_A_NUMBER};
@@ -200,7 +205,7 @@ pub struct TextCompareView {
     whitespace: bool,
     /// Per side, the encoding override its pane was read in, so a changed override reads it again.
     decoded_as: [Option<Encoding>; 2],
-    /// The display filter both panes show (`filtered.rs`).
+    /// The View menu's display filter (E07-S3-T2, `filter.rs`).
     filter: Filter,
     /// The last search, which Find Next and Find Previous repeat (`find_next.rs`).
     search: Option<find_next::Search>,

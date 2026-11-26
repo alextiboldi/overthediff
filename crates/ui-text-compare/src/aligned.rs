@@ -102,6 +102,8 @@ pub struct Aligned {
     digits: usize,
     /// How many lines each side has.
     lines: [usize; 2],
+    /// Whether each side has a place after a final line break, where a caret can stand.
+    after_end: [bool; 2],
     /// The Importance tab's rules and options it was compared with.
     rules: (BuiltInRules, Options),
     /// The vertical scroll offset both panes share.
@@ -144,6 +146,7 @@ impl Aligned {
             chars: HashMap::new(),
             digits: longest.to_string().len(),
             lines: [left, right].map(|lines| lines.map_or(0, <[Line]>::len)),
+            after_end: [left, right].map(|lines| lines.and_then(<[Line]>::last).is_none_or(|last| last.ending != LineEnding::None)),
             rules,
             scroll: 0.0,
             drawn: [None; 2],
@@ -186,6 +189,76 @@ impl Aligned {
             self.slots = filtered::slots(differs, self.rows.len(), filter, context, counts);
             self.shown = Some((filter, context, counts));
         }
+    }
+
+    /// Shows `filter` with the context and counts setting last drawn, or the defaults before the
+    /// first draw since the panes were compared (E07-S3-T2).
+    pub(crate) fn refilter(&mut self, filter: Filter) {
+        let (_, context, counts) = self.shown.unwrap_or((filter, filtered::DEFAULT_CONTEXT, filtered::DEFAULT_COUNTS));
+        self.filter(filter, context, counts);
+    }
+
+    /// The rows the display filter draws, in order, then the blank row after the rest, which always
+    /// draws.
+    fn shown_rows(&self) -> Vec<usize> {
+        let mut rows: Vec<usize> = match &self.slots {
+            None => (0..self.rows.len()).collect(),
+            Some(slots) => slots.iter().filter_map(|slot| if let Slot::Row(row) = slot { Some(*row) } else { None }).collect(),
+        };
+        rows.push(self.rows.len());
+        rows
+    }
+
+    /// Side `side`'s line on row `row`, `None` for a gap. On the blank row after the rest, the place
+    /// after a final line break when the side has one and that is where it stands.
+    fn line_on(&self, side: usize, row: usize) -> Option<usize> {
+        match self.rows.get(row) {
+            Some(found) => {
+                if side == 0 {
+                    found.left
+                } else {
+                    found.right
+                }
+            }
+            None => self.lines.get(side).copied().filter(|&end| self.after_end.get(side) == Some(&true) && self.row_of(side, end) == Some(row)),
+        }
+    }
+
+    /// Side `side`'s first and last lines on the rows the filter draws, the blank row after the rest
+    /// left out; `None` when no drawn row has one.
+    pub(crate) fn shown_span(&self, side: usize) -> Option<(usize, usize)> {
+        let lines: Vec<usize> =
+            self.shown_rows().into_iter().filter(|&row| row < self.rows.len()).filter_map(|row| self.line_on(side, row)).collect();
+        Some((*lines.first()?, *lines.last()?))
+    }
+
+    /// The line of side `side` nearest to `line` that the filter draws: `line` itself while its row
+    /// is drawn, else the line on the nearest drawn row that has one on that side, the later one on
+    /// a tie. `None` when no drawn row has a line there.
+    pub(crate) fn nearest_shown(&self, side: usize, line: usize) -> Option<usize> {
+        let row = self.row_of(side, line)?;
+        let shown = self.shown_rows();
+        if shown.binary_search(&row).is_ok() {
+            return Some(line);
+        }
+        shown.into_iter().filter_map(|r| Some((r.abs_diff(row), r < row, self.line_on(side, r)?))).min().map(|(_, _, line)| line)
+    }
+
+    /// The line of side `side` that the filter draws from `line` on, going down when `down` and up
+    /// otherwise: `line` itself while its row is drawn, else the first drawn row's line that way,
+    /// else the nearest drawn line ([`Self::nearest_shown`]).
+    pub(crate) fn next_shown(&self, side: usize, line: usize, down: bool) -> Option<usize> {
+        let row = self.row_of(side, line)?;
+        let shown = self.shown_rows();
+        if shown.binary_search(&row).is_ok() {
+            return Some(line);
+        }
+        let ahead = if down {
+            shown.iter().filter(|&&r| r > row).find_map(|&r| self.line_on(side, r))
+        } else {
+            shown.iter().rev().filter(|&&r| r < row).find_map(|&r| self.line_on(side, r))
+        };
+        ahead.or_else(|| self.nearest_shown(side, line))
     }
 
     /// How many slots the panes draw, before the blank one after them.

@@ -181,11 +181,9 @@ impl TextCompareView {
         self.edit(|pane| pane.delete(true));
     }
 
-    /// *Select All*: every line of the chosen pane.
+    /// *Select All*: the chosen pane's shown lines (`filter.rs`).
     pub fn select_all(&mut self) {
-        if let Some(pane) = loaded_mut(&mut self.panes, self.chosen) {
-            pane.select_all();
-        }
+        self.select_shown(self.chosen);
         self.focus = Some(self.chosen);
     }
 
@@ -245,10 +243,25 @@ impl TextCompareView {
             }
             let input = Input { editable, page: self.aligned.page(side, ui), mac: ctx.os() == OperatingSystem::Mac, insert: self.insert };
             let events = ui.input(|i| i.events.clone());
-            let typed = loaded_mut(&mut self.panes, side).map(|pane| (keys(&ctx, &events, pane, input, &mut self.preedit), pane.selection.head.line));
-            if let Some(((edited, moved), line)) = typed {
+            let typed = loaded_mut(&mut self.panes, side).map(|pane| {
+                let from = pane.selection.head;
+                (keys(&ctx, &events, pane, input, &mut self.preedit), from, pane.selection.head.line)
+            });
+            if let Some(((edited, moved), from, mut line)) = typed {
+                let pressed = |keys: &[EguiKey]| {
+                    events
+                        .iter()
+                        .any(|event| matches!(event, Event::Key { key, pressed: true, modifiers, .. } if keys.contains(key) && !modifiers.mac_cmd))
+                };
+                let select_all =
+                    events.iter().any(|event| matches!(event, Event::Key { key: EguiKey::A, pressed: true, modifiers, .. } if modifiers.command));
                 if edited {
                     self.recompare();
+                } else if moved && select_all {
+                    self.select_shown(side);
+                    line = self.pane(side).map_or(line, |pane| pane.selection.head.line);
+                } else if moved {
+                    line = self.skip_hidden(side, from, pressed(&[EguiKey::ArrowUp, EguiKey::ArrowDown, EguiKey::PageUp, EguiKey::PageDown]));
                 }
                 if moved {
                     self.aligned.reveal(side, line);

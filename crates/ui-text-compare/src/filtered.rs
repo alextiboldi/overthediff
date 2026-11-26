@@ -11,8 +11,6 @@ use otd_core::session::Value;
 use otd_text_compare::{Filter, visible};
 use otd_ui::{OptionSpec, option};
 
-use crate::TextCompareView;
-
 // English keys, drawn only through `t`.
 /// The Options dialog page (the feature catalogue's Text Editing page, F-26.11).
 pub const TEXT_EDITING: &str = "Text Editing";
@@ -27,8 +25,8 @@ pub const CONTEXT_LINES_ID: &str = "text_editing.context_lines";
 pub const FILTERED_LINE_COUNTS_ID: &str = "text_editing.show_filtered_line_counts";
 
 // The feature catalogue leaves both defaults open (unspecified); these are our choice.
-const DEFAULT_CONTEXT: usize = 3;
-const DEFAULT_COUNTS: bool = true;
+pub(crate) const DEFAULT_CONTEXT: usize = 3;
+pub(crate) const DEFAULT_COUNTS: bool = true;
 
 /// The two options, for the app's option list.
 pub fn options() -> Vec<OptionSpec> {
@@ -95,18 +93,6 @@ pub(crate) fn slots(differs: impl IntoIterator<Item = bool>, rows: usize, filter
         at = shown.end;
     }
     Some(out)
-}
-
-impl TextCompareView {
-    /// The display filter both panes show.
-    pub fn filter(&self) -> Filter {
-        self.filter
-    }
-
-    /// Shows `filter` in both panes, from the next draw.
-    pub fn set_filter(&mut self, filter: Filter) {
-        self.filter = filter;
-    }
 }
 
 #[cfg(test)]
