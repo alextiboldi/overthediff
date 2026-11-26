@@ -345,8 +345,9 @@ impl FolderCompare {
             ([Some(left), Some(right)], [None, None]) => {
                 let case_sensitive = case_sensitive(&left.capabilities, &right.capabilities);
                 let filter = self.compiled_name_filter([left.capabilities.case_sensitive, right.capabilities.case_sensitive]);
-                let mut rows =
-                    compare_trees(&left.scan, &right.scan, &CRITERIA, Alignment::new(case_sensitive), &|side, path, item| filter.visible(side, path, item));
+                let mut rows = compare_trees(&left.scan, &right.scan, &CRITERIA, Alignment::new(case_sensitive), &|side, path, item| {
+                    filter.visible(side, path, item)
+                });
                 filter.hide_empty_folders(&mut rows);
                 rows
             }

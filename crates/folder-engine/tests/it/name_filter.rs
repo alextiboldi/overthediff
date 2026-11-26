@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use otd_folder_engine::{Criteria, NameFilter, Row, TreeScan, TreeSide, compare_trees, resolve_selection};
+use otd_folder_engine::{Alignment, Criteria, NameFilter, Row, TreeScan, TreeSide, compare_trees, resolve_selection};
 use otd_source::{DataSource, ItemKind, MemorySource};
 
 use crate::fixture::{at, caps};
@@ -60,8 +60,9 @@ fn scan(source: MemorySource, deep: bool) -> TreeScan {
 fn filtered(left: MemorySource, right: MemorySource, masks: &str, deep: bool) -> Vec<Row> {
     let case = [left.capabilities().case_sensitive, right.capabilities().case_sensitive];
     let filter = NameFilter::new(masks, case).unwrap();
-    let mut rows =
-        compare_trees(&scan(left, deep), &scan(right, deep), &CRITERIA, case[0] && case[1], &|side, path, item| filter.visible(side, path, item));
+    let mut rows = compare_trees(&scan(left, deep), &scan(right, deep), &CRITERIA, Alignment::new(case[0] && case[1]), &|side, path, item| {
+        filter.visible(side, path, item)
+    });
     filter.hide_empty_folders(&mut rows);
     rows
 }
