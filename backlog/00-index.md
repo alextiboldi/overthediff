@@ -3,7 +3,7 @@
 **Source**: the OverTheDiff feature catalogue, a behaviour-level specification of the product. F-IDs, Q-IDs and § numbers refer to it.
 **Mode**: spec-only (greenfield; no code exists yet). Every story is spec-derived and not yet validated. *inferred* marks an analyst or PO inference, or a detail read only from a figure.
 **Scope**: OverTheDiff, a desktop comparison tool for Windows, macOS and Linux, covering 127 of the 130 catalogue features (F-5.1 … F-28.5). Licensing, admin policies, updates and support (F-29.1–F-29.3) are out of scope: the product is fully open source.
-**Size**: 28 epics · 175 stories (41 Must · 92 Should · 42 Could) · 734 tasks. Companion: [`PRD.md`](PRD.md).
+**Size**: 28 epics · 175 stories (41 Must · 92 Should · 42 Could) · 735 tasks. Companion: [`PRD.md`](PRD.md).
 
 ## How to read this backlog
 
@@ -72,7 +72,7 @@ Every story meets these. Its acceptance criteria list only what's specific to it
 
 ### Foundation
 - **E27 — Repository, CI and test harness** ([`epic-27-repository-ci-and-test-harness.md`](epic-27-repository-ci-and-test-harness.md)) — The setup story: a Cargo workspace with UI-free engine crates, CI through the shared workflows, and the UI test harness. · size: M · depends: — · 1 story (1 Must / 0 Should / 0 Could), 3 tasks, setup (before layer 0)
-- **E01 — Application platform** ([`epic-01-application-platform.md`](epic-01-application-platform.md)) — The desktop frame every feature plugs into: single-instance launch, windows and tabs, commands, dialogs, settings storage, background tasks, typed commands that run without the window, and translated text. · size: L · depends: — · 2 stories (2 Must / 0 Should / 0 Could), 19 tasks, layers 0–1
+- **E01 — Application platform** ([`epic-01-application-platform.md`](epic-01-application-platform.md)) — The desktop frame every feature plugs into: single-instance launch, windows and tabs, commands, dialogs, settings storage, background tasks, typed commands that run without the window, and translated text. · size: L · depends: — · 2 stories (2 Must / 0 Should / 0 Could), 20 tasks, layers 0–1
 - **E02 — Pattern and file-type services** ([`epic-02-pattern-and-file-type-services.md`](epic-02-pattern-and-file-type-services.md)) — Shared matching engines: file masks, regular expressions and the ordered file-format registry that decides how each file is handled. · size: M · depends: — · 1 story (1 Must / 0 Should / 0 Could), 7 tasks, layer 0
 - **E03 — Comparison engines** ([`epic-03-comparison-engines.md`](epic-03-comparison-engines.md)) — Headless engines that decide what differs: line and character diff for text; scan, align and test for folder trees. · size: L · depends: — · 2 stories (2 Must / 0 Should / 0 Could), 15 tasks, layer 0
 - **E04 — Data sources** ([`epic-04-data-sources.md`](epic-04-data-sources.md)) — Where inputs come from: local and network file systems first, then archives, web pages and devices, all behind one contract so every view treats them alike. · size: L · depends: E07, E08 · 6 stories (2 Must / 2 Should / 2 Could), 24 tasks, layers 0–4
@@ -506,6 +506,7 @@ Behaviour that comes from AGENTS.md rather than the catalogue.
 | Rule | Stories |
 |---|---|
 | 13, 17, 21, 30, 33: lints, CI in its own PRs, keyboard and accessibility tests, one test binary per crate, checks | E27-S1 |
+| 21: a cancelled unsaved-changes prompt gives focus to a widget that still exists | E01-S1 |
 | 14: every feature works without the window | E01-S1, E28-S1, E28-S2 |
 | 15: partial or unsupported behaviour says so | E01-S1, E28-S1 |
 | 16: text through the translation system | E01-S1 |
