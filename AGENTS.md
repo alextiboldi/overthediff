@@ -80,6 +80,7 @@ OverTheDiff is a desktop tool for Windows, macOS and Linux that compares text, f
 - Rule 19: there is no progress log yet.
 - Rule 22: the backlog's view, command and switch names are working names. Each passes the naming.md check before it reaches the UI.
 - Rule 24: `ATTRIBUTION.md` lists assets and `NOTICE` third-party notices. A change that adds a dependency or an asset updates both.
+- Rules 33 to 37 assume pull requests. This repository has none (see Task workflow): what a pull request description would say goes in the commit message, and a task that can't pass stays unmerged on its branch.
 
 ### Layout
 
@@ -135,26 +136,28 @@ OverTheDiff is a desktop tool for Windows, macOS and Linux that compares text, f
 
 ### Task workflow
 
-The operator's standing rule: each backlog task is built in its own worktree. Its ticket is updated and closed, and it is merged, only after its tests pass and its code is reviewed. The ticket is the task's entry in its `backlog/epic-NN-*.md` file. For the task's own pull request and branch, this rule is the operator's go-ahead for rule 4's merge and branch deletion; nothing else is.
+The operator's standing rule: each backlog task is built in its own worktree. Its ticket is updated and closed, and it is merged, only after its tests pass and its code is reviewed. The ticket is the task's entry in its `backlog/epic-NN-*.md` file. The operator is the only developer, so tasks don't use pull requests: a task merges straight into `main` once its checks pass locally and its review is clean. For a task's own commit and branch, this rule is the operator's go-ahead for rule 4's merge and branch deletion; nothing else is.
 
-1. **Worktree.** From an up-to-date `main`, run `git worktree add .claude/worktrees/<task-id> -b task/<task-id> main` (for example `task/E07-S4-T2`), and work only there. `.claude/` is gitignored.
-2. **Build and test.** Implement the task and run the checks below for every crate it touches. All must pass. Push the branch, open a pull request titled `<task-id> · <task title>`, and wait for CI with `gh pr checks --watch --interval 60`.
-3. **Review.** Someone who didn't write the code (another agent session or `/code-review`) reviews the diff against the task's AC and the Definition of Done in `backlog/00-index.md`. Fix every real finding and run the checks again. Repeat until the review is clean and CI is green.
-4. **Update and close the ticket, in the same branch.** In the epic file, append ` · status: done` to the task's line and add an indented `  - Implemented:` line saying what was built, where it lives, which checks ran, and the pull request link. When the story's last task closes, tick its acceptance criteria (`- [x]`). Push, and wait for CI again.
-5. **Merge.** Squash-merge the pull request into `main` with `gh pr merge --squash --delete-branch`. If the epic file conflicts, rebase onto `main`, keep both status updates, and rerun the checks before merging.
-6. **Clean up.** Run `git worktree remove .claude/worktrees/<task-id>`, `git branch -D task/<task-id>` if the local branch is still there, `git worktree prune`, and `git pull` on `main`.
+1. **Worktree.** From an up-to-date `main`, run `git worktree add .claude/worktrees/<task-id> -b task/<task-id> main` (for example `task/E07-S4-T2`), and work only there. `.claude/` is gitignored. The task branch stays local: don't push it.
+2. **Build and test.** Implement the task and run the checks below for every crate it touches. All must pass. Commit on the task branch.
+3. **Review.** Someone who didn't write the code (another agent session or `/code-review`) reviews the branch's diff against `main` (`git diff main...task/<task-id>`) for the task's AC and the Definition of Done in `backlog/00-index.md`. Fix every real finding and run the checks again. Repeat until the review is clean.
+4. **Update and close the ticket, in the same branch.** In the epic file, append ` · status: done` to the task's line and add an indented `  - Implemented:` line saying what was built, where it lives and which checks ran. When the story's last task closes, tick its acceptance criteria (`- [x]`).
+5. **Merge.** Rebase the branch onto `origin/main`, squash it into one commit titled `<task-id> · <task title>`, run `cargo xtask ci` on that commit, and push it with `git push origin HEAD:main`. If the push is rejected because `main` moved, rebase again, keep both sides' status updates in the epic file, rerun the checks, and push again. Never force-push `main`.
+6. **Clean up.** Run `git worktree remove .claude/worktrees/<task-id>`, `git branch -D task/<task-id>`, `git worktree prune`, and `git pull` on `main`.
 
-A task whose tests or review won't pass after two different fixes stays open as a draft pull request, unmerged, with its worktree kept. Say what fails and what you tried (rule 36).
+CI runs on every push to `main`. A failure there is fixed straight away, in a commit of its own that passes the same checks.
+
+A task whose tests or review won't pass after two different fixes stays unmerged on its branch, with its worktree kept. Say what fails and what you tried (rule 36).
 
 ### Checks
 
 Run them from the workspace root.
 
-- `cargo xtask ci` is the whole gate. CI (`.github/workflows/ci.yml`) runs it through the suite's shared gate workflow in storytold/craft-common-actions: on Linux and macOS for every pull request, and on Windows too for pushes to `main`. It covers the whole workspace, so a new crate needs no workflow change. It stops at the first failure:
+- `cargo xtask ci` is the whole gate. CI (`.github/workflows/ci.yml`) runs it through the suite's shared gate workflow in storytold/craft-common-actions, on Linux, macOS and Windows for every push to `main`. It covers the whole workspace, so a new crate needs no workflow change. It stops at the first failure:
   - `cargo fmt --all -- --check`;
   - `cargo clippy --workspace --all-targets --locked -- -D warnings`;
   - `cargo test --workspace --locked`;
   - `cargo xtask ui-free`: no crate under `crates/`, except `crates/ui` and `crates/ui-*`, depends on a UI package, counting optional dependencies.
-- While iterating, run `cargo test -p <crate>` and `cargo clippy -p <crate> --all-targets -- -D warnings` for the crates you changed. Run `cargo xtask ci` before every push.
+- While iterating, run `cargo test -p <crate>` and `cargo clippy -p <crate> --all-targets -- -D warnings` for the crates you changed. Run `cargo xtask ci` before every commit you merge.
 - `Cargo.lock` is committed; the checks run with `--locked`, so commit the lock file with any dependency change.
 - Only the local platform builds locally. For `cfg(windows)` code, `cargo check --target x86_64-pc-windows-msvc -p <crate>` catches most errors.
