@@ -3,7 +3,7 @@
 use std::iter::successors;
 
 use otd_text_compare::{Change, Cursor, Differences, Line, LineEnding};
-use otd_text_engine::{Row, RowKind, Side, compare};
+use otd_text_engine::{Options, Row, RowKind, Side, compare, compare_with};
 
 fn lines(texts: &[(&str, LineEnding)]) -> Vec<Line> {
     texts.iter().map(|&(text, ending)| Line { text: text.to_owned(), ending }).collect()
@@ -90,7 +90,8 @@ fn a_line_with_three_changes_is_visited_change_by_change_in_order_from_either_pa
 fn an_ending_only_change_and_an_orphan_line_are_one_stop_each() {
     let left = lines(&[("a", LineEnding::Lf), ("b", LineEnding::CrLf), ("c", LineEnding::Lf)]);
     let right = lf(&["a", "b", "c", "d"]);
-    let rows = compare(&left, &right).rows;
+    // With *Compare line endings* on, the row that differs only in its ending is changed.
+    let rows = compare_with(&left, &right, Options { line_endings: true }).rows;
     let d = Differences { rows: &rows, left: &left, right: &right, differs: differs(&rows) };
     let at = Cursor { row: 0, side: Side::Right, column: 0 };
     assert_eq!(forwards(&d, at).iter().map(|c| c.row).collect::<Vec<_>>(), [1, 3]);
