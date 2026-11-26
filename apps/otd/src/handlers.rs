@@ -11,5 +11,6 @@ pub fn registry() -> Registry<Shell> {
     let mut registry = Registry::new();
     registry.register(QuickCompare("qc"));
     registry.register(QuickCompare("quickcompare"));
+    registry.register(otd_ui_text_compare::OpenFiles);
     registry
 }

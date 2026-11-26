@@ -2706,6 +2706,7 @@ dependencies = [
  "otd-settings",
  "otd-source",
  "otd-ui",
+ "otd-ui-text-compare",
  "tempfile",
 ]
 
@@ -2837,8 +2838,11 @@ dependencies = [
  "egui_kittest",
  "otd-core",
  "otd-format",
+ "otd-launch",
+ "otd-settings",
  "otd-text-compare",
  "otd-ui",
+ "raw-window-handle",
  "tempfile",
 ]
 
