@@ -4,8 +4,21 @@
 //! command in the menus and toolbar of the view types it names ([`Views`]), binds its default
 //! shortcuts ([`Shortcut`]) and asks its [`State`] every frame. Menus, the toolbar and shortcuts
 //! all run a command by its id.
+//!
+//! A command can also declare typed arguments ([`Param`]) and return a result (E01-S1-T12), so a
+//! script or the automation interface (E28) runs it by id without the window through [`run`]. The
+//! arguments are checked against the declaration before the command runs; a command that acts on
+//! the window says so with [`Command::needs_window`] and is refused while none is open.
+
+use std::collections::BTreeMap;
+use std::fmt;
 
 pub use craft_keymap::{Chord, Key, Mods, Platform};
+
+/// An argument's or result's value; the same value types as settings.
+pub use crate::session::Value;
+
+use crate::i18n::t;
 
 /// The view type of the Home launcher tab, for [`Views::Only`].
 pub const HOME_VIEW: &str = "home";
@@ -87,7 +100,212 @@ pub struct Command<C> {
     pub shortcuts: Vec<Shortcut>,
     /// Asked every frame the command is shown, and before it runs.
     pub state: fn(&C) -> State,
-    pub run: fn(&mut C),
+    /// The arguments it takes, checked before it runs.
+    pub params: &'static [Param],
+    /// It acts on the main window, so it is refused while none is open.
+    pub needs_window: bool,
+    pub run: Run<C>,
+}
+
+/// What a command runs.
+pub enum Run<C> {
+    /// Takes no arguments and returns no value.
+    Plain(fn(&mut C)),
+    /// Takes the checked arguments and returns a value, or an error such as
+    /// [`CommandError::Failed`].
+    Typed(fn(&mut C, &Args) -> Outcome),
+}
+
+// Not derived: a derive would ask `C: Copy`.
+impl<C> Clone for Run<C> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<C> Copy for Run<C> {}
+
+/// What running a command gives: its value, if it returns one, or why it didn't run or failed.
+pub type Outcome = Result<Option<Value>, CommandError>;
+
+/// An argument a command declares.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Param {
+    /// Stable, unique within the command: `left_path`.
+    pub name: &'static str,
+    pub kind: Kind,
+    pub required: bool,
+}
+
+impl Param {
+    pub const fn required(name: &'static str, kind: Kind) -> Param {
+        Param { name, kind, required: true }
+    }
+
+    pub const fn optional(name: &'static str, kind: Kind) -> Param {
+        Param { name, kind, required: false }
+    }
+}
+
+/// An argument's value type and the values it allows.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Kind {
+    Bool,
+    /// A number from `min` to `max`, both included.
+    Number {
+        min: f64,
+        max: f64,
+    },
+    /// One of these, in English.
+    Choice(&'static [&'static str]),
+    Text,
+    Path,
+    Colour,
+}
+
+impl Kind {
+    /// Whether `value`, given for the argument `name`, has this type and is in range.
+    fn check(&self, name: &'static str, value: &Value) -> Result<(), CommandError> {
+        let in_range = match (self, value) {
+            (Kind::Bool, Value::Bool(_)) | (Kind::Text, Value::Text(_)) | (Kind::Path, Value::Path(_)) | (Kind::Colour, Value::Colour(_)) => true,
+            // Written so that NaN is out of range.
+            (Kind::Number { min, max }, Value::Number(n)) => *min <= *n && *n <= *max,
+            (Kind::Choice(choices), Value::Choice(choice)) => choices.contains(&choice.as_str()),
+            _ => return Err(CommandError::WrongType(name)),
+        };
+        if in_range { Ok(()) } else { Err(CommandError::OutOfRange(name)) }
+    }
+}
+
+/// A command's arguments, checked against its [`Param`]s: each is declared, of its type and in
+/// range, and every required one is there.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Args(BTreeMap<&'static str, Value>);
+
+impl Args {
+    /// Checks `given` against `params`.
+    pub fn check(params: &'static [Param], given: &[(&str, Value)]) -> Result<Args, CommandError> {
+        let mut args = BTreeMap::new();
+        for (name, value) in given {
+            let Some(param) = params.iter().find(|p| p.name == *name) else {
+                return Err(CommandError::UnknownArgument((*name).to_owned()));
+            };
+            param.kind.check(param.name, value)?;
+            if args.insert(param.name, value.clone()).is_some() {
+                return Err(CommandError::RepeatedArgument(param.name));
+            }
+        }
+        match params.iter().find(|p| p.required && !args.contains_key(p.name)) {
+            Some(missing) => Err(CommandError::MissingArgument(missing.name)),
+            None => Ok(Args(args)),
+        }
+    }
+
+    /// The argument `name`, if given.
+    pub fn get(&self, name: &str) -> Option<&Value> {
+        self.0.get(name)
+    }
+
+    pub fn bool(&self, name: &str) -> Option<bool> {
+        match self.get(name)? {
+            Value::Bool(b) => Some(*b),
+            _ => None,
+        }
+    }
+
+    pub fn number(&self, name: &str) -> Option<f64> {
+        match self.get(name)? {
+            Value::Number(n) => Some(*n),
+            _ => None,
+        }
+    }
+
+    /// A text, path or choice argument.
+    pub fn text(&self, name: &str) -> Option<&str> {
+        match self.get(name)? {
+            Value::Text(s) | Value::Path(s) | Value::Choice(s) => Some(s),
+            _ => None,
+        }
+    }
+}
+
+/// Why a command didn't run, or how it failed. Each argument error names the argument.
+#[derive(Clone, Debug, PartialEq)]
+pub enum CommandError {
+    /// No registered command has this id.
+    UnknownCommand(String),
+    /// The command acts on the main window, and none is open.
+    NeedsWindow(&'static str),
+    /// The command is disabled in the current state.
+    Disabled(&'static str),
+    MissingArgument(&'static str),
+    /// The command declares no argument with this name.
+    UnknownArgument(String),
+    RepeatedArgument(&'static str),
+    WrongType(&'static str),
+    /// A number outside its range, or a choice not among its choices.
+    OutOfRange(&'static str),
+    /// The command ran and failed, with its message in the interface language.
+    Failed(String),
+}
+
+impl CommandError {
+    /// The argument an argument error names.
+    pub fn argument(&self) -> Option<&str> {
+        match self {
+            CommandError::UnknownArgument(name) => Some(name),
+            CommandError::MissingArgument(name)
+            | CommandError::RepeatedArgument(name)
+            | CommandError::WrongType(name)
+            | CommandError::OutOfRange(name) => Some(name),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for CommandError {
+    /// The message in the interface language.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (template, name): (&str, &str) = match self {
+            CommandError::UnknownCommand(id) => ("There is no command {name}.", id),
+            CommandError::NeedsWindow(id) => ("The command {name} needs the main window, and it isn't open.", id),
+            CommandError::Disabled(id) => ("The command {name} can't run now.", id),
+            CommandError::MissingArgument(name) => ("The argument {name} is missing.", name),
+            CommandError::UnknownArgument(name) => ("There is no argument {name}.", name),
+            CommandError::RepeatedArgument(name) => ("The argument {name} is given more than once.", name),
+            CommandError::WrongType(name) => ("The argument {name} has the wrong type.", name),
+            CommandError::OutOfRange(name) => ("The argument {name} is out of range.", name),
+            CommandError::Failed(message) => return f.write_str(message),
+        };
+        f.write_str(&crate::i18n::fmt(t(template), &[("name", name)]))
+    }
+}
+
+impl std::error::Error for CommandError {}
+
+/// Runs the command `id` of `commands` on `ctx` with `args`, with the main window open or not. It
+/// runs only when it exists, is enabled, has the window if it needs it and its arguments check.
+pub fn run<C>(commands: &[Command<C>], ctx: &mut C, id: &str, args: &[(&str, Value)], window_open: bool) -> Outcome {
+    let command = commands.iter().find(|c| c.id == id).ok_or_else(|| CommandError::UnknownCommand(id.to_owned()))?;
+    command.bind(ctx, args, window_open)?.run(ctx)
+}
+
+/// A command ready to run: its arguments checked, its state and window need met.
+pub struct Call<C> {
+    run: Run<C>,
+    args: Args,
+}
+
+impl<C> Call<C> {
+    pub fn run(self, ctx: &mut C) -> Outcome {
+        match self.run {
+            Run::Plain(run) => {
+                run(ctx);
+                Ok(None)
+            }
+            Run::Typed(run) => run(ctx, &self.args),
+        }
+    }
 }
 
 impl<C> Command<C> {
@@ -103,8 +321,21 @@ impl<C> Command<C> {
             toolbar: false,
             shortcuts: Vec::new(),
             state: |_| State::default(),
-            run,
+            params: &[],
+            needs_window: false,
+            run: Run::Plain(run),
         }
+    }
+
+    /// A command taking the arguments `params` and returning a result, otherwise like [`new`](Self::new).
+    pub fn typed(id: &'static str, caption: &'static str, params: &'static [Param], run: fn(&mut C, &Args) -> Outcome) -> Command<C> {
+        Command { params, run: Run::Typed(run), ..Command::new(id, caption, |_| {}) }
+    }
+
+    /// See [`Command::needs_window`](field@Command::needs_window).
+    pub fn needs_window(mut self) -> Command<C> {
+        self.needs_window = true;
+        self
     }
 
     pub fn icon(mut self, icon: &'static str) -> Command<C> {
@@ -148,6 +379,19 @@ impl<C> Command<C> {
     pub fn state(mut self, state: fn(&C) -> State) -> Command<C> {
         self.state = state;
         self
+    }
+
+    /// Checks that it can run on `ctx` with `args`: it has the window if it needs it, it is
+    /// enabled, and its arguments check. The [`Call`] doesn't borrow the command, so the command
+    /// list may live in `ctx`.
+    pub fn bind(&self, ctx: &C, args: &[(&str, Value)], window_open: bool) -> Result<Call<C>, CommandError> {
+        if self.needs_window && !window_open {
+            return Err(CommandError::NeedsWindow(self.id));
+        }
+        if !(self.state)(ctx).enabled {
+            return Err(CommandError::Disabled(self.id));
+        }
+        Ok(Call { run: self.run, args: Args::check(self.params, args)? })
     }
 
     /// Whether the command applies while a view of `view_type` is active.

@@ -37,11 +37,12 @@ const MENUS: [(&str, MenuRole); 6] = [
     ("Help", MenuRole::Help),
 ];
 
-/// The shell's own commands: the tab commands of the keymap conventions (Q24 in E01-S1).
+/// The shell's own commands: the tab commands of the keymap conventions (Q24 in E01-S1). They act
+/// on the window's tabs, so they need the window.
 pub(crate) fn shell_commands() -> Vec<Command<Shell>> {
     const MAC: &[Platform] = &[Platform::Mac];
     let several_tabs = |shell: &Shell| otd_core::command::State::enabled(shell.tabs.len() > 1);
-    vec![
+    let commands = vec![
         Command::new("otd.new_tab", NEW_TAB, Shell::new_tab).icon("plus").menu(&["Session"]).shortcut(Mods::CMD, Key::T),
         Command::new("otd.close_tab", CLOSE_CURRENT_TAB, Shell::close_tab).icon("x").menu(&["Session"]).shortcut(Mods::CMD, Key::W).shortcut_on(
             &[Platform::Windows],
@@ -58,7 +59,8 @@ pub(crate) fn shell_commands() -> Vec<Command<Shell>> {
             .state(several_tabs)
             .shortcut(Mods { shift: true, ..Mods::CTRL }, Key::Tab)
             .shortcut_on(MAC, Mods { shift: true, ..Mods::CMD }, Key::OpenBracket),
-    ]
+    ];
+    commands.into_iter().map(Command::needs_window).collect()
 }
 
 /// The default keymap of `commands` on `platform`. A command's shortcuts work in each of its
@@ -124,20 +126,20 @@ impl Shell {
         self.in_window_menu = false;
     }
 
-    /// Runs the command `id` if it applies to the active view type and is enabled, and the Session
-    /// Settings dialog isn't open (a native menu click reaches here past the dialog). Returns
-    /// whether it ran.
+    /// Runs the command `id`, with no arguments, if it applies to the active view type and is
+    /// enabled, and the Session Settings dialog isn't open (a native menu click reaches here past
+    /// the dialog). Returns whether it ran without an error.
     pub fn run(&mut self, id: &str) -> bool {
         if self.dialog.is_some() {
             return false;
         }
         let view = self.view_type();
         let Some(command) = self.commands.iter().find(|c| c.id == id && c.applies_to(view)) else { return false };
-        if !(command.state)(self).enabled {
-            return false;
+        // The window is open: the shell is what it draws.
+        match command.bind(self, &[], true) {
+            Ok(call) => call.run(self).is_ok(),
+            Err(_) => false,
         }
-        (command.run)(self);
-        true
     }
 
     fn enabled(&self, id: &str) -> bool {
