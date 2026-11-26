@@ -14,24 +14,23 @@ use crate::{LEFT, RIGHT, SIDES, TEXT_COMPARE, TextCompareView};
 pub const OPEN_FILE: &str = "Open File";
 /// The same, with no menu entry until the user adds one (hidden by default).
 pub const OPEN_FILE_ON_FILE_SYSTEM: &str = "Open File on File System";
-const NOT_TEXT_COMPARE: &str = "The current tab isn't a Text Compare session.";
+pub(crate) const NOT_TEXT_COMPARE: &str = "The current tab isn't a Text Compare session.";
 const TWO_FILES: &str = "Comparing files needs two files, not {count}.";
 
 /// `side` is Left or Right, the chosen pane when left out; `path` loads that file, and without it
 /// the pane's file picker opens.
 const PARAMS: &[Param] = &[Param::optional("side", Kind::Choice(&[LEFT, RIGHT])), Param::optional("path", Kind::Path)];
 
-/// Text Compare's commands, for `apps/otd/src/commands.rs`.
+/// Text Compare's commands, for `apps/otd/src/commands.rs`: these two, then the Session menu's
+/// ([`crate::session`]).
 // ponytail: both open the OS picker on the local file system, the one data source with a picker so
 // far; Open File browses other sources once they have one.
 pub fn commands() -> Vec<Command<Shell>> {
-    vec![
+    let open = [
         Command::typed("text-compare.open_file", OPEN_FILE, PARAMS, open_file).views(&[TEXT_COMPARE]).icon("folder-open").menu(&["File"]),
         Command::typed("text-compare.open_file_on_file_system", OPEN_FILE_ON_FILE_SYSTEM, PARAMS, open_file).views(&[TEXT_COMPARE]),
-    ]
-    .into_iter()
-    .map(Command::needs_window)
-    .collect()
+    ];
+    open.into_iter().map(Command::needs_window).chain(crate::session::commands()).collect()
 }
 
 fn open_file(shell: &mut Shell, args: &Args) -> Outcome {

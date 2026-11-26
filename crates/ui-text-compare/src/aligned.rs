@@ -14,7 +14,7 @@ use egui::{Align2, Color32, FontId, Rect, Role, ScrollArea, Sense, Stroke, TextS
 use otd_core::colour::{ColourRole, Contrast, Rgba};
 use otd_core::i18n::t;
 use otd_text_compare::Line;
-use otd_text_engine::{CharDifferences, CharRange, Importance, Row, RowKind, Side, char_differences, classify, compare};
+use otd_text_engine::{CharDifferences, CharRange, Importance, Outcome, Row, RowKind, Side, Statistics, char_differences, classify, compare};
 use otd_ui::colour::{BACKGROUND, TEXT, colour};
 
 /// An important difference's text.
@@ -56,6 +56,8 @@ pub struct Aligned {
     rows: Vec<Row>,
     /// Each row's importance (`None` for a same row), when both panes are loaded.
     importance: Vec<Option<Importance>>,
+    /// The overall result and the counts behind it, when both panes are loaded.
+    result: Option<(Outcome, Statistics)>,
     /// Character differences of the changed rows drawn so far, by row.
     chars: HashMap<usize, CharDifferences>,
     /// Digits in the longest line number on either side, so both gutters are one width.
@@ -73,20 +75,25 @@ impl Aligned {
     // ponytail: compared on the UI thread when the panes load, like the load itself; a background
     // comparison with progress (`compare_progressive`) comes when large files need one.
     pub fn new(left: Option<&[Line]>, right: Option<&[Line]>) -> Self {
-        let (rows, importance) = match (left, right) {
+        let (rows, importance, result) = match (left, right) {
             (Some(left), Some(right)) => {
                 let comparison = compare(left, right);
                 // ponytail: no rules yet, so every difference is important; E07-S4 passes them.
                 let classification = classify(&comparison, left, right, &[]);
-                (comparison.rows, classification.rows)
+                (comparison.rows, classification.rows, Some((classification.outcome, classification.statistics)))
             }
             (one, other) => {
                 let lines = one.or(other).map_or(0, <[Line]>::len);
-                ((0..lines).map(|i| Row { left: Some(i), right: Some(i), kind: RowKind::Same }).collect(), Vec::new())
+                ((0..lines).map(|i| Row { left: Some(i), right: Some(i), kind: RowKind::Same }).collect(), Vec::new(), None)
             }
         };
         let longest = left.map_or(0, <[Line]>::len).max(right.map_or(0, <[Line]>::len));
-        Self { rows, importance, chars: HashMap::new(), digits: longest.to_string().len(), scroll: 0.0, drawn: [None; 2] }
+        Self { rows, importance, result, chars: HashMap::new(), digits: longest.to_string().len(), scroll: 0.0, drawn: [None; 2] }
+    }
+
+    /// The comparison's overall result and statistics, or `None` with a pane missing.
+    pub fn result(&self) -> Option<(Outcome, Statistics)> {
+        self.result
     }
 
     fn importance(&self, row: usize) -> Option<Importance> {

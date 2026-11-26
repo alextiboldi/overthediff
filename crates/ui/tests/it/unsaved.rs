@@ -385,3 +385,28 @@ fn menu_commands_wait_under_the_prompt() {
     assert_eq!(tab_names(&harness), before);
     assert_eq!(prompt(&harness), Some(asks("Doc")));
 }
+
+/// What `Shell::save_first` runs in these tests: it renames the document, so its tab shows it ran.
+fn rename(view: &mut dyn View) {
+    if let Some(doc) = (view as &mut dyn std::any::Any).downcast_mut::<Doc>() {
+        doc.title = "Reloaded";
+    }
+}
+
+#[test]
+fn save_first_on_an_unsaved_view_asks_then_runs_after_save_or_dont_save_but_not_after_cancel() {
+    for (button, runs) in [(SAVE, true), (DONT_SAVE, true), (CANCEL, false)] {
+        let (mut harness, saves) = one_unsaved();
+        tab_to(&mut harness, EDIT);
+        harness.state_mut().save_first(rename);
+        harness.run();
+        assert_eq!(prompt(&harness), Some(asks("Doc")), "{button}: it asks first");
+        assert_eq!(tab_names(&harness), [HOME, "Doc"], "{button}: nothing runs before the answer");
+
+        answer(&mut harness, button);
+        assert_eq!(prompt(&harness), None);
+        assert_eq!(tab_names(&harness), [HOME, if runs { "Reloaded" } else { "Doc" }], "{button}: the view stays open");
+        assert_eq!(saves.get(), u32::from(button == SAVE), "{button}: only Save saves");
+        assert_eq!(focused(&harness), Some((Role::Button, EDIT.to_owned())), "{button}: focus goes back to the view's control");
+    }
+}

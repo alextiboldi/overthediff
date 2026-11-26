@@ -10,10 +10,14 @@
 //!
 //! Below the headers, [`aligned`] draws the two files aligned row by row, with their differences
 //! highlighted, scrolling together (E07-S1-T4).
+//!
+//! [`session`] holds the Session menu's Reload Files, Recompare Files, Swap Sides and Text Compare
+//! Info, and the status bar's fields (E07-S1-T8).
 
 mod read_only;
+pub mod session;
 
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use chrono::{DateTime, Local};
 pub mod aligned;
@@ -31,6 +35,7 @@ use otd_ui::{Browse, PathEdit, Session, SessionType, View};
 pub use open::{OPEN_FILE, OPEN_FILE_ON_FILE_SYSTEM, OpenFiles, commands};
 
 pub use read_only::{COMPARISON_CANCELLED, COMPARISON_FAILED, LOCATION};
+pub use session::{Info, NO_RESULT, RECOMPARE_FILES, RELOAD_FILES, SWAP_SIDES, TEXT_COMPARE_INFO};
 
 /// The session type's and the view type's id.
 pub const TEXT_COMPARE: &str = "text-compare";
@@ -88,6 +93,14 @@ pub struct TextCompareView {
     comparison: Option<ReadOnly>,
     /// The panes' rows, aligned, and the comparison behind them.
     aligned: Aligned,
+    /// Insert (`true`) or overwrite, which both panes share.
+    insert: bool,
+    /// How long the last load and comparison of both files took.
+    load_time: Option<Duration>,
+    /// The open Text Compare Info dialog.
+    info: Option<session::InfoDialog>,
+    /// The widget that takes focus on the next draw, back from the closed Info dialog.
+    refocus: Option<Id>,
 }
 
 impl Drop for TextCompareView {
@@ -122,6 +135,10 @@ impl TextCompareView {
             done: None,
             comparison: None,
             aligned: Aligned::new(None, None),
+            insert: true,
+            load_time: None,
+            info: None,
+            refocus: None,
         }
     }
 
@@ -186,6 +203,7 @@ impl TextCompareView {
 
     /// Loads each side whose spec changed or that [`Self::retry`] marked, leaving the other alone.
     fn reload_if_changed(&mut self) {
+        let started = Instant::now();
         let specs = &self.session.specs;
         self.loaded.resize(specs.len(), None);
         self.panes.resize_with(specs.len(), || None);
@@ -199,8 +217,15 @@ impl TextCompareView {
             }
         }
         if changed {
-            self.aligned = Aligned::new(self.pane(0).map(|pane| pane.lines.as_slice()), self.pane(1).map(|pane| pane.lines.as_slice()));
+            self.compare(started);
         }
+    }
+
+    /// Compares the panes as they stand. The load time, counted from `started`, is set when both
+    /// panes are loaded, and cleared when there was nothing to compare.
+    fn compare(&mut self, started: Instant) {
+        self.aligned = Aligned::new(self.pane(0).map(|pane| pane.lines.as_slice()), self.pane(1).map(|pane| pane.lines.as_slice()));
+        self.load_time = self.aligned.result().map(|_| started.elapsed());
     }
 }
 
@@ -215,6 +240,14 @@ impl View for TextCompareView {
 
     fn session(&mut self) -> Option<&mut Session> {
         Some(&mut self.session)
+    }
+
+    fn status(&self) -> otd_ui::Status {
+        self.status_fields()
+    }
+
+    fn toggle_insert(&mut self) {
+        self.insert = !self.insert;
     }
 
     fn ui(&mut self, ui: &mut Ui) {
@@ -250,6 +283,7 @@ impl View for TextCompareView {
                 }
             }
         });
+        self.info_ui(ui);
     }
 }
 
