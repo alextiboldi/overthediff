@@ -6,6 +6,7 @@ mod content;
 mod display;
 mod fixture;
 mod flat;
+mod name_filter;
 mod scan;
 mod select;
 mod status;

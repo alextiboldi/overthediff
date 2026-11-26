@@ -11,6 +11,7 @@ workspace = true
 
 # No UI dependency: `cargo xtask ui-free` fails if one reaches a crate under crates/.
 [dependencies]
+otd-mask = { path = "../mask" }
 otd-source = { path = "../source" }
 # CRC-32 for the CRC content test (MIT OR Apache-2.0, already in the lock file through png).
 crc32fast = "1.5"

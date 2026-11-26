@@ -53,6 +53,7 @@ pub mod expand;
 mod flat;
 mod info;
 pub mod look;
+mod name_filter;
 mod refresh;
 
 use expand::Expansion;
@@ -161,6 +162,8 @@ pub struct FolderCompare {
     /// Why a side can't be shown.
     errors: [Option<String>; 2],
     rows: Vec<Row>,
+    /// The name masks, an A.1 mask list ([`FolderCompare::set_name_filter`]).
+    name_filter: String,
     expansion: Expansion,
     flat: flat::Flat,
     /// The name cell that Tab reaches in the row area: a row's key (see [`Shown::key`]) and a side.
@@ -201,6 +204,7 @@ impl FolderCompare {
             scans: [None, None],
             errors: [None, None],
             rows: Vec::new(),
+            name_filter: String::new(),
             expansion: Expansion::default(),
             flat: flat::Flat::default(),
             current: (PathBuf::new(), 0),
@@ -320,9 +324,13 @@ impl FolderCompare {
                 listed = true;
             }
         }
-        if !listed {
-            return;
+        if listed {
+            self.compare();
         }
+    }
+
+    /// Compares what the scans have listed so far again.
+    fn compare(&mut self) {
         // Assigned, not only set, so a base folder that a refresh could list again shows again.
         for (side, scan) in self.scans.iter().enumerate() {
             if let Some(scan) = scan {
@@ -336,7 +344,12 @@ impl FolderCompare {
         self.rows = match (&self.scans, &self.errors) {
             ([Some(left), Some(right)], [None, None]) => {
                 let case_sensitive = case_sensitive(&left.capabilities, &right.capabilities);
-                compare_trees(&left.scan, &right.scan, &CRITERIA, Alignment::new(case_sensitive), &|_, _, _| true)
+                let filter = self.compiled_name_filter([left.capabilities.case_sensitive, right.capabilities.case_sensitive]);
+                let mut rows = compare_trees(&left.scan, &right.scan, &CRITERIA, Alignment::new(case_sensitive), &|side, path, item| {
+                    filter.visible(side, path, item)
+                });
+                filter.hide_empty_folders(&mut rows);
+                rows
             }
             _ => Vec::new(),
         };

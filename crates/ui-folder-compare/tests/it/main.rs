@@ -2,6 +2,7 @@
 
 mod info;
 mod look;
+mod name_filter;
 mod refresh;
 mod view;
 

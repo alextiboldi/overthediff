@@ -14,7 +14,7 @@ use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 use otd_core::command::{Command, Mark, State};
-use otd_folder_engine::{Aligned, Placed, Row, ScanState, Status, align_flat, case_sensitive, quick_test};
+use otd_folder_engine::{Aligned, Alignment, NameFilter, Placed, Row, ScanState, Status, TreeSide, align_flat, case_sensitive, quick_test};
 use otd_source::{Item, ItemKind};
 use otd_ui::Shell;
 
@@ -75,12 +75,16 @@ impl FolderCompare {
         if !self.flat.on {
             return;
         }
+        let filter = match &self.scans {
+            [Some(left), Some(right)] => self.compiled_name_filter([left.capabilities.case_sensitive, right.capabilities.case_sensitive]),
+            _ => return,
+        };
         // As in the tree: a side that can't be listed leaves nothing to compare.
         let ([Some(left), Some(right)], [None, None]) = (&mut self.scans, &self.errors) else { return };
         let case = case_sensitive(&left.capabilities, &right.capabilities);
-        let (left, right) = (left.walk(), right.walk());
+        let (left, right) = (left.walk(&filter, TreeSide::Left), right.walk(&filter, TreeSide::Right));
         let mut rows: Vec<(PathBuf, Row)> = Vec::new();
-        for aligned in align_flat(left.files, right.files, case) {
+        for aligned in align_flat(left.files, right.files, Alignment::new(case)) {
             let key = aligned.left.as_ref().or(aligned.right.as_ref()).map(path).unwrap_or_default();
             let item = |placed: Option<Placed>| placed.map(|placed| Item { name: path(&placed).to_string_lossy().into_owned(), ..placed.item });
             let (left_item, right_item) = (item(aligned.left), item(aligned.right));
@@ -143,8 +147,10 @@ struct Walked {
 }
 
 impl Scan {
-    /// Collects the side's listed files, and asks for every folder not listed yet.
-    fn walk(&mut self) -> Walked {
+    /// Collects the side's listed files that `filter` shows, and asks for every folder not listed
+    /// yet that it doesn't exclude. An excluded folder isn't entered, so its files and its error
+    /// take no part.
+    fn walk(&mut self, filter: &NameFilter, side: TreeSide) -> Walked {
         let mut walked = Walked { files: Vec::new(), unread: Vec::new(), complete: true };
         // Each folder with the item its parent listed it as; the base has none.
         let mut folders: Vec<(PathBuf, Option<Item>)> = vec![(PathBuf::new(), None)];
@@ -170,6 +176,9 @@ impl Scan {
                 continue;
             }
             for child in found.items {
+                if !filter.visible(side, &dir.join(&child.name), &child) {
+                    continue;
+                }
                 if child.kind == ItemKind::Folder {
                     folders.push((dir.join(&child.name), Some(child)));
                 } else {
