@@ -11,7 +11,15 @@ use otd_source::{DataSource, ItemKind, MemorySource};
 
 use crate::fixture::{at, caps};
 
-const CRITERIA: Criteria = Criteria { size: true, modified: true, tolerance: Duration::from_secs(2) };
+const CRITERIA: Criteria = Criteria {
+    size: true,
+    modified: true,
+    tolerance: Duration::from_secs(2),
+    filename_case: false,
+    unix_permissions: false,
+    unix_owner: false,
+    unix_group: false,
+};
 
 /// Paths below the base folder; folders end in `/`. It nests `Windows` in `Windows` and `Backup` in
 /// `Source`, and puts a `Source` and a `Windows` in a folder that no example names.
