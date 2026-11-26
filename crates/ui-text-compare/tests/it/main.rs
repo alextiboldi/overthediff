@@ -3,6 +3,7 @@
 mod aligned;
 mod edit;
 mod font_size;
+mod go_to;
 mod header;
 mod open;
 mod read_only;

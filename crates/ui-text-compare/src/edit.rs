@@ -113,7 +113,7 @@ fn loaded(panes: &[Option<Result<Pane, String>>], side: usize) -> Option<&Pane> 
     panes.get(side)?.as_ref()?.as_ref().ok()
 }
 
-fn loaded_mut(panes: &mut [Option<Result<Pane, String>>], side: usize) -> Option<&mut Pane> {
+pub(crate) fn loaded_mut(panes: &mut [Option<Result<Pane, String>>], side: usize) -> Option<&mut Pane> {
     panes.get_mut(side)?.as_mut()?.as_mut().ok()
 }
 
