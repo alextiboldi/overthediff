@@ -14,12 +14,14 @@
 //!   own encoding and line endings ([`encode`]), so only the edited bytes change (E07-S1-T6).
 //! - [`visible`] works out which aligned rows a display [`Filter`] shows (E07-S3-T1).
 //! - A [`Finder`] finds plain text or a regular expression in either pane or both (E07-S5-T1).
+//! - [`Differences`] finds the next or previous section and change from a [`Cursor`] (E07-S2-T1).
 
 mod bookmarks;
 mod decode;
 mod edit;
 mod filter;
 mod find;
+mod navigate;
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -30,6 +32,7 @@ pub use decode::{Decoded, Encoding, LineEndings, Unencodable, WESTERN, decode, e
 pub use edit::{History, Pos, Selection};
 pub use filter::{Filter, visible};
 pub use find::{Direction, FindOptions, Finder, Found, Sides};
+pub use navigate::{Change, Cursor, Differences};
 use otd_format::{Case, Registry};
 pub use otd_regex::RegexError;
 use otd_source::{Attributes, DataSource, ErrorKind, Item, ItemKind, Links, LocalSource, SourceError};

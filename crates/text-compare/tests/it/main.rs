@@ -4,4 +4,5 @@ mod decode;
 mod find;
 mod hostile;
 mod load;
+mod navigate;
 mod save;
