@@ -9,7 +9,15 @@ use otd_source::{Capabilities, MemorySource};
 use otd_ui::colour::ColourRole;
 use otd_ui_folder_compare::look::{Cue, DIFFERENT, Look, ORPHAN, SAME, UNKNOWN, look};
 
-const CRITERIA: Criteria = Criteria { size: true, modified: true, tolerance: DEFAULT_TOLERANCE };
+const CRITERIA: Criteria = Criteria {
+    size: true,
+    modified: true,
+    tolerance: DEFAULT_TOLERANCE,
+    filename_case: false,
+    unix_permissions: false,
+    unix_owner: false,
+    unix_group: false,
+};
 
 pub(crate) fn at(seconds: u64) -> SystemTime {
     SystemTime::UNIX_EPOCH + Duration::from_secs(seconds)

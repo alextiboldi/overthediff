@@ -9,7 +9,15 @@ use otd_source::{DataSource, ErrorKind, Item, MemorySource, SourceError};
 
 use crate::fixture::{at, caps};
 
-const CRITERIA: Criteria = Criteria { size: true, modified: true, tolerance: Duration::from_secs(2) };
+const CRITERIA: Criteria = Criteria {
+    size: true,
+    modified: true,
+    tolerance: Duration::from_secs(2),
+    filename_case: false,
+    unix_permissions: false,
+    unix_owner: false,
+    unix_group: false,
+};
 
 fn path(names: &[&str]) -> PathBuf {
     names.iter().collect()

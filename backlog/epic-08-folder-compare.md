@@ -203,8 +203,9 @@ As a release engineer, I can choose which metadata decides "different" so that c
     - Files 7200 s apart are same with Ignore timezone on.
     - Files 3599 s apart are different with both on.
     - The tolerance also applies around the 1-hour and whole-hour offsets (*inferred*).
-- **E08-S4-T2** — Filename-case and Unix-metadata tests · size: S · depends: —
+- **E08-S4-T2** — Filename-case and Unix-metadata tests · size: S · depends: — · status: done
   - AC: `Readme.md` vs `README.md` differ only when Compare filename case is on. A permissions-only difference shows red only when Permissions is on.
+  - Implemented: `Criteria` in `crates/folder-engine/src/status.rs` gets four switches, `filename_case`, `unix_permissions`, `unix_owner` and `unix_group`, and `quick_test` makes a file pair different when a switch that is on sees a difference: names equal only after Unicode lower-casing, mode bits `0o1777` (rwx and sticky), or the owner or group as the source reports it. The Unix tests compare only when both sides report a Unix mode (*unspecified*, defaulted). Every existing `Criteria` literal (the view's `CRITERIA` in `crates/ui-folder-compare`, the headless quick compare in `apps/otd`, the test constants) sets them off until E08-S4-T4 adds the controls; red comes from `look`'s `Status::Different` mapping (E08-S1-T4). Tests in `crates/folder-engine/tests/it/status.rs`. `cargo xtask ci` passed on macOS, and pull-request CI passed on Linux and macOS (no platform-dependent code, so no full-matrix run). https://github.com/alextiboldi/overthediff/pull/136
 - **E08-S4-T3** — Alignment across extensions and Unicode normalization forms · size: M · depends: —
   - AC: `a.txt` and `a.csv` share a row only with the extension option on. An NFC name and its NFD twin share a row only with the Unicode option on.
 - **E08-S4-T4** — Quick-test controls on the Comparison tab; applying recompares · size: S · depends: E08-S4-T1, E08-S4-T2, E08-S4-T3 · flags: `naming-check`

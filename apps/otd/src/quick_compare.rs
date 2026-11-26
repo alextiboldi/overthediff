@@ -118,7 +118,15 @@ fn run(test: Test, files: [&str; 2], cwd: &Path) -> Result<i32, String> {
     let [(left, left_item), (right, right_item)] = [open(files[0], cwd)?, open(files[1], cwd)?];
     let row = Aligned { name: left_item.name.clone(), left: Some(left_item), right: Some(right_item) };
     // Size runs only the quick size test; crc and binary only their content test.
-    let criteria = Criteria { size: test == Test::Size, modified: false, tolerance: DEFAULT_TOLERANCE };
+    let criteria = Criteria {
+        size: test == Test::Size,
+        modified: false,
+        tolerance: DEFAULT_TOLERANCE,
+        filename_case: false,
+        unix_permissions: false,
+        unix_owner: false,
+        unix_group: false,
+    };
     let content = match test {
         Test::Size => None,
         Test::Crc => Some(ContentTest::Crc),
