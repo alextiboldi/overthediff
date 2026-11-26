@@ -22,6 +22,8 @@
 //! `font_size.rs` holds the hidden *Increase*, *Decrease* and *Reset Font Size* (E07-S9-T4).
 //!
 //! `go_to.rs` holds *Search > Go To* and the hidden *Go To Line* (E07-S6-T1).
+//!
+//! `bookmarks.rs` holds the Search menu's bookmarks 0–9 and their gutter marks (E07-S6-T2).
 
 mod read_only;
 pub mod session;
@@ -30,6 +32,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use chrono::{DateTime, Local};
 pub mod aligned;
+mod bookmarks;
 mod edit;
 mod font_size;
 mod go_to;
@@ -45,6 +48,7 @@ use otd_launch::Completion;
 use otd_text_compare::{Encoding, LineEndings, Pane, ReadOnly};
 use otd_ui::{Browse, PathEdit, Session, SessionType, View};
 
+pub use bookmarks::{BOOKMARK, CLEAR_BOOKMARKS, GO_TO_BOOKMARK, TOGGLE_BOOKMARK};
 pub use edit::{COPY, CUT, DELETE, INSERT_TEXT, PASTE, REDO, SELECT_ALL, UNDO};
 pub use font_size::{DECREASE_FONT_SIZE, INCREASE_FONT_SIZE, RESET_FONT_SIZE};
 pub use go_to::{COLUMN, GO_TO, GO_TO_LINE, LINE, NOT_A_NUMBER};
@@ -142,6 +146,8 @@ pub struct TextCompareView {
     font_step: i8,
     /// The open Go To dialog (E07-S6-T1).
     go_to: Option<go_to::GoToDialog>,
+    /// What the last bookmark toggle or clear did, announced (E07-S6-T2).
+    bookmark_said: Option<String>,
 }
 
 impl Drop for TextCompareView {
@@ -191,6 +197,7 @@ impl TextCompareView {
             save_errors: Default::default(),
             font_step: 0,
             go_to: None,
+            bookmark_said: None,
         }
     }
 
@@ -361,6 +368,7 @@ impl View for TextCompareView {
         self.info_ui(ui);
         self.save_as_ui(ui);
         self.go_to_ui(ui);
+        self.bookmark_ui(ui);
     }
 }
 

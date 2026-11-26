@@ -222,6 +222,8 @@ impl Pane {
             self.history.clear();
             return false;
         }
+        let len = self.lines.len() - count + with.len();
+        self.bookmarks.follow(at, &self.lines[at..at + count], &with, len);
         self.lines.splice(at..at + count, with);
         self.unsaved = true;
         true
@@ -319,6 +321,7 @@ mod tests {
             unsaved: false,
             selection: Selection::default(),
             history: Default::default(),
+            bookmarks: Default::default(),
         }
     }
 
@@ -405,5 +408,36 @@ mod tests {
         pane.delete(true);
         assert!(pane.undo(), "Delete at the end changed nothing, so the join is the last step");
         assert_eq!(pane.lines.len(), 2);
+    }
+
+    #[test]
+    fn a_bookmark_keeps_its_line_through_edits_around_and_on_it_and_their_undo() {
+        let mut pane =
+            pane(&[("a", LineEnding::CrLf), ("b", LineEnding::CrLf), ("c", LineEnding::CrLf), ("d", LineEnding::CrLf), ("e", LineEnding::None)]);
+        let original = pane.lines.clone();
+        let marked = |pane: &Pane| pane.bookmarks.get(2).map(|line| pane.lines[line].text.clone());
+        pane.bookmarks.toggle(2, 3);
+
+        // A break at the line's start pushes its text down, and the bookmark with it.
+        pane.move_caret(Pos { line: 3, column: 0 }, false);
+        pane.insert("\n");
+        assert_eq!(marked(&pane).as_deref(), Some("d"));
+        // Lines deleted above pull it up.
+        pane.selection = Selection { anchor: Pos::default(), head: Pos { line: 2, column: 0 } };
+        pane.delete(false);
+        assert_eq!(marked(&pane).as_deref(), Some("d"));
+        // Typing in the line keeps it there.
+        pane.move_caret(pane.line_end(pane.bookmarks.get(2).unwrap()), false);
+        pane.type_text("x");
+        assert_eq!(marked(&pane).as_deref(), Some("dx"));
+
+        while pane.undo() {}
+        assert_eq!(pane.lines, original);
+        assert_eq!(pane.bookmarks.get(2), Some(3), "Undo takes it back to its line");
+
+        // Deleting its line moves it to the line after.
+        pane.selection = Selection { anchor: Pos { line: 3, column: 0 }, head: Pos { line: 4, column: 0 } };
+        pane.delete(false);
+        assert_eq!(marked(&pane).as_deref(), Some("e"));
     }
 }

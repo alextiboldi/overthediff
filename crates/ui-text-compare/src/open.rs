@@ -22,8 +22,8 @@ const TWO_FILES: &str = "Comparing files needs two files, not {count}.";
 const PARAMS: &[Param] = &[Param::optional("side", Kind::Choice(&[LEFT, RIGHT])), Param::optional("path", Kind::Path)];
 
 /// Text Compare's commands, for `apps/otd/src/commands.rs`: these two, the File menu's save
-/// commands (`save.rs`), then the Session menu's ([`crate::session`]), the Edit menu's and the hidden font size
-/// commands (`font_size.rs`).
+/// commands (`save.rs`), then the Session menu's ([`crate::session`]), the Edit menu's, the hidden font size
+/// commands (`font_size.rs`) and the Search menu's bookmarks.
 // ponytail: both open the OS picker on the local file system, the one data source with a picker so
 // far; Open File browses other sources once they have one.
 pub fn commands() -> Vec<Command<Shell>> {
@@ -38,6 +38,7 @@ pub fn commands() -> Vec<Command<Shell>> {
         .chain(crate::edit::commands())
         .chain(crate::font_size::commands())
         .chain(crate::go_to::commands())
+        .chain(crate::bookmarks::commands())
         .collect()
 }
 

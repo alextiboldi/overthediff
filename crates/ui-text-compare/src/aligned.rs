@@ -18,7 +18,7 @@ use egui::text::{LayoutJob, TextFormat};
 use egui::{Align2, Color32, FontId, Galley, Pos2, Rect, Role, ScrollArea, Sense, Stroke, TextStyle, Ui, WidgetInfo, pos2, vec2};
 use otd_core::colour::{ColourRole, Contrast, Rgba};
 use otd_core::i18n::t;
-use otd_text_compare::{Line, LineEnding, Pos, Selection};
+use otd_text_compare::{Bookmarks, Line, LineEnding, Pos, Selection};
 use otd_text_engine::{CharDifferences, CharRange, Importance, Outcome, Row, RowKind, Side, Statistics, char_differences, classify, compare};
 use otd_ui::colour::{BACKGROUND, SELECTION, SELECTION_TEXT, TEXT, colour};
 
@@ -248,6 +248,8 @@ pub struct Caret {
     pub shown: bool,
     /// Where the pointer presses or drags in the pane, if it does.
     pub pointer: Option<Pos2>,
+    /// The pane's bookmarks, marked in the gutter (E07-S6-T2).
+    pub bookmarks: Bookmarks,
 }
 
 /// What a pane drew this frame, for its editor.
@@ -271,7 +273,8 @@ fn byte_at(text: &str, column: usize) -> usize {
 struct Metrics {
     font: FontId,
     height: f32,
-    /// A digit's width; the gutter is the line number's digits, a space, the marker and a space.
+    /// A digit's width; the gutter is the bookmark mark, two digits wide, the line number's digits,
+    /// a space, the marker and a space.
     digit: f32,
     digits: usize,
     colours: Colours,
@@ -283,7 +286,7 @@ struct Metrics {
 
 impl Metrics {
     fn gutter(&self) -> f32 {
-        self.digit * (self.digits + 3) as f32
+        self.digit * (self.digits + 5) as f32
     }
 }
 
@@ -412,7 +415,9 @@ fn draw_row(ui: &mut Ui, row: usize, lines: [&[Line]; 2], aligned: &mut Aligned,
     // text scrolls under it.
     let left = rect.left().max(ui.clip_rect().left());
     let number = (index + 1).to_string();
-    let number_rect = Rect::from_min_size(pos2(left, rect.top()), vec2(digit * *digits as f32, *height));
+    let bookmark = Rect::from_min_size(pos2(left, rect.top()), vec2(digit * 2.0, *height));
+    crate::bookmarks::mark(ui, &caret.bookmarks, index, bookmark, font, if important { colours.important_text } else { colours.text });
+    let number_rect = Rect::from_min_size(pos2(bookmark.right(), rect.top()), vec2(digit * *digits as f32, *height));
     painter.text(number_rect.right_center(), Align2::RIGHT_CENTER, &number, font.clone(), colours.line_number);
     ui.interact(number_rect, ui.scope_id().with(("number", row)), Sense::hover()).widget_info(|| WidgetInfo::labeled(Role::Label, true, &number));
     let (marker, description) = match found.kind {
