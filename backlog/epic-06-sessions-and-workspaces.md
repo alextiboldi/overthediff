@@ -93,8 +93,9 @@ As a team lead who wants every folder comparison to use our standard rules, I ca
 
 - [ ] Acceptance uses settings tabs contributed by a test harness on Text Compare and Folder Compare, so it doesn't depend on which real settings exist yet.
 #### Tasks
-- **E06-S2-T1** — Store and load one settings set per session type · size: S · depends: —
+- **E06-S2-T1** — Store and load one settings set per session type · size: S · depends: — · status: done
   - AC: defaults written for Folder Compare survive a restart and never apply to Text Compare.
+  - Implemented: `session_defaults::read(store, settings, type_id)` and `write(store, session)` in `crates/settings/src/session_defaults.rs` (`otd-settings`) keep each session type's settings in the settings store's `session-defaults` section as `[session-defaults.<type>.<tab>]` tables, sharing the Options dialog's value codec (`options::to_toml`/`from_toml`); only settings are stored, never specs or description, and a missing or ill-fitting stored value falls back to the setting's own default. Tests in `crates/settings/tests/it/session_defaults.rs` (restart survival per type, isolation from Text Compare, reset back to defaults) and the hostile-input sweep. Checks: `cargo xtask ci` on macOS passed after rebasing onto `main`; pull-request CI on Linux and macOS passed. Pull request: https://github.com/alextiboldi/overthediff/pull/129
 - **E06-S2-T2** — *Update session defaults* in the scope dropdown · size: S · depends: E06-S2-T1
   - AC: choosing it and pressing OK updates both the view and the stored defaults. Cancel changes neither.
 - **E06-S2-T3** — New sessions start from their type's defaults · size: S · depends: E06-S2-T1
