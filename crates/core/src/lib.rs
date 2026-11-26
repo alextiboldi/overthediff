@@ -3,5 +3,6 @@
 pub mod colour;
 pub mod command;
 pub mod i18n;
+pub mod options;
 pub mod session;
 pub mod task;

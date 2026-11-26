@@ -4,6 +4,7 @@
 mod colour_roles;
 mod commands;
 mod handlers;
+mod options;
 mod session_settings;
 mod session_types;
 mod settings;
@@ -70,10 +71,14 @@ fn run_window(registry: Registry<Shell>, instance: Instance) -> eframe::Result {
             // After the language, so its notice is translated.
             let mut settings = settings::Settings::open(otd_settings::Location::Auto);
             let path_edits = otd_ui::PathEdits::open(&cc.egui_ctx, &mut settings.store);
+            let options = options::options();
+            let saved = otd_settings::options::read(&mut settings.store, &options);
             let ctx = cc.egui_ctx.clone();
             instance.set_waker(move || ctx.request_repaint());
-            let mut shell =
-                Shell::new(session_types::session_types()).with_settings(session_settings::session_settings())?.with_commands(commands::commands());
+            let mut shell = Shell::new(session_types::session_types())
+                .with_settings(session_settings::session_settings())?
+                .with_options(options, saved)?
+                .with_commands(commands::commands());
             // On macOS the menus go in the native menu bar, the application menu included; when
             // AppKit refuses them, the window keeps its own bar.
             #[cfg(target_os = "macos")]
@@ -135,6 +140,9 @@ impl eframe::App for App {
         self.settings.frame(ui);
         self.shell.ui(ui);
         self.path_edits.frame(&ctx, Some(&*frame), &mut self.settings.store);
+        if let Some(values) = self.shell.take_applied_options() {
+            otd_settings::options::write(&mut self.settings.store, &values);
+        }
         if let Some(menu) = &mut self.native_menu {
             // Its clashes are the system items macOS gives up for the app's shortcuts (⌘W); the
             // layout has already resolved them.

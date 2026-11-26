@@ -10,6 +10,7 @@
 //! A view with unsaved changes says so with [`View::unsaved`] and saves with [`View::save`]; Close
 //! Tab and Exit then ask Save / Don't Save / Cancel first (`unsaved.rs`).
 //! A feature takes a typed or browsed path with a [`PathEdit`], which keeps the field's recent paths.
+//! Features contribute program options to the Options dialog's pages ([`OptionSpec`], [`Shell::with_options`]).
 
 mod tasks;
 
@@ -35,6 +36,9 @@ use egui::accesskit::{Live, Role};
 use egui::{Response, Sense, Stroke, TextStyle, TextWrapMode, Ui, Vec2, WidgetInfo, WidgetText};
 use otd_core::command::{Command, HOME_VIEW};
 use otd_core::i18n::{fmt, measure, t};
+
+mod options;
+pub use options::{APPLY, CHOOSE_A_PAGE, DuplicateOption, NO_OPTIONS, OPTION_PAGES, OPTIONS, OptionSpec, option};
 
 mod session;
 pub use session::{
@@ -162,6 +166,8 @@ pub struct Shell {
     exit_requested: bool,
     /// The widget that takes focus on the next draw, back from a cancelled prompt.
     refocus: Option<egui::Id>,
+    /// The program options features contribute, their values and the Options dialog.
+    options: options::Options,
 }
 
 impl Shell {
@@ -182,10 +188,17 @@ impl Shell {
             exit_confirmed: false,
             exit_requested: false,
             refocus: None,
+            options: options::Options::default(),
         };
         shell.push(None);
         shell.focus_active = false;
         shell
+    }
+
+    /// Whether one of the shell's dialogs (Session Settings, Options or an unsaved-changes prompt) is
+    /// open, which keeps the window behind it out of reach.
+    fn dialog_open(&self) -> bool {
+        self.dialog.is_some() || self.options.dialog.is_some() || self.prompt.is_some()
     }
 
     /// The active view type: [`HOME_VIEW`] on Home.
@@ -261,6 +274,7 @@ impl Shell {
     /// Draws the window: menu bar, tab strip, toolbar, the active tab's contents and the status
     /// bar.
     pub fn ui(&mut self, ui: &mut Ui) {
+        self.options.publish(ui.ctx());
         let keymap = keymap(&self.commands, ui.ctx().os().into());
         self.shortcuts(ui, &keymap);
         self.menu_bar(ui, &keymap);
@@ -282,6 +296,7 @@ impl Shell {
             ui.horizontal(|ui| self.status_bar(ui));
         });
         self.dialog_ui(ui.ctx());
+        self.options_ui(ui.ctx());
         self.tasks.ui(ui.ctx());
         if std::mem::take(&mut self.exit_requested) && self.exit() {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
@@ -325,7 +340,7 @@ impl Shell {
                     node.set_size_of_set(count);
                 });
                 // Not while a dialog or prompt is open: a view opened behind it doesn't take its focus.
-                if selected && self.focus_active && self.dialog.is_none() && self.prompt.is_none() {
+                if selected && self.focus_active && !self.dialog_open() {
                     response.request_focus();
                 }
                 if response.clicked() {

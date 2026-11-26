@@ -27,6 +27,8 @@
 //! file and comes back on the next start. Keep what can shrink in an array (a list of entries,
 //! not a map or `Option` fields), which is replaced whole (alextiboldi/overthediff#11).
 
+pub mod options;
+
 use std::collections::BTreeSet;
 use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};

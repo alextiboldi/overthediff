@@ -2,6 +2,7 @@
 
 mod colour;
 mod commands;
+mod options;
 mod path_edit;
 mod session;
 mod shell;

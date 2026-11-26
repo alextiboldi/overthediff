@@ -2,4 +2,5 @@
 //! uses a temporary folder of its own, never the real settings folder.
 
 mod hostile;
+mod options;
 mod store;
