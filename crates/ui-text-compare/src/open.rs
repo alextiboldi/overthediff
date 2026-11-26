@@ -37,6 +37,7 @@ pub fn commands() -> Vec<Command<Shell>> {
         .chain(crate::session::commands())
         .chain(crate::edit::commands())
         .chain(crate::font_size::commands())
+        .chain(crate::go_to::commands())
         .collect()
 }
 

@@ -20,6 +20,8 @@
 //! (E07-S1-T6).
 //!
 //! `font_size.rs` holds the hidden *Increase*, *Decrease* and *Reset Font Size* (E07-S9-T4).
+//!
+//! `go_to.rs` holds *Search > Go To* and the hidden *Go To Line* (E07-S6-T1).
 
 mod read_only;
 pub mod session;
@@ -30,6 +32,7 @@ use chrono::{DateTime, Local};
 pub mod aligned;
 mod edit;
 mod font_size;
+mod go_to;
 mod open;
 mod save;
 
@@ -44,6 +47,7 @@ use otd_ui::{Browse, PathEdit, Session, SessionType, View};
 
 pub use edit::{COPY, CUT, DELETE, INSERT_TEXT, PASTE, REDO, SELECT_ALL, UNDO};
 pub use font_size::{DECREASE_FONT_SIZE, INCREASE_FONT_SIZE, RESET_FONT_SIZE};
+pub use go_to::{COLUMN, GO_TO, GO_TO_LINE, LINE, NOT_A_NUMBER};
 pub use open::{OPEN_FILE, OPEN_FILE_ON_FILE_SYSTEM, OpenFiles, commands};
 
 pub use read_only::{COMPARISON_CANCELLED, COMPARISON_FAILED, ENCODING_LOSSY, FILE_READ_ONLY, LOCATION};
@@ -136,6 +140,8 @@ pub struct TextCompareView {
     save_errors: [Option<String>; 2],
     /// Points the editor text is drawn above (or below) its configured size, in both panes.
     font_step: i8,
+    /// The open Go To dialog (E07-S6-T1).
+    go_to: Option<go_to::GoToDialog>,
 }
 
 impl Drop for TextCompareView {
@@ -184,6 +190,7 @@ impl TextCompareView {
             save_as: None,
             save_errors: Default::default(),
             font_step: 0,
+            go_to: None,
         }
     }
 
@@ -353,6 +360,7 @@ impl View for TextCompareView {
         self.field_focus = ui.ctx().text_edit_focused() && !editing;
         self.info_ui(ui);
         self.save_as_ui(ui);
+        self.go_to_ui(ui);
     }
 }
 
