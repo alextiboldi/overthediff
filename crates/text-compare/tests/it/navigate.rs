@@ -65,13 +65,13 @@ fn a_row_the_view_treats_as_same_is_skipped() {
 
 #[test]
 fn a_line_with_three_changes_is_visited_change_by_change_in_order_from_either_pane() {
-    // A replacement, an insertion and a deletion, after a two-byte character, so columns that
-    // counted bytes would cover the wrong text.
-    let left = lf(&["same", "é a = 1; let bb = 2; let cc = 3;", "same", "p"]);
+    // A replacement, an insertion and a deletion, after and inside two-byte characters, so columns
+    // that counted bytes would cover the wrong text.
+    let left = lf(&["same", "é a = ü; let bb = 2; let cc = 3;", "same", "p"]);
     let right = lf(&["same", "é a = 9; let bxb = 2; let c = 3;", "same", "q"]);
     let rows = compare(&left, &right).rows;
     let d = Differences { rows: &rows, left: &left, right: &right, differs: differs(&rows) };
-    let expected = [("1", "9"), ("", "x"), ("c", "")].map(|(l, r)| (l.to_owned(), r.to_owned()));
+    let expected = [("ü", "9"), ("", "x"), ("c", "")].map(|(l, r)| (l.to_owned(), r.to_owned()));
     for side in [Side::Left, Side::Right] {
         let ahead = forwards(&d, Cursor { row: 1, side, column: 0 });
         let in_line: Vec<_> = ahead.iter().take_while(|c| c.row == 1).map(|c| covered(c, &left, &right, &rows)).collect();

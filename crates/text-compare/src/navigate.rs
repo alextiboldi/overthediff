@@ -7,6 +7,9 @@
 //!
 //! Both finders go strictly past the cursor: from inside a section or a change, *next* gives the
 //! following one and *previous* the preceding one, so at the last one there is no next (*inferred*).
+//! A section that starts on the cursor's row counts as the one the cursor is in, so a caller that
+//! has visited nothing yet (the cursor at the top of a file whose first row differs) lands on that
+//! section itself rather than asking for the next.
 //!
 //! Which rows differ is the caller's to say, so navigation follows the view's current
 //! classification: a row the view treats as same is skipped.
