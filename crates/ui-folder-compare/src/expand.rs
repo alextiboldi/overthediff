@@ -75,7 +75,8 @@ pub(crate) fn flatten<'a>(rows: &'a [Row], open: &dyn Fn(&Path) -> bool) -> Vec<
 
 // ponytail: recursive, as deep as the tree, like `compare_trees`.
 fn walk<'a>(rows: &'a [Row], parent: &Path, dirs: [&Option<PathBuf>; 2], depth: usize, open: &dyn Fn(&Path) -> bool, shown: &mut Vec<Shown<'a>>) {
-    for row in rows {
+    // A row hidden on every side it has an item on, by a name filter say, isn't drawn.
+    for row in rows.iter().filter(|row| !row.hidden()) {
         let key = parent.join(&row.name);
         // Each side descends by its own item's name, which may differ in case.
         let folder =
@@ -159,7 +160,7 @@ impl FolderCompare {
 
     /// Drops the selected rows and anchors a close hid: `resolve_selection` walks the whole tree, so
     /// a hidden row left selected would be acted on unseen and unannounced.
-    fn forget_hidden(&mut self) {
+    pub(crate) fn forget_hidden(&mut self) {
         let shown: BTreeSet<PathBuf> = self.shown().into_iter().map(|shown| shown.key).collect();
         for selected in &mut self.selected {
             selected.retain(|key| shown.contains(key));
