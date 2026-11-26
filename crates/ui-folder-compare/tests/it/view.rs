@@ -179,3 +179,124 @@ fn every_row_has_a_cell_under_each_column_header_and_the_path_edits_are_outside_
         }
     }
 }
+
+/// The names of the selected cells, in row order. (The tab strip's tab is selected too.)
+fn selected(harness: &Harness<'_, Shell>) -> Vec<String> {
+    harness
+        .query_all_by(|node| node.role() == Role::Cell && node.is_selected() == Some(true))
+        .filter_map(|cell| cell.accesskit_node().label())
+        .collect()
+}
+
+fn click(harness: &mut Harness<'_, Shell>, name: &str, modifiers: Modifiers) {
+    harness.get_by_label(name).click_modifiers(modifiers);
+    harness.run();
+}
+
+/// Each row's name cell on `side`: an item's name or a gap's.
+fn names(rows: &[Vec<String>], side: &str) -> Vec<String> {
+    let (template, gap) = if side == "left" { (ON_LEFT, NOT_ON_LEFT) } else { (ON_RIGHT, NOT_ON_RIGHT) };
+    let suffix = on(template, "");
+    rows.iter().map(|row| row.iter().find(|c| c.ends_with(&suffix) || *c == gap).cloned().unwrap_or_default()).collect()
+}
+
+/// The items, not gaps, among `cells`.
+fn items(cells: &[String]) -> Vec<String> {
+    cells.iter().filter(|c| **c != NOT_ON_LEFT && **c != NOT_ON_RIGHT).cloned().collect()
+}
+
+#[test]
+fn a_click_selects_on_its_own_side_only_and_ctrl_click_adds_or_removes_one() {
+    let root = tempfile::tempdir().unwrap();
+    fixture(root.path());
+    let mut harness = harness(FolderCompare::of_folders(&["left".into(), "right".into()], root.path()));
+    let (same_left, both_left, same_right) = (on(ON_LEFT, "same.txt"), on(ON_LEFT, "both"), on(ON_RIGHT, "same.txt"));
+
+    click(&mut harness, &same_left, Modifiers::NONE);
+    assert_eq!(selected(&harness), [same_left.as_str()], "a click selects that item");
+    click(&mut harness, &both_left, Modifiers::COMMAND);
+    let mut left = selected(&harness);
+    left.sort();
+    let mut expected = vec![same_left.clone(), both_left.clone()];
+    expected.sort();
+    assert_eq!(left, expected, "Ctrl+click adds to the selection");
+
+    click(&mut harness, &same_right, Modifiers::NONE);
+    let now = selected(&harness);
+    assert!(now.contains(&same_right) && expected.iter().all(|c| now.contains(c)), "a click on the right leaves the left's selection: {now:?}");
+    assert_eq!(now.len(), 3, "{now:?}");
+
+    click(&mut harness, &same_left, Modifiers::COMMAND);
+    let now = selected(&harness);
+    assert!(!now.contains(&same_left) && now.contains(&both_left), "Ctrl+click on a selected item removes only it: {now:?}");
+}
+
+#[test]
+fn shift_click_selects_the_items_from_the_last_click_on_that_side_only() {
+    let root = tempfile::tempdir().unwrap();
+    fixture(root.path());
+    let mut harness = harness(FolderCompare::of_folders(&["left".into(), "right".into()], root.path()));
+    let right = names(&rows(&harness), "right");
+    assert_eq!(items(&right).len(), 3, "the fixture has a gap on the right: {right:?}");
+
+    click(&mut harness, &right[0], Modifiers::NONE);
+    click(&mut harness, &right[3], Modifiers::SHIFT);
+    assert_eq!(selected(&harness), items(&right), "every item of the range, across the gap, and nothing on the left");
+
+    click(&mut harness, &right[1], Modifiers::SHIFT);
+    assert_eq!(selected(&harness), items(&right[..=1]), "a new range from the same start replaces the old one");
+}
+
+#[test]
+fn up_and_down_select_as_a_click_does_shift_extends_ctrl_only_moves_and_ctrl_space_adds() {
+    let root = tempfile::tempdir().unwrap();
+    fixture(root.path());
+    let mut harness = harness(FolderCompare::of_folders(&["left".into(), "right".into()], root.path()));
+    let left = names(&rows(&harness), "left");
+    tab_to(&mut harness, Role::Cell, &left[0]);
+    assert!(selected(&harness).is_empty(), "focus alone selects nothing");
+
+    press(&mut harness, Key::ArrowDown);
+    assert_eq!(selected(&harness), items(&left[1..=1]), "Down selects the next row's item");
+
+    harness.key_press_modifiers(Modifiers::SHIFT, Key::ArrowDown);
+    harness.run();
+    assert_eq!(selected(&harness), items(&left[1..=2]), "Shift+Down extends the range");
+
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::ArrowDown);
+    harness.run();
+    assert_eq!(focused(&harness).map(|(_, name)| name).as_ref(), Some(&left[3]), "Ctrl+Down moves focus");
+    assert_eq!(selected(&harness), items(&left[1..=2]), "and leaves the selection");
+
+    harness.key_press_modifiers(Modifiers::CTRL, Key::Space);
+    harness.run();
+    assert_eq!(selected(&harness), items(&left[1..=3]), "Ctrl+Space adds the focused item");
+}
+
+#[test]
+fn shift_down_before_any_pick_selects_from_the_focused_item() {
+    let root = tempfile::tempdir().unwrap();
+    fixture(root.path());
+    let mut harness = harness(FolderCompare::of_folders(&["left".into(), "right".into()], root.path()));
+    let left = names(&rows(&harness), "left");
+    tab_to(&mut harness, Role::Cell, &left[0]);
+
+    harness.key_press_modifiers(Modifiers::SHIFT, Key::ArrowDown);
+    harness.run();
+    assert_eq!(selected(&harness), items(&left[0..=1]), "the focused item and the next");
+    harness.key_press_modifiers(Modifiers::SHIFT, Key::ArrowDown);
+    harness.run();
+    assert_eq!(selected(&harness), items(&left[0..=2]), "the range keeps its start");
+}
+
+#[test]
+fn a_screen_readers_activate_selects_as_a_click_does() {
+    let root = tempfile::tempdir().unwrap();
+    fixture(root.path());
+    let mut harness = harness(FolderCompare::of_folders(&["left".into(), "right".into()], root.path()));
+    let right = names(&rows(&harness), "right");
+
+    harness.get_by_label(&right[3]).click_accesskit();
+    harness.run();
+    assert_eq!(selected(&harness), [right[3].as_str()], "an AccessKit Click on a cell that isn't current selects its item");
+}
