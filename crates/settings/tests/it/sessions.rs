@@ -31,7 +31,13 @@ fn session(type_id: &str, specs: &[&str], description: &str, values: &[(&str, &s
     for (tab, id, value) in values {
         rules.entry((*tab).to_owned()).or_default().insert((*id).to_owned(), value.clone());
     }
-    Session { type_id: type_id.to_owned(), specs: specs.iter().map(|s| (*s).to_owned()).collect(), rules, description: description.to_owned() }
+    Session {
+        name: None,
+        type_id: type_id.to_owned(),
+        specs: specs.iter().map(|s| (*s).to_owned()).collect(),
+        rules,
+        description: description.to_owned(),
+    }
 }
 
 fn open(dir: &Path) -> otd_settings::Store {
@@ -63,16 +69,19 @@ fn saved_text_and_folder_sessions_reload_after_a_restart_as_they_were_saved() {
         ],
     );
     // Names that differ only in case, or hold separators, keep sessions of their own.
-    let saved = BTreeMap::from([("Weekly".to_owned(), text.clone()), ("weekly".to_owned(), folder.clone()), ("../a/b: c".to_owned(), text)]);
+    let named = |name: &str, session: &Session| (name.to_owned(), Session { name: Some(name.to_owned()), ..session.clone() });
+    let saved = BTreeMap::from([named("Weekly", &text), named("weekly", &folder), named("../a/b: c", &text)]);
     {
         let store = open(dir.path());
         for (name, session) in &saved {
-            sessions::save(&store, name, session).unwrap();
+            // Saved by the name given, whatever the session holds.
+            sessions::save(&store, name, &Session { name: None, ..session.clone() }).unwrap();
         }
     }
 
     let (loaded, warnings) = sessions::load(&open(dir.path()), &settings());
     assert_eq!(warnings, Vec::<String>::new());
+    // Each comes back named.
     assert_eq!(loaded, saved);
     // Nothing was written outside the settings folder's sessions folder.
     let outside: Vec<_> =

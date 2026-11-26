@@ -5,6 +5,8 @@
 //! tab. A launch-argument handler opens a view with [`Shell::open`]. The shell draws the status
 //! bar from the active view's [`Status`] (the Q25 field model in E01-S1); views never draw it.
 //! The session model, the Session Settings dialog and the session commands are in [`session`].
+//! Save Session and Save Session As write named sessions to the settings store through
+//! [`Shell::sessions_ui`] (`save_session.rs`).
 //! Registered commands fill the menus, the toolbar and the shortcuts ([`commands`]).
 //! Background tasks show their progress and end-of-task summary through [`show_task`].
 //! A view with unsaved changes says so with [`View::unsaved`] and saves with [`View::save`]; Close
@@ -41,6 +43,9 @@ use otd_core::i18n::{fmt, measure, t};
 
 mod options;
 pub use options::{APPLY, CHOOSE_A_PAGE, DuplicateOption, NO_OPTIONS, OPTION_PAGES, OPTIONS, OptionSpec, PREVIEW, option};
+
+mod save_session;
+pub use save_session::{REPLACE, REPLACE_SESSION, SAVE_SESSION, SAVE_SESSION_AS, SESSION_NAME, SESSION_SAVED};
 
 mod session;
 mod session_defaults;
@@ -166,6 +171,9 @@ pub struct Shell {
     dialog: Option<session::Dialog>,
     /// Sessions whose settings Session Settings made their type's defaults, for the app to store.
     new_defaults: Vec<Session>,
+    /// A Save Session or Save Session As under way, and the last save's announcement.
+    saving: Option<save_session::Saving>,
+    saved: Option<save_session::Saved>,
     /// The open unsaved-changes prompt.
     prompt: Option<unsaved::Prompt>,
     /// Every unsaved view was answered for, so the window may close.
@@ -198,6 +206,8 @@ impl Shell {
             session_defaults: Default::default(),
             dialog: None,
             new_defaults: Vec::new(),
+            saving: None,
+            saved: None,
             prompt: None,
             exit_confirmed: false,
             exit_requested: false,
@@ -213,7 +223,7 @@ impl Shell {
     /// Whether one of the shell's dialogs (Session Settings, Options or an unsaved-changes prompt) is
     /// open, which keeps the window behind it out of reach.
     fn dialog_open(&self) -> bool {
-        self.dialog.is_some() || self.options.dialog.is_some() || self.prompt.is_some()
+        self.dialog.is_some() || self.saving.is_some() || self.options.dialog.is_some() || self.prompt.is_some()
     }
 
     /// The active view type: [`HOME_VIEW`] on Home.
@@ -251,8 +261,9 @@ impl Shell {
 
     /// Closes the tab at `index` without asking. Closing a tab other than the active one keeps the active tab.
     fn close(&mut self, index: usize) {
-        // The dialog edits a tab by index, so it goes with any close.
+        // The dialogs edit a tab by index, so they go with any close.
         self.dialog = None;
+        self.saving = None;
         if let Some(session) = self.tabs.remove(index).as_mut().and_then(|view| view.session()) {
             self.closed.push(session.clone());
         }

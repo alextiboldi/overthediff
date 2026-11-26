@@ -59,7 +59,12 @@ pub fn save(store: &Store, name: &str, session: &Session) -> Result<(), String> 
     std::fs::create_dir_all(dir).and_then(|()| craft_atomic::atomic_write(&path, text.as_bytes())).map_err(|e| failed(name, &e.to_string()))
 }
 
-/// Every named session, by name, with each registered setting of its type read back (`settings`
+/// Whether a session is saved under `name`, damaged or not: saving under it replaces that file.
+pub fn exists(store: &Store, name: &str) -> bool {
+    path(store, name).is_ok_and(|path| path.exists())
+}
+
+/// Every named session, by name (also its [`Session::name`]), with each registered setting of its type read back (`settings`
 /// is every registered setting), and a warning to show the user for each file that was skipped.
 pub fn load(store: &Store, settings: &[Setting]) -> (BTreeMap<String, Session>, Vec<String>) {
     let (mut sessions, mut warnings) = (BTreeMap::new(), Vec::new());
@@ -116,7 +121,9 @@ fn read(path: &Path, settings: &[Setting]) -> Result<(String, Session), String> 
     if path.file_name().and_then(|n| n.to_str()) != Some(&file_name(&file.name)) {
         return Err(fmt(t("its file name doesn't match the session name \"{name}\""), &[("name", &file.name)]));
     }
-    Ok((file.name, session(file.type_id, file.specs, file.description, &file.settings, settings)))
+    let mut session = session(file.type_id, file.specs, file.description, &file.settings, settings);
+    session.name = Some(file.name.clone());
+    Ok((file.name, session))
 }
 
 /// A session with each registered setting of its type read from `saved` (by tab, then by id).

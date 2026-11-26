@@ -4,6 +4,7 @@ mod colour;
 mod commands;
 mod options;
 mod path_edit;
+mod save_session;
 mod session;
 mod session_commands;
 mod shell;

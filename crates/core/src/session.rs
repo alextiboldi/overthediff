@@ -71,6 +71,8 @@ pub fn check_unique(settings: &[Setting]) -> Result<(), DuplicateSetting> {
 /// One comparison's inputs and settings.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Session {
+    /// The name it is saved under (E06-S1); `None` for a session that was never saved by name.
+    pub name: Option<String>,
     /// The id of its session type.
     pub type_id: String,
     /// One input per side, such as a file or folder path.

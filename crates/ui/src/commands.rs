@@ -17,7 +17,7 @@ use otd_core::command::{Chord, Command, CommandError, Key, Mark, Mods, Outcome, 
 
 use otd_core::i18n::t;
 
-use crate::{NEW_TAB, OPTIONS, SESSION_SETTINGS, SessionError, SessionType, Shell};
+use crate::{NEW_TAB, OPTIONS, SAVE_SESSION, SAVE_SESSION_AS, SESSION_SETTINGS, SessionError, SessionType, Shell};
 
 /// The application's name: the macOS application menu's title.
 pub const APP_NAME: &str = "OverTheDiff";
@@ -79,6 +79,14 @@ pub(crate) fn shell_commands(session_types: &[SessionType]) -> Vec<Command<Shell
     let commands = new_sessions.chain([
         Command::new("otd.new_tab", NEW_TAB, Shell::new_tab).icon("plus").menu(SESSION).shortcut(Mods::CMD, Key::T),
         Command::new("otd.open_session", OPEN_SESSION, Shell::open_session).icon("house").menu(SESSION).shortcut(Mods::CMD, Key::O),
+        Command::typed("otd.save_session", SAVE_SESSION, &[], |shell: &mut Shell, _| outcome(shell.save_session()))
+            .views(session_views)
+            .icon("save")
+            .menu(SESSION),
+        Command::typed("otd.save_session_as", SAVE_SESSION_AS, &[], |shell: &mut Shell, _| outcome(shell.save_session_as()))
+            .views(session_views)
+            .icon("save")
+            .menu(SESSION),
         Command::typed("otd.clear_session", CLEAR_SESSION, &[], |shell: &mut Shell, _| outcome(shell.clear_session()))
             .views(session_views)
             .icon("eraser")

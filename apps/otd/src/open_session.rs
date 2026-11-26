@@ -87,6 +87,8 @@ mod tests {
         session.description = format!("{name} description");
         session.fill_defaults(&crate::session_settings::session_settings());
         sessions::save(&store, name, &session).unwrap();
+        // Loading a saved session gives it the name it is saved under (E06-S1-T2).
+        session.name = Some(name.to_owned());
         session
     }
 

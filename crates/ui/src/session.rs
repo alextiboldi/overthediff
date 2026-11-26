@@ -157,7 +157,7 @@ impl Shell {
         self.tabs.iter_mut().filter_map(|tab| Some(tab.as_mut()?.session()?.clone())).collect()
     }
 
-    fn active_session(&mut self) -> Option<&mut Session> {
+    pub(crate) fn active_session(&mut self) -> Option<&mut Session> {
         self.tabs[self.active].as_mut()?.session()
     }
 

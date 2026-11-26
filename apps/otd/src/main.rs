@@ -171,6 +171,7 @@ impl eframe::App for App {
         }
         self.settings.frame(ui);
         self.shell.ui(ui);
+        self.shell.sessions_ui(&ctx, &self.settings.store);
         self.path_edits.frame(&ctx, Some(&*frame), &mut self.settings.store);
         let cap = auto_save::cap(&self.shell);
         auto_save::closed(&mut self.settings.store, &mut self.shell, cap);
