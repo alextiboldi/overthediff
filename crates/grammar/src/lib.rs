@@ -193,15 +193,15 @@ impl Grammar {
                 spans.push(Span { range: 0..at, element: self.items[open].element });
             }
         }
-        // Each item's first match at or after `at`, kept while `at` hasn't passed its start.
+        // Each item's first match at or after `at`, and each List token's, kept while `at` hasn't
+        // passed its start, so each search of a line scans it once rather than once per match.
         let mut next: Vec<Option<Option<Range<usize>>>> = vec![None; self.items.len()];
+        let mut tokens: Vec<Vec<Option<Option<Range<usize>>>>> =
+            self.items.iter().map(|item| if let Matcher::List(list) = &item.matcher { vec![None; list.len()] } else { Vec::new() }).collect();
         while at < line.len() {
             let mut best: Option<(usize, Range<usize>)> = None;
-            for (index, cached) in next.iter_mut().enumerate() {
-                let found = match cached {
-                    Some(found) if found.as_ref().is_none_or(|r| r.start >= at) => found.clone(),
-                    _ => cached.insert(self.candidate(state, index, line, at)?).clone(),
-                };
+            for (index, (slot, tokens)) in next.iter_mut().zip(&mut tokens).enumerate() {
+                let found = cached(slot, at, || self.candidate(state, index, tokens, line, at))?;
                 if let Some(range) = found.filter(|r| best.as_ref().is_none_or(|(_, b)| r.start < b.start)) {
                     best = Some((index, range));
                 }
@@ -226,16 +226,23 @@ impl Grammar {
     }
 
     /// Where item `index`'s match, a non-empty range, would start at or after `at` in `line`.
-    fn candidate(&self, state: &State, index: usize, line: &str, at: usize) -> Result<Option<Range<usize>>, RegexError> {
+    /// `tokens` caches a List item's finds for each of its tokens.
+    fn candidate(
+        &self,
+        state: &State,
+        index: usize,
+        tokens: &mut [Option<Option<Range<usize>>>],
+        line: &str,
+        at: usize,
+    ) -> Result<Option<Range<usize>>, RegexError> {
         Ok(match &self.items[index].matcher {
             Matcher::Basic(regex) | Matcher::Delimited { start: regex, .. } => find(regex, line, at)?,
-            // ponytail: every token searches again once `at` passes its last find, so a long line
-            // with many tokens costs tokens × matches searches; keep each token's find if that
-            // shows up in large files.
-            Matcher::List(tokens) => {
+            Matcher::List(list) => {
                 let mut best: Option<Range<usize>> = None;
-                for token in tokens {
-                    if let Some(r) = find_word(token, line, at)?.filter(|r| best.as_ref().is_none_or(|b| (r.start, b.end) < (b.start, r.end))) {
+                for (token, slot) in list.iter().zip(tokens) {
+                    if let Some(r) =
+                        cached(slot, at, || find_word(token, line, at))?.filter(|r| best.as_ref().is_none_or(|b| (r.start, b.end) < (b.start, r.end)))
+                    {
                         best = Some(r);
                     }
                 }
@@ -310,6 +317,18 @@ fn compile(elements: &[Element], n: usize, item: Item) -> Result<Compiled, Gramm
         },
     };
     Ok(Compiled { element, matcher })
+}
+
+/// `slot`'s search result while `at` hasn't passed its start, else `search`'s, kept in `slot`.
+fn cached(
+    slot: &mut Option<Option<Range<usize>>>,
+    at: usize,
+    search: impl FnOnce() -> Result<Option<Range<usize>>, RegexError>,
+) -> Result<Option<Range<usize>>, RegexError> {
+    match slot {
+        Some(found) if found.as_ref().is_none_or(|r| r.start >= at) => Ok(found.clone()),
+        _ => Ok(slot.insert(search()?).clone()),
+    }
 }
 
 /// The first non-empty match of `regex` in `line` at or after `from`.

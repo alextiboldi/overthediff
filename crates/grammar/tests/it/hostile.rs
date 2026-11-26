@@ -39,3 +39,23 @@ fn marking_damaged_text_never_panics_and_keeps_spans_in_order_inside_their_line(
         }
     });
 }
+
+/// Minified and generated files put a whole program on one line, so a line's cost must grow with
+/// its length, not its square: a regression here makes this test take minutes rather than
+/// milliseconds.
+#[test]
+fn a_megabyte_on_one_line_marks_every_keyword() {
+    let mut tokens: Vec<String> = (0..40).map(|n| format!("absent{n}")).collect();
+    tokens.push("var".into());
+    let g = grammar(
+        vec![element("Keyword", true), element("String", true)],
+        vec![
+            item("String", Category::Delimited { start: "\"".into(), end: "\"".into(), stop_at_end_of_line: true, escape: Some('\\') }),
+            item("Keyword", Category::List { tokens }),
+        ],
+    );
+    let piece = "var a=\"b\";";
+    let line = piece.repeat(1_000_000 / piece.len());
+    let keywords = crate::marked(&g, &line).iter().filter(|(_, text, element)| (*text, *element) == ("var", "Keyword")).count();
+    assert_eq!(keywords, line.matches("var").count(), "every keyword on the line is marked");
+}
