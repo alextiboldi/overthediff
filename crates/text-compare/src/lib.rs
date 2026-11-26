@@ -11,10 +11,12 @@
 //! - [`save`] writes a pane back through a data source, and [`save_as`] to a spec, in the pane's
 //!   own encoding and line endings ([`encode`]), so only the edited bytes change (E07-S1-T6).
 //! - [`visible`] works out which aligned rows a display [`Filter`] shows (E07-S3-T1).
+//! - A [`Finder`] finds plain text or a regular expression in either pane or both (E07-S5-T1).
 
 mod decode;
 mod edit;
 mod filter;
+mod find;
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -23,9 +25,11 @@ use std::time::SystemTime;
 pub use decode::{Decoded, Encoding, LineEndings, Unencodable, WESTERN, decode, encode, system_code_page};
 pub use edit::{History, Pos, Selection};
 pub use filter::{Filter, visible};
+pub use find::{Direction, FindOptions, Finder, Found, Sides};
 use otd_format::{Case, Registry};
+pub use otd_regex::RegexError;
 use otd_source::{Attributes, DataSource, ErrorKind, Item, ItemKind, Links, LocalSource, SourceError};
-pub use otd_text_engine::{Line, LineEnding};
+pub use otd_text_engine::{Line, LineEnding, Side};
 
 /// One side's file: its lines and what its file info header shows.
 #[derive(Clone, Debug, PartialEq)]

@@ -106,6 +106,14 @@ impl Regex {
         Ok(Self { inner: fancy_regex::Regex::new(&syntax::translate(pattern)?)? })
     }
 
+    /// Like [`Regex::new`], but a match never has a word character (`\w`) just before or after
+    /// it, so `apple` finds no match in `apples`, `applesauce` or `snapple`. The boundary is part of
+    /// the pattern, so every alternative and start is tried against it: `app|apple` still finds
+    /// `apple`. Groups keep their numbers.
+    pub fn whole_words(pattern: &str) -> Result<Self, RegexError> {
+        Ok(Self { inner: fancy_regex::Regex::new(&format!(r"(?<!\w)(?:{})(?!\w)", syntax::translate(pattern)?))? })
+    }
+
     /// Every non-overlapping match in `text`, line by line, in order. An error ends the search:
     /// it is the last item, so a runaway pattern doesn't spend its backtracking budget again on
     /// every following line.

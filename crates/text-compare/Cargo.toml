@@ -13,6 +13,7 @@ workspace = true
 [dependencies]
 craft-codepage = { workspace = true }
 otd-format = { path = "../format" }
+otd-regex = { path = "../regex" }
 otd-source = { path = "../source" }
 otd-text-engine = { path = "../text-engine" }
 # The East Asian multibyte code pages (932, 936, 949, 950) craft-codepage names but has no tables for.
