@@ -9,7 +9,8 @@
 //! The scans and the comparison are the folder engine's (E03-S2): each side is a [`TreeScan`] of a
 //! [`LocalSource`], and the rows are [`compare_trees`]' rows. Where later stories extend the view:
 //! the columns each pane shows after the name are [`COLUMNS`]; the rows drawn, in order, come from
-//! [`FolderCompare::shown`]; commands go in the app's command list for the view type [`ID`].
+//! [`FolderCompare::shown`]; commands go in [`commands`], which the app's command list holds, for
+//! the view type [`ID`].
 //!
 //! The row area is a tree grid: Tab reaches it once, on the current name cell, and the arrow keys
 //! move focus between rows (Up, Down) and sides (Left, Right). Each row and cell is a node, and a
@@ -38,6 +39,10 @@ use otd_launch::{Completion, Handler, Pattern, Request};
 use otd_source::{Capabilities, DataSource, Item, ItemKind, LocalSource};
 use otd_ui::colour::{SELECTION, SELECTION_TEXT, colour};
 use otd_ui::{Browse, PathEdit, Session, SessionType, Shell, View};
+
+mod refresh;
+
+pub use refresh::{FULL_REFRESH, REFRESH, REFRESH_SELECTION, SWAP_SIDES, commands};
 
 /// The session type's id, which is also the view type its commands name.
 pub const ID: &str = "folder-compare";
@@ -254,9 +259,10 @@ impl FolderCompare {
         if !listed {
             return;
         }
+        // Assigned, not only set, so a base folder that a refresh could list again shows again.
         for (side, scan) in self.scans.iter().enumerate() {
-            if let Some(error) = scan.as_ref().and_then(|scan| scan.scan.folder(Path::new(""))?.error) {
-                self.errors[side] = Some(error.to_string());
+            if let Some(scan) = scan {
+                self.errors[side] = scan.scan.folder(Path::new("")).and_then(|folder| folder.error).map(|error| error.to_string());
             }
         }
         // ponytail: compares everything listed so far again after each batch of listings, which is the

@@ -6,7 +6,7 @@ use std::sync::mpsc::Receiver;
 use std::time::{Duration, SystemTime};
 
 use otd_folder_engine::{ScanEvent, ScanState, TreeScan};
-use otd_source::{Capabilities, ErrorKind, MemorySource};
+use otd_source::{Capabilities, DataSource, ErrorKind, MemorySource};
 
 /// Only a guard against a hung worker; no test asserts on time.
 const DEADLINE: Duration = Duration::from_secs(30);
@@ -128,4 +128,31 @@ fn an_idle_worker_lists_a_folder_as_soon_as_it_is_opened() {
     assert_eq!(events.recv_timeout(DEADLINE).expect("the base is listed").folder, path(&[]));
     scan.open(&path(&["b"]));
     assert_eq!(events.recv_timeout(DEADLINE).expect("the opened folder is listed").folder, path(&["b"]));
+}
+
+#[test]
+fn refresh_lists_a_listed_folder_again_with_what_changed_and_below_it_only_folders_already_listed() {
+    let source = tree();
+    let (scan, events) = TreeScan::new(Arc::clone(&source) as Arc<dyn DataSource>, "", false);
+    scan.open(&path(&["a"]));
+    while scan.step() {}
+    let _ = listed(&events);
+    let names = |folder: &[&str]| scan.folder(&path(folder)).map(|f| f.items.into_iter().map(|i| i.name).collect::<Vec<_>>());
+    let before = (names(&[]), names(&["a"]));
+    source.write(&path(&["new.txt"]), &mut "n".as_bytes()).unwrap();
+    source.write(&path(&["a", "new.txt"]), &mut "n".as_bytes()).unwrap();
+    assert_eq!((names(&[]), names(&["a"])), before, "nothing changes until refreshed");
+
+    assert_eq!(scan.refresh(&path(&[]), false), 1, "only the base itself");
+    while scan.step() {}
+    assert!(names(&[]).unwrap().contains(&"new.txt".to_owned()), "the base shows its new file");
+    assert_eq!(names(&["a"]), before.1, "a wasn't listed again");
+
+    scan.refresh(&path(&[]), true);
+    while scan.step() {}
+    let mut again = listed(&events);
+    again.sort();
+    assert_eq!(again, [path(&[]), path(&[]), path(&["a"])], "every listed folder, and no folder never opened, such as c");
+    assert!(names(&["a"]).unwrap().contains(&"new.txt".to_owned()), "a shows its new file");
+    assert_eq!(state(&scan, &path(&["c"])), Some(ScanState::Unscanned));
 }

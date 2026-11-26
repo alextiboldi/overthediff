@@ -14,7 +14,7 @@ use otd_ui::Shell;
 use otd_ui_folder_compare::{FolderCompare, NOT_ON_LEFT, NOT_ON_RIGHT, ON_LEFT, ON_RIGHT, session_type};
 
 /// `left` and `right` under `root`: a file and a folder on both sides, and an orphan on each.
-fn fixture(root: &Path) {
+pub(crate) fn fixture(root: &Path) {
     for (side, orphan) in [("left", "only-left.txt"), ("right", "only-right.txt")] {
         fs::create_dir_all(root.join(side).join("both")).unwrap();
         fs::write(root.join(side).join("same.txt"), "same").unwrap();
@@ -32,7 +32,7 @@ fn harness(view: FolderCompare) -> Harness<'static, Shell> {
 }
 
 /// Draws until the view's scans have nothing left to list.
-fn settle(harness: &mut Harness<'_, Shell>) {
+pub(crate) fn settle(harness: &mut Harness<'_, Shell>) {
     // The scans run on worker threads; the limit only stops a test that would hang.
     for _ in 0..1000 {
         harness.run();
@@ -46,7 +46,7 @@ fn settle(harness: &mut Harness<'_, Shell>) {
 }
 
 /// Each item row's cell names, in row order. The column headers' row has no cells.
-fn rows(harness: &Harness<'_, Shell>) -> Vec<Vec<String>> {
+pub(crate) fn rows(harness: &Harness<'_, Shell>) -> Vec<Vec<String>> {
     harness
         .query_all_by_role(Role::Row)
         .map(|row| row.query_all_by_role(Role::Cell).filter_map(|cell| cell.accesskit_node().label()).collect::<Vec<_>>())
@@ -59,7 +59,7 @@ fn lefts(node: &egui_kittest::Node<'_>, role: Role) -> Vec<f64> {
     node.query_all_by_role(role).filter_map(|cell| Some(cell.accesskit_node().bounding_box()?.x0)).collect()
 }
 
-fn on(template: &str, name: &str) -> String {
+pub(crate) fn on(template: &str, name: &str) -> String {
     fmt(template, &[("name", name)])
 }
 
