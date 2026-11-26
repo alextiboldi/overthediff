@@ -131,8 +131,9 @@ As a developer, I can see source code syntax-highlighted in Text Compare so that
     - HTML/XML, CSS
     - JSON, YAML, SQL, shell scripts, Markdown, INI/properties
     - a plain Text format
-- **E10-S2-T2** — Grammar model and matcher for the five item categories, with precedence and element case sensitivity · size: L · depends: — · flags: `craft-libs`
+- **E10-S2-T2** — Grammar model and matcher for the five item categories, with precedence and element case sensitivity · size: L · depends: — · flags: `craft-libs` · status: done
   - AC: unit cases cover each category: an escaped delimiter, a List keyword with and without case, a Columns range, and a Lines header with 2 heading lines. They also cover overlap precedence.
+  - Implemented: the grammar model and matcher in the new UI-free crate `crates/grammar` (`otd-grammar`): elements with their case sensitivity, items in the five categories (Basic, Delimited with escape and stop at end of line, List tokens as whole words, Columns, Lines headers), `Grammar::new` validation and `Grammar::highlight`, which returns ordered, non-overlapping spans per line, carrying unclosed strings and running headers across lines. Precedence (*inferred*): the match that starts first keeps its text, the higher item wins a tie, and column ranges and headers give way to higher items inside them. `otd-regex` gains `Regex::find_at`. `crates/grammar/tests/it/matching.rs` covers each AC case and overlap precedence; `tests/it/hostile.rs` sweeps damaged text. The craft-libs move is deferred to #124. Checks: `cargo xtask ci` on macOS and pull-request CI on Linux and macOS passed. Pull request: https://github.com/alextiboldi/overthediff/pull/127
 - **E10-S2-T3** — Built-in formats and grammars for the starter set · size: M · depends: E10-S2-T1, E10-S2-T2 · flags: `licence-check`
   - AC: each built-in format matches its masks and highlights comments, strings and keywords in a sample file of its language.
 - **E10-S2-T4** — Syntax highlighting in Text Compare, with the View > Syntax Highlighting toggle · size: M · depends: E10-S2-T2 · flags: `accessibility`
