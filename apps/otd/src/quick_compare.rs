@@ -126,6 +126,8 @@ fn run(test: Test, files: [&str; 2], cwd: &Path) -> Result<i32, String> {
         unix_permissions: false,
         unix_owner: false,
         unix_group: false,
+        ignore_daylight_saving: false,
+        ignore_time_zone: false,
     };
     let content = match test {
         Test::Size => None,

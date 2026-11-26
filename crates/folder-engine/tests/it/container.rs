@@ -133,6 +133,8 @@ fn an_unopened_container_pair_gets_a_files_status_and_an_expanded_one_a_folders(
         unix_permissions: false,
         unix_owner: false,
         unix_group: false,
+        ignore_daylight_saving: false,
+        ignore_time_zone: false,
     };
     // Right-side content and time against the left's "ab" at 10 s: different size, newer, within tolerance.
     let mut seen = Vec::new();

@@ -195,6 +195,13 @@ As a release engineer, I can choose which metadata decides "different" so that c
 - [ ] Criteria apply to files. Folders take their status from their contents.
 - [ ] Closing Session Settings after a change recompares the view.
 
+#### Decisions
+**Tolerance around the hour offsets (E08-S4-T1).** Recorded by E08-S4-T1. The catalogue doesn't say on which side of a 1-hour or whole-hour offset the tolerance applies, so this is *unspecified* there and is OverTheDiff's own reading of the task's cases.
+
+- With *Ignore daylight saving difference* or *Ignore timezone differences* on, a gap of the offset or up to the tolerance more counts as same: with 2 seconds, 3600 to 3602 seconds, or 7200 to 7202 seconds.
+- A gap short of the offset is newer: with both on, 3599 seconds is different (E08-S4-T1's case). A band on both sides would make it same.
+- The cost: a daylight-saving shift combined with a time rounded down by up to 2 seconds, such as 3598 seconds, shows as newer.
+
 #### Tasks
 - **E08-S4-T1** — Timestamp rules: tolerance, daylight saving and time zone · size: M · depends: —
   - AC: unit cases with a 2 s tolerance:

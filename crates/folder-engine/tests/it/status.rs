@@ -17,6 +17,8 @@ const BOTH: Criteria = Criteria {
     unix_permissions: false,
     unix_owner: false,
     unix_group: false,
+    ignore_daylight_saving: false,
+    ignore_time_zone: false,
 };
 
 fn ms(millis: u64) -> SystemTime {
@@ -64,6 +66,41 @@ fn size_and_time_deltas_against_the_tolerance_give_the_expected_status_including
         let criteria = Criteria { tolerance: Duration::from_millis(*tolerance), ..BOTH };
         let got = status((*left_size, ms(*left_time)), (*right_size, ms(*right_time)), &criteria);
         assert_eq!(&got, expected, "table row {index}");
+    }
+}
+
+/// (gap, tolerance, Ignore daylight saving, Ignore timezone, same), times in ms (E08-S4-T1). A
+/// gap that isn't the same makes the later side newer; each case runs in both directions.
+const OFFSETS: &[(u64, u64, bool, bool, bool)] = &[
+    (1_000, 2_000, false, false, true),
+    (3_600_000, 2_000, false, false, false),
+    (3_600_000, 2_000, true, false, true),
+    (3_600_000, 2_000, false, true, true),
+    (7_200_000, 2_000, false, true, true),
+    (7_200_000, 2_000, true, false, false),
+    (36_000_000, 2_000, false, true, true),
+    // The tolerance reaches only above an offset (E08-S4's decision): 3600 s to 3602 s at 2 s.
+    (3_598_000, 2_000, true, false, false),
+    (3_599_999, 2_000, true, false, false),
+    (3_602_000, 2_000, true, false, true),
+    (3_602_001, 2_000, true, false, false),
+    (7_198_000, 2_000, false, true, false),
+    (7_199_999, 2_000, false, true, false),
+    (7_202_000, 2_000, false, true, true),
+    (7_202_001, 2_000, false, true, false),
+    // A gap short of a whole hour stays different with both on (E08-S4-T1).
+    (3_599_000, 2_000, true, true, false),
+    (1_800_000, 2_000, true, true, false),
+];
+
+#[test]
+fn daylight_saving_and_time_zone_offsets_count_as_same_within_the_tolerance_and_only_when_on() {
+    for (index, &(gap, tolerance, ignore_daylight_saving, ignore_time_zone, same)) in OFFSETS.iter().enumerate() {
+        let criteria = Criteria { tolerance: Duration::from_millis(tolerance), ignore_daylight_saving, ignore_time_zone, ..BOTH };
+        let (early, late) = (ms(10_000), ms(10_000 + gap));
+        let expect = |newer| if same { Status::Same } else { newer };
+        assert_eq!(status((5, late), (5, early), &criteria), expect(Status::LeftNewer), "row {index}, left later");
+        assert_eq!(status((5, early), (5, late), &criteria), expect(Status::RightNewer), "row {index}, right later");
     }
 }
 

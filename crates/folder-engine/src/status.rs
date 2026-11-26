@@ -32,6 +32,13 @@ pub struct Criteria {
     pub unix_owner: bool,
     /// A different Unix group makes a pair different.
     pub unix_group: bool,
+    /// With `modified`, times 1 hour apart, or up to `tolerance` more, count as the same: a
+    /// daylight-saving shift (E08-S4).
+    pub ignore_daylight_saving: bool,
+    /// With `modified`, times a whole number of hours apart, or up to `tolerance` more, count as
+    /// the same: a time-zone shift (E08-S4). Any whole number, as the catalogue says; none is
+    /// too large.
+    pub ignore_time_zone: bool,
 }
 
 /// The mode bits the Permissions test compares: rwx for user, group and other, and sticky.
@@ -85,7 +92,7 @@ pub fn quick_test(row: &Aligned, criteria: &Criteria) -> Status {
     }
     if criteria.modified
         && let (Some(l), Some(r)) = (left.modified, right.modified)
-        && let Some(newer) = newer(l, r, criteria.tolerance)
+        && let Some(newer) = newer(l, r, criteria)
     {
         return newer;
     }
@@ -117,12 +124,20 @@ fn unix_differs(left: &Item, right: &Item, criteria: &Criteria) -> bool {
         || (criteria.unix_group && lg != rg)
 }
 
-/// Which side is newer when the times are further apart than `tolerance`.
-fn newer(left: SystemTime, right: SystemTime, tolerance: Duration) -> Option<Status> {
-    match left.duration_since(right) {
-        Ok(gap) if gap > tolerance => Some(Status::LeftNewer),
-        Ok(_) => None,
-        Err(err) if err.duration() > tolerance => Some(Status::RightNewer),
-        Err(_) => None,
-    }
+const HOUR: u64 = 3600;
+
+/// Which side is newer when the times are further apart than the tolerance, from zero and, as
+/// `criteria` asks, from 1 hour or a whole number of hours.
+///
+/// Around an hour offset the tolerance reaches only above it (E08-S4's decision, *unspecified*):
+/// with 2 seconds, gaps from 3600 to 3602 seconds are the same with Ignore daylight saving on,
+/// and 3599 seconds stays different with both options on, as E08-S4-T1's case asks.
+fn newer(left: SystemTime, right: SystemTime, criteria: &Criteria) -> Option<Status> {
+    let (gap, later) = match left.duration_since(right) {
+        Ok(gap) => (gap, Status::LeftNewer),
+        Err(err) => (err.duration(), Status::RightNewer),
+    };
+    let above = |hours: u64| gap.checked_sub(Duration::from_secs(hours.saturating_mul(HOUR))).is_some_and(|over| over <= criteria.tolerance);
+    let same = above(0) || (criteria.ignore_daylight_saving && above(1)) || (criteria.ignore_time_zone && above(gap.as_secs() / HOUR));
+    (!same).then_some(later)
 }
