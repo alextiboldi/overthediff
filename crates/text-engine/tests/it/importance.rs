@@ -2,7 +2,7 @@
 
 use std::ops::Range;
 
-use otd_text_engine::{Classification, Importance, Line, LineEnding, Outcome, RowKind, Rule, classify, compare};
+use otd_text_engine::{Classification, Importance, Line, LineEnding, Options, Outcome, RowKind, Rule, classify, compare, compare_with};
 
 /// A test rule: every ASCII digit is unimportant.
 struct Digits;
@@ -53,14 +53,51 @@ fn a_line_holding_an_unimportant_and_an_important_change_is_important() {
     assert_eq!(c.rows, [Some(Importance::Important)]);
 }
 
-#[test]
-fn a_different_line_ending_stays_important_whatever_the_text_rules_mark() {
+/// `texts` as the lines of a file that ends every line, the last included, with `ending`.
+fn ended(texts: &[&str], ending: LineEnding) -> Vec<Line> {
+    texts.iter().map(|t| Line { text: (*t).to_owned(), ending }).collect()
+}
+
+/// Two sides whose middle line differs only in its digits and its line ending.
+fn digits_and_ending() -> (Vec<Line>, Vec<Line>) {
     let left = side(&["head", "value 1", "tail"]);
     let mut right = side(&["head", "value 2", "tail"]);
     if let Some(line) = right.get_mut(1) {
         line.ending = LineEnding::CrLf;
     }
-    assert_eq!(run(&left, &right, &[&Digits]).outcome, Outcome::Important);
+    (left, right)
+}
+
+#[test]
+fn with_line_endings_compared_a_different_ending_stays_important_whatever_the_text_rules_mark() {
+    let (left, right) = digits_and_ending();
+    let comparison = compare_with(&left, &right, Options { line_endings: true });
+    assert_eq!(classify(&comparison, &left, &right, &[&Digits]).outcome, Outcome::Important);
+}
+
+#[test]
+fn with_line_endings_ignored_a_different_ending_leaves_a_rule_marked_change_unimportant() {
+    let (left, right) = digits_and_ending();
+    assert_eq!(run(&left, &right, &[&Digits]).outcome, Outcome::UnimportantOnly);
+}
+
+#[test]
+fn a_crlf_file_and_its_lf_copy_compare_as_same_by_default() {
+    let texts = ["first", "", "  third", "last"];
+    let (left, right) = (ended(&texts, LineEnding::CrLf), ended(&texts, LineEnding::Lf));
+    let comparison = compare(&left, &right);
+    assert!(comparison.sections.is_empty());
+    assert_eq!(classify(&comparison, &left, &right, &[]).outcome, Outcome::Same);
+}
+
+#[test]
+fn with_line_endings_compared_every_line_of_a_crlf_file_differs_from_its_lf_copy() {
+    let texts = ["first", "", "  third", "last"];
+    let (left, right) = (ended(&texts, LineEnding::CrLf), ended(&texts, LineEnding::Lf));
+    let comparison = compare_with(&left, &right, Options { line_endings: true });
+    assert!(comparison.rows.iter().all(|row| row.kind == RowKind::Changed), "{:?}", comparison.rows);
+    let c = classify(&comparison, &left, &right, &[]);
+    assert_eq!(c.statistics.important, texts.len());
 }
 
 #[test]

@@ -197,8 +197,9 @@ As a developer, I can mark whitespace, letter-case and line-ending differences a
 #### Tasks
 - **E07-S4-T1** — Classify leading, embedded and trailing whitespace, and the case of "everything else" · size: M · depends: —
   - AC: unit cases. An indentation-only change is unimportant when Leading whitespace is unticked. `a  b` vs `a b` follows Embedded whitespace. A case-only change is unimportant only when Character case is unticked.
-- **E07-S4-T2** — Compare line endings option · size: S · depends: —
+- **E07-S4-T2** — Compare line endings option · size: S · depends: — · status: done
   - AC: a CRLF file and its LF copy compare as same by default. With the option on, every line is flagged as different.
+  - Implemented: `Options { line_endings }` (*Compare line endings*, off by default) in `crates/text-engine` (`otd-text-engine`): with it off a pair whose text matches is a same row whatever its endings, with it on a different ending makes a changed row; `Comparison` carries its options so `classify` follows them; `compare_with` takes options and `compare_progressive` gains an `options` argument. Tests in `crates/text-engine/tests/it/importance.rs` and `alignment.rs` cover both AC. `cargo xtask ci` passed on macOS; pull-request CI on Linux and macOS. The Importance tab checkbox is E07-S4-T4. https://github.com/alextiboldi/overthediff/pull/114
 - **E07-S4-T3** — Keep orphan lines important · size: S · depends: E07-S4-T1
   - AC: an inserted blank line stays red with every whitespace element unticked.
 - **E07-S4-T4** — Importance tab controls · size: S · depends: E07-S4-T1, E07-S4-T2

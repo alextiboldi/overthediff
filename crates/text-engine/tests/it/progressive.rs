@@ -3,7 +3,7 @@
 
 use std::ops::ControlFlow;
 
-use otd_text_engine::{Line, LineEnding, Row, compare, compare_progressive};
+use otd_text_engine::{Line, LineEnding, Options, Row, compare, compare_progressive};
 
 fn lines(texts: impl IntoIterator<Item = String>) -> Vec<Line> {
     texts.into_iter().map(|text| Line { text, ending: LineEnding::Lf }).collect()
@@ -25,7 +25,7 @@ fn scattered(n: usize) -> (Vec<Line>, Vec<Line>) {
 /// Every batch the step is handed, in order, comparing to the end.
 fn batches(left: &[Line], right: &[Line]) -> Vec<Vec<Row>> {
     let mut out = Vec::new();
-    let done = compare_progressive(left, right, |batch| {
+    let done = compare_progressive(left, right, Options::default(), |batch| {
         out.push(batch.to_vec());
         ControlFlow::<()>::Continue(())
     });
@@ -63,7 +63,7 @@ fn a_break_stops_the_comparison_without_another_poll_and_returns_the_break() {
     let total = batches(&left, &right).len();
     let stop_at = total / 2;
     let mut polls = 0;
-    let result = compare_progressive(&left, &right, |_| {
+    let result = compare_progressive(&left, &right, Options::default(), |_| {
         polls += 1;
         if polls == stop_at { ControlFlow::Break("stop") } else { ControlFlow::Continue(()) }
     });

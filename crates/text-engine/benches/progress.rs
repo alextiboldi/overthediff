@@ -10,7 +10,7 @@ use std::ops::ControlFlow;
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
-use otd_text_engine::{Line, LineEnding, compare_progressive};
+use otd_text_engine::{Line, LineEnding, Options, compare_progressive};
 
 const LINES: usize = 200_000;
 const CANCEL_WITHIN: Duration = Duration::from_millis(500);
@@ -36,7 +36,7 @@ fn main() -> ExitCode {
     {
         let start = Instant::now();
         let (mut last, mut gap, mut first_rows) = (start, Duration::ZERO, None);
-        let done = compare_progressive(left, right, |batch| {
+        let done = compare_progressive(left, right, Options::default(), |batch| {
             let now = Instant::now();
             gap = gap.max(now - last);
             last = now;
