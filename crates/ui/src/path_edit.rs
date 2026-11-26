@@ -298,6 +298,41 @@ impl<'a> PathEdit<'a> {
     }
 }
 
+/// Asks [`PathEdits`] for the OS save picker on behalf of `id`, something other than a path edit
+/// (a command such as Save File As), titled `title` and starting at `path`: its folder, with its
+/// file name suggested. Call [`picker_answer`] with the same id on every draw until it answers; a
+/// draw without that call gives the picker up, as a closed edit's is.
+pub fn ask_save(ctx: &Context, id: Id, title: &str, path: &str) {
+    let mut dialog = FileDialog::save().title(title);
+    if let Some(dir) = start_folder(path) {
+        dialog = dialog.directory(dir);
+    }
+    if let Some(name) = Path::new(path).file_name() {
+        dialog = dialog.file_name(name.to_string_lossy());
+    }
+    shared(ctx, |shared| shared.requests.push((id, dialog)));
+}
+
+/// The answer to `id`'s picker ([`ask_save`]), once it has come: the chosen path, `None` when the
+/// picker was cancelled, or why there is no path, looked up.
+pub fn picker_answer(ctx: &Context, id: Id) -> Option<Result<Option<String>, String>> {
+    shared(ctx, |shared| {
+        if !shared.drawn.contains(&id) {
+            shared.drawn.push(id);
+        }
+        let index = shared.answers.iter().position(|(asker, _)| *asker == id)?;
+        Some(match shared.answers.remove(index).1 {
+            Answer::Paths(paths) => match paths.into_iter().next().map(|p| p.into_os_string().into_string()) {
+                Some(Ok(text)) => Ok(Some(text)),
+                Some(Err(raw)) => Err(fmt(t(NOT_UNICODE), &[("path", &raw.to_string_lossy())])),
+                None => Ok(None),
+            },
+            Answer::Unavailable(reason) => Err(fmt(t(PICKER_UNAVAILABLE), &[("reason", &reason)])),
+            Answer::Cancelled | Answer::Message(_) => Ok(None),
+        })
+    })
+}
+
 /// Records `path` as used in `field`, for [`PathEdits`] to save. An empty edit isn't a path.
 fn use_path(ctx: &Context, field: &str, path: &str) {
     if path.trim().is_empty() {

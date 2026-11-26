@@ -91,8 +91,8 @@ pub trait View: Any {
     }
     /// Saves the view's changes, or says in the error, already looked up (`otd_core::i18n::t`), why it
     /// couldn't; the view then stays open. Called only when [`View::unsaved`] is true.
-    // ponytail: synchronous; a save that needs a file picker or a background task comes with the
-    // first view that saves (E06-S1, E07).
+    // ponytail: synchronous, as Text Compare's save of files it already has paths for is; a save
+    // that needs a file picker or a background task comes with the first view that needs one.
     fn save(&mut self) -> Result<(), String> {
         Err(t(CANT_SAVE).to_owned())
     }

@@ -209,6 +209,7 @@ impl TextCompareView {
         self.panes.swap(0, 1);
         self.edits.swap(0, 1);
         self.synced.swap(0, 1);
+        self.save_errors.swap(0, 1);
         // Each pane's undo history goes with it.
         self.compare_as_they_stand();
     }

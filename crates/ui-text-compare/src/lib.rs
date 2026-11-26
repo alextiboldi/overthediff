@@ -14,6 +14,10 @@
 //!
 //! [`session`] holds the Session menu's Reload Files, Recompare Files, Swap Sides and Text Compare
 //! Info, and the status bar's fields (E07-S1-T8).
+//!
+//! `save.rs` holds *File > Save File*, *Save File As* and the hidden *Save File on File System As*,
+//! each pane's unsaved-edits mark, and the view's answers to the shell's unsaved-changes prompts
+//! (E07-S1-T6).
 
 mod read_only;
 pub mod session;
@@ -24,6 +28,7 @@ use chrono::{DateTime, Local};
 pub mod aligned;
 mod edit;
 mod open;
+mod save;
 
 use aligned::Aligned;
 use egui::accesskit::{Live, Role};
@@ -37,7 +42,8 @@ use otd_ui::{Browse, PathEdit, Session, SessionType, View};
 pub use edit::{COPY, CUT, DELETE, INSERT_TEXT, PASTE, REDO, SELECT_ALL, UNDO};
 pub use open::{OPEN_FILE, OPEN_FILE_ON_FILE_SYSTEM, OpenFiles, commands};
 
-pub use read_only::{COMPARISON_CANCELLED, COMPARISON_FAILED, LOCATION};
+pub use read_only::{COMPARISON_CANCELLED, COMPARISON_FAILED, ENCODING_LOSSY, FILE_READ_ONLY, LOCATION};
+pub use save::{SAVE_FAILED, SAVE_FILE, SAVE_FILE_AS, SAVE_FILE_ON_FILE_SYSTEM_AS, UNSAVED_CHANGES};
 pub use session::{Info, NO_RESULT, RECOMPARE_FILES, RELOAD_FILES, SWAP_SIDES, TEXT_COMPARE_INFO};
 
 /// The session type's and the view type's id.
@@ -120,6 +126,10 @@ pub struct TextCompareView {
     preedit: String,
     /// The editors' input-method context, new each time one gains focus (`IMEOutput`).
     ime: u64,
+    /// The side whose *Save File As* picker opens on the next draw, and whether it has been asked.
+    save_as: Option<(usize, bool)>,
+    /// Per side, why its last save failed, shown in the pane until it saves or loads again.
+    save_errors: [Option<String>; 2],
 }
 
 impl Drop for TextCompareView {
@@ -165,6 +175,8 @@ impl TextCompareView {
             field_focus: false,
             preedit: String::new(),
             ime: 0,
+            save_as: None,
+            save_errors: Default::default(),
         }
     }
 
@@ -234,8 +246,9 @@ impl TextCompareView {
         self.loaded.resize(specs.len(), None);
         self.panes.resize_with(specs.len(), || None);
         let mut changed = false;
-        for ((spec, loaded), pane) in specs.iter().zip(&mut self.loaded).zip(&mut self.panes) {
+        for (((spec, loaded), pane), error) in specs.iter().zip(&mut self.loaded).zip(&mut self.panes).zip(&mut self.save_errors) {
             if loaded.as_ref() != Some(spec) {
+                *error = None;
                 *loaded = Some(spec.clone());
                 self.comparison = None;
                 *pane = (!spec.trim().is_empty()).then(|| otd_text_compare::open(spec, &self.formats).map_err(|e| e.message));
@@ -276,6 +289,20 @@ impl View for TextCompareView {
         self.insert = !self.insert;
     }
 
+    fn unsaved(&self) -> bool {
+        (0..SIDES.len()).any(|side| TextCompareView::unsaved(self, side))
+    }
+
+    /// Saves each pane with unsaved edits, stopping at the first that fails.
+    fn save(&mut self) -> Result<(), String> {
+        for side in 0..SIDES.len() {
+            if TextCompareView::unsaved(self, side) {
+                self.save_file(Some(side))?;
+            }
+        }
+        Ok(())
+    }
+
     fn ui(&mut self, ui: &mut Ui) {
         self.reload_if_changed();
         ui.columns(SIDES.len(), |columns| {
@@ -283,9 +310,16 @@ impl View for TextCompareView {
                 column.push_id(side, |ui| {
                     // The side's caption, so the two headers' identical facts read apart; it also
                     // names the path edit.
-                    let caption = ui.strong(t(SIDES[side]));
+                    let unsaved = TextCompareView::unsaved(self, side);
+                    let caption = ui
+                        .horizontal(|ui| {
+                            let caption = ui.strong(t(SIDES[side]));
+                            save::mark(ui, unsaved);
+                            caption
+                        })
+                        .inner;
                     self.path_edit(ui, side, caption.id);
-                    pane(ui, self.panes.get(side).and_then(Option::as_ref), self.read_only(side));
+                    pane(ui, self.panes.get(side).and_then(Option::as_ref), self.read_only(side), self.save_errors[side].as_deref());
                     if clicked(ui) {
                         self.chosen = side;
                     }
@@ -310,6 +344,7 @@ impl View for TextCompareView {
         });
         self.field_focus = ui.ctx().text_edit_focused() && !editing;
         self.info_ui(ui);
+        self.save_as_ui(ui);
     }
 }
 
@@ -318,7 +353,7 @@ fn clicked(ui: &Ui) -> bool {
     ui.input(|i| i.pointer.primary_pressed()) && ui.rect_contains_pointer(ui.min_rect())
 }
 
-fn pane(ui: &mut Ui, pane: Option<&Result<Pane, String>>, read_only: Option<ReadOnly>) {
+fn pane(ui: &mut Ui, pane: Option<&Result<Pane, String>>, read_only: Option<ReadOnly>, save_error: Option<&str>) {
     match pane {
         None => {}
         Some(Err(message)) => {
@@ -329,6 +364,7 @@ fn pane(ui: &mut Ui, pane: Option<&Result<Pane, String>>, read_only: Option<Read
         Some(Ok(pane)) => {
             file_info_header(ui, pane);
             read_only::show(ui, read_only);
+            save::error(ui, save_error);
             ui.separator();
         }
     }

@@ -21,8 +21,8 @@ const TWO_FILES: &str = "Comparing files needs two files, not {count}.";
 /// the pane's file picker opens.
 const PARAMS: &[Param] = &[Param::optional("side", Kind::Choice(&[LEFT, RIGHT])), Param::optional("path", Kind::Path)];
 
-/// Text Compare's commands, for `apps/otd/src/commands.rs`: these two, then the Session menu's
-/// ([`crate::session`]).
+/// Text Compare's commands, for `apps/otd/src/commands.rs`: these two, the File menu's save
+/// commands (`save.rs`), then the Session menu's ([`crate::session`]) and the Edit menu's.
 // ponytail: both open the OS picker on the local file system, the one data source with a picker so
 // far; Open File browses other sources once they have one.
 pub fn commands() -> Vec<Command<Shell>> {
@@ -30,7 +30,12 @@ pub fn commands() -> Vec<Command<Shell>> {
         Command::typed("text-compare.open_file", OPEN_FILE, PARAMS, open_file).views(&[TEXT_COMPARE]).icon("folder-open").menu(&["File"]),
         Command::typed("text-compare.open_file_on_file_system", OPEN_FILE_ON_FILE_SYSTEM, PARAMS, open_file).views(&[TEXT_COMPARE]),
     ];
-    open.into_iter().map(Command::needs_window).chain(crate::session::commands()).chain(crate::edit::commands()).collect()
+    open.into_iter()
+        .map(Command::needs_window)
+        .chain(crate::save::commands())
+        .chain(crate::session::commands())
+        .chain(crate::edit::commands())
+        .collect()
 }
 
 fn open_file(shell: &mut Shell, args: &Args) -> Outcome {

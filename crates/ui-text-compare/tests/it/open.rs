@@ -17,7 +17,7 @@ use otd_ui_text_compare::{LEFT, OpenFiles, RIGHT, SESSION_TYPE, TEXT_COMPARE, Te
 use raw_window_handle::{DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, WindowHandle};
 
 /// What `PathEdits::frame` gets as the parent in a test: no window, which the override never needs.
-struct NoWindow;
+pub(crate) struct NoWindow;
 
 impl HasWindowHandle for NoWindow {
     fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
@@ -32,9 +32,9 @@ impl HasDisplayHandle for NoWindow {
 }
 
 /// The main window as the app drives it: the shell, then the path edits' pickers.
-struct Window {
-    shell: Shell,
-    edits: Option<PathEdits>,
+pub(crate) struct Window {
+    pub(crate) shell: Shell,
+    pub(crate) edits: Option<PathEdits>,
     store: Store,
 }
 
@@ -42,7 +42,7 @@ fn shell() -> Shell {
     Shell::new(vec![SESSION_TYPE]).with_commands(commands())
 }
 
-fn harness(shell: Shell) -> Harness<'static, Window> {
+pub(crate) fn harness(shell: Shell) -> Harness<'static, Window> {
     let (store, _) = otd_settings::open(Location::Memory);
     let mut harness = Harness::builder().build_ui_state(
         |ui, window: &mut Window| {

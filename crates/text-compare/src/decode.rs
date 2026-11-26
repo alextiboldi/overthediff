@@ -1,8 +1,13 @@
 //! Encoding and line-ending detection (E07-S1-T3): a byte-order mark first, then valid UTF-8, then
-//! UTF-16 without a mark, and otherwise the system code page.
+//! UTF-16 without a mark, and otherwise the system code page. [`encode`] is its inverse, for saving
+//! (E07-S1-T6).
+
+use std::collections::HashMap;
 
 use craft_codepage::{SINGLE_BYTE_CODE_PAGES, multibyte_encoding_name, windows_byte};
 use otd_text_engine::{Line, LineEnding};
+
+use crate::edit::ending_text;
 
 /// The code page used when the one asked for is neither a single-byte Windows code page nor an
 /// East Asian multibyte one.
@@ -88,6 +93,70 @@ fn detect(bytes: &[u8], code_page: u16) -> (Encoding, String) {
     }
     let page = if SINGLE_BYTE_CODE_PAGES.contains(&code_page) { code_page } else { WESTERN };
     (Encoding::CodePage(page), bytes.iter().map(|&b| windows_byte(page, b)).collect())
+}
+
+/// A character [`encode`] can't write in the encoding, on line `line` (from 0).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Unencodable {
+    pub line: usize,
+    pub character: char,
+}
+
+/// `lines` as a file's bytes in `encoding`: its byte-order mark if it records one, then each line
+/// with its own ending, so text [`decode`] read without loss comes back byte for byte. A character
+/// the encoding has no bytes for is an error, never a substitute.
+// ponytail: a craft-libs candidate with the detector (alextiboldi/overthediff#71).
+pub fn encode(lines: &[Line], encoding: Encoding) -> Result<Vec<u8>, Unencodable> {
+    let mut bytes = Vec::new();
+    match encoding {
+        Encoding::Utf8 { bom } => {
+            if bom {
+                bytes.extend([0xEF, 0xBB, 0xBF]);
+            }
+            for line in lines {
+                bytes.extend(line.text.as_bytes());
+                bytes.extend(ending_text(line.ending).as_bytes());
+            }
+        }
+        Encoding::Utf16Le { bom } | Encoding::Utf16Be { bom } => {
+            let unit: fn(u16) -> [u8; 2] = if matches!(encoding, Encoding::Utf16Le { .. }) { u16::to_le_bytes } else { u16::to_be_bytes };
+            if bom {
+                bytes.extend(unit(0xFEFF));
+            }
+            for line in lines {
+                bytes.extend(line.text.encode_utf16().chain(ending_text(line.ending).encode_utf16()).flat_map(unit));
+            }
+        }
+        Encoding::CodePage(page) => {
+            if let Some(multibyte) = multibyte_encoding_name(page).and_then(|name| encoding_rs::Encoding::for_label(name.as_bytes())) {
+                // The East Asian pages hold no state between characters, so lines encode one by one.
+                for (index, line) in lines.iter().enumerate() {
+                    let (encoded, _, unmappable) = multibyte.encode(&line.text);
+                    if unmappable {
+                        // encoding_rs writes an HTML character reference for it instead: find which.
+                        let character =
+                            line.text.chars().find(|c| multibyte.encode(c.encode_utf8(&mut [0; 4])).2).unwrap_or(char::REPLACEMENT_CHARACTER);
+                        return Err(Unencodable { line: index, character });
+                    }
+                    bytes.extend(&*encoded);
+                    bytes.extend(ending_text(line.ending).as_bytes());
+                }
+            } else {
+                let page = if SINGLE_BYTE_CODE_PAGES.contains(&page) { page } else { WESTERN };
+                // U+FFFD stands for the page's unassigned bytes, so it has no byte of its own.
+                let table: HashMap<char, u8> =
+                    (0x80..=0xFF).map(|b| (windows_byte(page, b), b)).filter(|(c, _)| *c != char::REPLACEMENT_CHARACTER).collect();
+                for (index, line) in lines.iter().enumerate() {
+                    for character in line.text.chars() {
+                        let byte = if character.is_ascii() { u8::try_from(character).ok() } else { table.get(&character).copied() };
+                        bytes.push(byte.ok_or(Unencodable { line: index, character })?);
+                    }
+                    bytes.extend(ending_text(line.ending).as_bytes());
+                }
+            }
+        }
+    }
+    Ok(bytes)
 }
 
 fn utf16_lossy(bytes: &[u8], unit: fn([u8; 2]) -> u16) -> String {

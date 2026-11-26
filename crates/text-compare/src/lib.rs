@@ -8,18 +8,20 @@
 //!   the system code page) and splits the lines, keeping each line's ending.
 //! - A [`Pane`] is edited through its [`Selection`]: typing, pasting and deleting replace it, and
 //!   its [`History`] undoes and redoes each edit (E07-S1-T5).
+//! - [`save`] writes a pane back through a data source, and [`save_as`] to a spec, in the pane's
+//!   own encoding and line endings ([`encode`]), so only the edited bytes change (E07-S1-T6).
 
 mod decode;
 mod edit;
 
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-pub use decode::{Decoded, Encoding, LineEndings, WESTERN, decode, system_code_page};
+pub use decode::{Decoded, Encoding, LineEndings, Unencodable, WESTERN, decode, encode, system_code_page};
 pub use edit::{History, Pos, Selection};
 use otd_format::{Case, Registry};
-use otd_source::{DataSource, ErrorKind, ItemKind, Links, LocalSource, SourceError};
+use otd_source::{Attributes, DataSource, ErrorKind, Item, ItemKind, Links, LocalSource, SourceError};
 pub use otd_text_engine::{Line, LineEnding};
 
 /// One side's file: its lines and what its file info header shows.
@@ -35,8 +37,12 @@ pub struct Pane {
     pub encoding: Encoding,
     pub endings: LineEndings,
     pub lines: Vec<Line>,
-    /// Why the pane can't be edited, if it can't. [`load`] sets [`ReadOnly::Location`].
+    /// Why the pane can't be edited, if it can't. [`load`] sets [`ReadOnly::Location`],
+    /// [`ReadOnly::File`] and [`ReadOnly::Encoding`].
     pub read_only: Option<ReadOnly>,
+    /// It was edited since it was loaded or saved. Every edit sets it, Undo included, and a save
+    /// clears it.
+    pub unsaved: bool,
     /// The caret and the selected text (E07-S1-T5).
     pub selection: Selection,
     /// The edits Undo and Redo walk through.
@@ -48,6 +54,10 @@ pub struct Pane {
 pub enum ReadOnly {
     /// The data source refuses writes ([`otd_source::Capabilities::read_only`]).
     Location,
+    /// The file itself is marked read-only (no write permission, or the read-only attribute).
+    File,
+    /// Some of the file's bytes don't decode in its encoding, so saving would change them.
+    Encoding,
     /// The comparison stopped with an error.
     ComparisonFailed,
     /// The comparison was cancelled.
@@ -73,6 +83,15 @@ pub fn load(source: &dyn DataSource, path: &Path, spec: &str, formats: &Registry
     let name = path.file_name().map(|name| name.to_string_lossy()).unwrap_or_default();
     let format = formats.resolve(&name, case).unwrap_or_else(|| formats.fallback(&bytes)).name.clone();
     let Decoded { encoding, endings, lines } = decode(&bytes, code_page);
+    // What decoded with a substitute (U+FFFD) or a second spelling wouldn't save as it was.
+    let lossless = encode(&lines, encoding).is_ok_and(|encoded| encoded == bytes);
+    let read_only = if source.capabilities().read_only {
+        Some(ReadOnly::Location)
+    } else if marked_read_only(&item) {
+        Some(ReadOnly::File)
+    } else {
+        (!lossless).then_some(ReadOnly::Encoding)
+    };
     Ok(Pane {
         path: spec.to_owned(),
         size: u64::try_from(bytes.len()).unwrap_or(u64::MAX),
@@ -81,9 +100,8 @@ pub fn load(source: &dyn DataSource, path: &Path, spec: &str, formats: &Registry
         encoding,
         endings,
         lines,
-        // ponytail: the source's capability only; a file's own read-only attribute or mode isn't
-        // checked, so saving such a file fails when it's tried (E07-S1-T6).
-        read_only: source.capabilities().read_only.then_some(ReadOnly::Location),
+        read_only,
+        unsaved: false,
         selection: Selection::default(),
         history: History::default(),
     })
@@ -92,9 +110,71 @@ pub fn load(source: &dyn DataSource, path: &Path, spec: &str, formats: &Registry
 /// Reads the file `spec` names on this machine (an OS path, `~/…` or `smb://…` for a mounted
 /// share), in the system code page when it isn't Unicode.
 pub fn open(spec: &str, formats: &Registry) -> Result<Pane, SourceError> {
+    let (source, name) = local(spec)?;
+    load(&source, &name, spec, formats, system_code_page())
+}
+
+/// The local source of the folder `spec` names a file in, and the file's name there.
+fn local(spec: &str) -> Result<(LocalSource, PathBuf), SourceError> {
     // Resolved whole, so an `smb://` spec's file name is percent-decoded like its folders.
     let path = otd_source::resolve(spec)?;
     let name = path.file_name().ok_or_else(|| SourceError::new(ErrorKind::NotFound, format!("{spec} doesn't name a file")))?;
     let folder = path.parent().filter(|folder| !folder.as_os_str().is_empty()).unwrap_or(Path::new("."));
-    load(&LocalSource::new(folder), Path::new(name), spec, formats, system_code_page())
+    Ok((LocalSource::new(folder), PathBuf::from(name)))
+}
+
+/// Whether the file is marked read-only: no write permission at all on Unix, the read-only
+/// attribute on Windows. Replacing a file works around both on some systems, so a save checks.
+fn marked_read_only(item: &Item) -> bool {
+    const FILE_ATTRIBUTE_READONLY: u32 = 1;
+    match &item.attributes {
+        Some(Attributes::Unix { mode, .. }) => mode & 0o222 == 0,
+        Some(Attributes::Windows(attributes)) => attributes & FILE_ATTRIBUTE_READONLY != 0,
+        None => false,
+    }
+}
+
+/// Why a pane wasn't saved. Nothing was written.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SaveError {
+    /// A character its encoding can't hold.
+    Unencodable(Unencodable),
+    /// The pane is [`ReadOnly::Encoding`]: saving would change bytes nobody edited.
+    Lossy,
+    /// The file there is marked read-only.
+    MarkedReadOnly,
+    /// The source refused or failed the write.
+    Source(SourceError),
+}
+
+/// Writes `pane` to `path` in `source` in its own encoding, byte-order mark and line endings, so
+/// only edited lines' bytes change. The source writes crash-safely ([`DataSource::write`]). Then the
+/// pane takes the file's new size and modified time and is no longer unsaved.
+pub fn save(pane: &mut Pane, source: &dyn DataSource, path: &Path) -> Result<(), SaveError> {
+    if pane.read_only == Some(ReadOnly::Encoding) {
+        return Err(SaveError::Lossy);
+    }
+    let bytes = encode(&pane.lines, pane.encoding).map_err(SaveError::Unencodable)?;
+    // A missing file is a new one; any other stat error is the write's to report.
+    if source.stat(path, Links::Follow).is_ok_and(|item| marked_read_only(&item)) {
+        return Err(SaveError::MarkedReadOnly);
+    }
+    source.write(path, &mut bytes.as_slice()).map_err(SaveError::Source)?;
+    pane.size = u64::try_from(bytes.len()).unwrap_or(u64::MAX);
+    pane.modified = source.stat(path, Links::Follow).ok().and_then(|item| item.modified);
+    pane.unsaved = false;
+    Ok(())
+}
+
+/// Saves `pane` to the file `spec` names on this machine (as [`open`] reads it): *Save File* with
+/// the pane's own path, *Save File As* with another. The pane then shows that file, so one that was
+/// read-only for its old location or file can be edited.
+pub fn save_as(pane: &mut Pane, spec: &str) -> Result<(), SaveError> {
+    let (source, name) = local(spec).map_err(SaveError::Source)?;
+    save(pane, &source, &name)?;
+    spec.clone_into(&mut pane.path);
+    if matches!(pane.read_only, Some(ReadOnly::Location | ReadOnly::File)) {
+        pane.read_only = None;
+    }
+    Ok(())
 }

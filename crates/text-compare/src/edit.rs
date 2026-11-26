@@ -223,6 +223,7 @@ impl Pane {
             return false;
         }
         self.lines.splice(at..at + count, with);
+        self.unsaved = true;
         true
     }
 
@@ -289,7 +290,7 @@ fn style(endings: LineEndings) -> LineEnding {
     }
 }
 
-fn ending_text(ending: LineEnding) -> &'static str {
+pub(crate) fn ending_text(ending: LineEnding) -> &'static str {
     match ending {
         LineEnding::None => "",
         LineEnding::Lf => "\n",
@@ -315,6 +316,7 @@ mod tests {
             endings: LineEndings::Windows,
             lines: lines.iter().map(|&(text, ending)| Line { text: text.to_owned(), ending }).collect(),
             read_only: None,
+            unsaved: false,
             selection: Selection::default(),
             history: Default::default(),
         }

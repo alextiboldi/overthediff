@@ -1,5 +1,7 @@
 //! Read-only panes, each with the reason shown (E07-S1-T7). A pane is read-only when its data
-//! source refuses writes ([`ReadOnly::Location`], set when it loads) or when the last comparison
+//! source refuses writes ([`ReadOnly::Location`], set when it loads), the file is marked read-only
+//! ([`ReadOnly::File`]) or has bytes its encoding can't read ([`ReadOnly::Encoding`], E07-S1-T6),
+//! or when the last comparison
 //! failed or was cancelled; the comparison's runner reports how it ended through
 //! [`TextCompareView::comparison_ended`]. Editing and saving check [`TextCompareView::read_only`].
 
@@ -13,6 +15,8 @@ use crate::TextCompareView;
 
 // Each reason as the pane shows it: English keys, drawn through `t`.
 pub const LOCATION: &str = "Read-only: the file's location can't be written to";
+pub const FILE_READ_ONLY: &str = "Read-only: the file is marked read-only";
+pub const ENCODING_LOSSY: &str = "Read-only: some of the file's bytes can't be read in its encoding, and saving would change them";
 pub const COMPARISON_FAILED: &str = "Read-only: the comparison failed";
 pub const COMPARISON_CANCELLED: &str = "Read-only: the comparison was cancelled";
 
@@ -20,6 +24,8 @@ pub const COMPARISON_CANCELLED: &str = "Read-only: the comparison was cancelled"
 fn reason(reason: ReadOnly) -> &'static str {
     match reason {
         ReadOnly::Location => LOCATION,
+        ReadOnly::File => FILE_READ_ONLY,
+        ReadOnly::Encoding => ENCODING_LOSSY,
         ReadOnly::ComparisonFailed => COMPARISON_FAILED,
         ReadOnly::ComparisonCancelled => COMPARISON_CANCELLED,
     }
