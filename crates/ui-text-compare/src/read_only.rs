@@ -43,8 +43,8 @@ impl TextCompareView {
         };
     }
 
-    /// Why the loaded pane of side `side` (0 is left) can't be edited, if it can't. Its location
-    /// comes first, since a later comparison can't change it.
+    /// Why the loaded pane of side `side` (0 is left) can't be edited, if it can't. Its own
+    /// reason (its encoding, location or file) comes first, since a later comparison can't change it.
     pub fn read_only(&self, side: usize) -> Option<ReadOnly> {
         self.pane(side)?.read_only.or(self.comparison)
     }
