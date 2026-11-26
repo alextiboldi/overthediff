@@ -10,7 +10,7 @@ use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use otd_core::i18n::{Lang, embedded, set_language, t};
 use otd_core::task::{End, Task};
-use otd_ui::{CANCEL, CANCELLED, CLOSE, Shell, show_task};
+use otd_ui::{APP_NAME, CANCEL, CANCELLED, CLOSE, Shell, show_task};
 
 fn harness() -> Harness<'static, Shell> {
     // egui's default fonts have no `⟦`, the pseudo locale's mark.
@@ -198,6 +198,7 @@ fn no_text_in_the_task_windows_skips_the_lookup() {
 
     let roles = |role| seen.iter().filter(|(r, _)| *r == role).count();
     assert!(roles(Role::ProgressIndicator) > 0 && roles(Role::Dialog) > 0, "{seen:?}");
-    let unmarked: Vec<_> = seen.iter().filter(|(_, text)| !crate::translation::wholly_marked(text)).collect();
+    // The product name, the macOS application menu's title, is never translated.
+    let unmarked: Vec<_> = seen.iter().filter(|(_, text)| text != APP_NAME && !crate::translation::wholly_marked(text)).collect();
     assert!(unmarked.is_empty(), "text drawn without the lookup: {unmarked:?}");
 }

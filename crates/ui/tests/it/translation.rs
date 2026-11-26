@@ -9,6 +9,7 @@ use egui::accesskit::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use otd_core::i18n::{Embedded, I18n, Lang, embedded, set_language, t};
+use otd_ui::command::Command;
 use otd_ui::{
     CANCEL, CLOSE_TAB, DESCRIPTION, Field, HOME, INPUTS, INSERT, LOAD_TIME, NEW_TAB, NO_SESSION_TYPES, OK, SCOPE, SESSION_SETTINGS, Session,
     SessionType, Setting, Shell, Status, THIS_VIEW_ONLY, Value, View,
@@ -65,9 +66,10 @@ fn settings() -> Vec<Setting> {
 
 fn harness(session_types: Vec<SessionType>) -> Harness<'static, Shell> {
     // egui's default fonts have no `⟦`, the pseudo locale's mark.
-    let mut harness = Harness::builder()
-        .allow_missing_glyphs()
-        .build_ui_state(|ui, shell: &mut Shell| shell.ui(ui), Shell::new(session_types).with_settings(settings()).unwrap());
+    // A command with a toolbar button, so that the toolbar is drawn too.
+    let shell =
+        Shell::new(session_types).with_settings(settings()).unwrap().with_commands(vec![Command::new("test.tool", "Harness tool", |_| {}).toolbar()]);
+    let mut harness = Harness::builder().allow_missing_glyphs().build_ui_state(|ui, shell: &mut Shell| shell.ui(ui), shell);
     harness.run();
     harness
 }

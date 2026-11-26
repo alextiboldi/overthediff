@@ -26,6 +26,10 @@ craft-testkit = { git = "https://github.com/storytold/craft-libs", rev = "2c81ed
 craft-ipc = { git = "https://github.com/storytold/craft-libs", rev = "2c81ed850319ef3504ce56d82379b346522af18e" }
 # Translation lookup (otd-core's `i18n`): catalogs, fallback to the English key, plurals, `{name}` filling.
 craft-i18n = { git = "https://github.com/storytold/craft-libs", rev = "2c81ed850319ef3504ce56d82379b346522af18e" }
+# Chords, default bindings and their dispatch (otd-core declares, otd-ui dispatches).
+craft-keymap = { git = "https://github.com/storytold/craft-libs", rev = "2c81ed850319ef3504ce56d82379b346522af18e" }
+# Menus laid out per platform: the in-window bar, and the native bar on macOS.
+craft-menu = { git = "https://github.com/storytold/craft-libs", rev = "2c81ed850319ef3504ce56d82379b346522af18e" }
 
 [workspace.lints.rust]
 # `deny`, not `forbid`, so a module AGENTS.md names can `allow(unsafe_code)` (rule 13).

@@ -5,6 +5,7 @@
 //! tab. A launch-argument handler opens a view with [`Shell::open`]. The shell draws the status
 //! bar from the active view's [`Status`] (the Q25 field model in E01-S1); views never draw it.
 //! The session model, the Session Settings dialog and the session commands are in [`session`].
+//! Registered commands fill the menus, the toolbar and the shortcuts ([`commands`]).
 //! Background tasks show their progress and end-of-task summary through [`show_task`].
 
 mod tasks;
@@ -13,11 +14,17 @@ pub use tasks::{CANCEL, CANCELLED, CLOSE, FINISHED_WITH_ERRORS, show_task};
 
 pub mod colour;
 
+mod commands;
+
+use std::any::Any;
 use std::time::Duration;
 
+pub use commands::{APP_NAME, CLOSE_CURRENT_TAB, NEXT_TAB, PREVIOUS_TAB, keymap};
+pub use otd_core::command;
+
 use egui::accesskit::{Live, Role};
-use egui::os::OperatingSystem;
-use egui::{Key, Modifiers, Response, Sense, Stroke, Ui, Vec2, WidgetInfo};
+use egui::{Response, Sense, Stroke, TextStyle, TextWrapMode, Ui, Vec2, WidgetInfo, WidgetText};
+use otd_core::command::{Command, HOME_VIEW};
 use otd_core::i18n::{fmt, measure, t};
 
 mod session;
@@ -25,7 +32,8 @@ pub use session::{
     DESCRIPTION, DuplicateSetting, INPUTS, Kind, OK, SCOPE, SESSION_SETTINGS, Session, SessionError, Setting, THIS_VIEW_ONLY, Value, edit_value,
 };
 
-// The shell's own text: English keys, drawn only through `t` (E01-S1-T13).
+// The shell's own text: English keys, drawn only through `t` (E01-S1-T13). The menus' and the tab
+// commands' text is in `commands.rs` (`MENUS` and the commands' captions), also drawn through `t`.
 pub const HOME: &str = "Home";
 pub const NEW_TAB: &str = "New Tab";
 /// The close button's name; `{tab}` is the tab's title.
@@ -40,9 +48,15 @@ const FIELD: &str = "{label}: {value}";
 const SECONDS: &str = "{n} s";
 
 /// What a tab shows: a session of some type, or a test view.
-pub trait View {
+pub trait View: Any {
     /// The tab's caption, in the interface language (`otd_core::i18n::t`).
     fn title(&self) -> String;
+    /// The view type, which decides the menus, toolbar and shortcuts shown with it: the id that
+    /// commands name in `Views::Only`, by convention the id of the session type that opens it.
+    /// The default, an empty id, gets only the commands for every view type.
+    fn view_type(&self) -> &'static str {
+        ""
+    }
     /// The fields this view publishes to the status bar. Read every frame.
     fn status(&self) -> Status {
         Status::default()
@@ -110,6 +124,10 @@ pub struct Shell {
     active: usize,
     /// The active tab changed by a command, so its tab in the strip takes focus on the next draw.
     focus_active: bool,
+    commands: Vec<Command<Shell>>,
+    dispatcher: craft_keymap::egui::Dispatcher,
+    /// Whether the window draws its own menu bar; not while a native one shows the menus.
+    in_window_menu: bool,
     tasks: tasks::Tasks,
     /// The options features contribute to Session Settings tabs.
     settings: Vec<Setting>,
@@ -125,6 +143,9 @@ impl Shell {
             tabs: Vec::new(),
             active: 0,
             focus_active: false,
+            commands: commands::shell_commands(),
+            dispatcher: Default::default(),
+            in_window_menu: true,
             tasks: tasks::Tasks::default(),
             settings: Vec::new(),
             dialog: None,
@@ -132,6 +153,23 @@ impl Shell {
         shell.push(None);
         shell.focus_active = false;
         shell
+    }
+
+    /// The active view type: [`HOME_VIEW`] on Home.
+    pub fn view_type(&self) -> &'static str {
+        self.tabs[self.active].as_ref().map_or(HOME_VIEW, |view| view.view_type())
+    }
+
+    /// The active view, if it is a `V`: how a view type's commands reach their view.
+    pub fn view<V: View>(&self) -> Option<&V> {
+        let view: &dyn Any = self.tabs[self.active].as_deref()?;
+        view.downcast_ref()
+    }
+
+    /// The active view, if it is a `V`, to change.
+    pub fn view_mut<V: View>(&mut self) -> Option<&mut V> {
+        let view: &mut dyn Any = self.tabs[self.active].as_deref_mut()?;
+        view.downcast_mut()
     }
 
     /// Shows `view` in a new tab and selects it. Dropping the view is how it learns it closed.
@@ -187,10 +225,14 @@ impl Shell {
         self.select(self.tabs.len() - 1);
     }
 
-    /// Draws the window: tab strip, the active tab's contents and the status bar.
+    /// Draws the window: menu bar, tab strip, toolbar, the active tab's contents and the status
+    /// bar.
     pub fn ui(&mut self, ui: &mut Ui) {
-        self.shortcuts(ui);
+        let keymap = keymap(&self.commands, ui.ctx().os().into());
+        self.shortcuts(ui, &keymap);
+        self.menu_bar(ui, &keymap);
         egui::Panel::top("otd-tab-strip").show(ui, |ui| self.tab_strip(ui));
+        self.toolbar(ui, &keymap);
         // Laid out by hand rather than as a bottom panel, so the bar comes after the contents in
         // the Tab order, as it does on screen.
         let bar_height = ui.spacing().interact_size.y + 2.0 * ui.spacing().item_spacing.y;
@@ -211,54 +253,6 @@ impl Shell {
         if self.focus_active {
             // A click changed the active tab after the strip was drawn: draw again to move focus.
             ui.ctx().request_repaint();
-        }
-    }
-
-    /// The tab shortcuts of the keymap conventions (Q24 in E01-S1).
-    // ponytail: hard-wired until E01-S1-T4's command registry binds New Tab, Close Tab and the tab
-    // switches as commands; it calls the same methods.
-    fn shortcuts(&mut self, ui: &Ui) {
-        // Idempotent: egui adds a plugin type once.
-        ui.ctx().add_plugin(CtrlTab);
-        let os = ui.ctx().os();
-        let ctrl_tab = ui.ctx().data_mut(|data| data.remove_temp::<CtrlTabPresses>(egui::Id::unique(CTRL_TAB)));
-        let CtrlTabPresses { mut previous, mut next } = ctrl_tab.unwrap_or_default();
-        // A modal dialog (last frame's top modal layer) keeps the window behind it out of reach, and so
-        // does the Session Settings dialog from the frame it opens.
-        if self.dialog.is_some() || ui.ctx().memory(|memory| memory.top_modal_layer().is_some()) {
-            return;
-        }
-        let [new, close] = ui.input_mut(|i| {
-            // Exact modifiers, unlike egui's `consume_key`, which lets extra Shift and Alt through:
-            // Ctrl+Alt+W is AltGr+W on Windows, and Cmd+Shift+T isn't New Tab.
-            let mut pressed = |modifiers: Modifiers, keys: &[Key]| {
-                let before = i.events.len();
-                i.events.retain(|event| {
-                    !matches!(event, egui::Event::Key { key, pressed: true, modifiers: held, .. }
-                        if keys.contains(key) && held.matches_exact(modifiers))
-                });
-                i.events.len() < before
-            };
-            if os == OperatingSystem::Mac {
-                let shift_cmd = Modifiers::SHIFT | Modifiers::COMMAND;
-                previous |= pressed(shift_cmd, &[Key::OpenBracket, Key::OpenCurlyBracket]);
-                next |= pressed(shift_cmd, &[Key::CloseBracket, Key::CloseCurlyBracket]);
-            }
-            let new = pressed(Modifiers::COMMAND, &[Key::T]);
-            let close = pressed(Modifiers::COMMAND, &[Key::W]) || (os == OperatingSystem::Windows && pressed(Modifiers::CTRL, &[Key::F4]));
-            [new, close]
-        });
-        if new {
-            self.new_tab();
-        }
-        if close {
-            self.close_tab();
-        }
-        if previous {
-            self.previous_tab();
-        }
-        if next {
-            self.next_tab();
         }
     }
 
@@ -356,42 +350,6 @@ impl Shell {
     }
 }
 
-const CTRL_TAB: &str = "otd-ctrl-tab";
-
-/// Ctrl+Tab and Ctrl+Shift+Tab presses taken out of a frame's input by [`CtrlTab`].
-#[derive(Clone, Copy, Default)]
-struct CtrlTabPresses {
-    previous: bool,
-    next: bool,
-}
-
-/// Takes Ctrl+Tab and Ctrl+Shift+Tab out of the input before egui's focus handling sees them, and
-/// leaves them for [`Shell::shortcuts`]. egui counts Ctrl+Shift+Tab as Shift+Tab on macOS
-/// (`Modifiers::shift_only` ignores Ctrl), so it would also move focus back one widget.
-struct CtrlTab;
-
-impl egui::Plugin for CtrlTab {
-    fn debug_name(&self) -> &'static str {
-        CTRL_TAB
-    }
-
-    fn input_hook(&mut self, ctx: &egui::Context, input: &mut egui::RawInput) {
-        let mut presses = CtrlTabPresses::default();
-        input.events.retain(|event| match event {
-            egui::Event::Key { key: Key::Tab, pressed, modifiers, .. } if modifiers.ctrl && !modifiers.alt => {
-                if *pressed {
-                    *(if modifiers.shift { &mut presses.previous } else { &mut presses.next }) = true;
-                }
-                false
-            }
-            _ => true,
-        });
-        if presses.previous || presses.next {
-            ctx.data_mut(|data| data.insert_temp(egui::Id::unique(CTRL_TAB), presses));
-        }
-    }
-}
-
 fn field(ui: &mut Ui, field: &Field) -> Response {
     ui.separator();
     ui.push_id(field.id, |ui| ui.label(fmt(t(FIELD), &[("label", &field.label), ("value", &field.value)]))).inner
@@ -402,23 +360,24 @@ fn field(ui: &mut Ui, field: &Field) -> Response {
 const LUCIDE_X: [[(f32, f32); 2]; 2] = [[(18.0, 6.0), (6.0, 18.0)], [(6.0, 6.0), (18.0, 18.0)]];
 const LUCIDE_PLUS: [[(f32, f32); 2]; 2] = [[(5.0, 12.0), (19.0, 12.0)], [(12.0, 5.0), (12.0, 19.0)]];
 
-/// A 24-point button showing a Lucide line icon, named `name` for screen readers and tooltips.
-fn icon_button(ui: &mut Ui, name: &str, icon: &[[(f32, f32); 2]]) -> Response {
-    const SIZE: f32 = 24.0;
-    const ICON: f32 = 16.0;
-    let (rect, response) = ui.allocate_exact_size(Vec2::splat(SIZE), Sense::click());
-    response.widget_info(|| WidgetInfo::labeled(Role::Button, ui.is_enabled(), name));
-    let visuals = ui.style().interact(&response);
-    if response.hovered() || response.has_focus() || response.is_pointer_button_down_on() {
-        ui.painter().rect(rect, visuals.corner_radius, visuals.weak_bg_fill, visuals.bg_stroke, egui::StrokeKind::Inside);
+/// A Lucide icon line by line, by its Lucide name. A command whose icon isn't here shows its
+/// caption alone.
+fn lucide(name: &str) -> Option<&'static [[(f32, f32); 2]]> {
+    match name {
+        "x" => Some(&LUCIDE_X),
+        "plus" => Some(&LUCIDE_PLUS),
+        _ => None,
     }
-    if response.has_focus() {
-        ui.painter().rect_stroke(rect, visuals.corner_radius, ui.visuals().selection.stroke, egui::StrokeKind::Inside);
-    }
+}
+
+const ICON: f32 = 16.0;
+
+/// Paints a Lucide line icon, `ICON` points wide, centred on `center`.
+fn paint_icon(ui: &Ui, center: egui::Pos2, icon: &[[(f32, f32); 2]], color: egui::Color32) {
     let scale = ICON / 24.0;
-    let origin = rect.center() - Vec2::splat(ICON / 2.0);
+    let origin = center - Vec2::splat(ICON / 2.0);
     let at = |(x, y): (f32, f32)| origin + Vec2::new(x, y) * scale;
-    let stroke = Stroke::new(2.0 * scale, visuals.fg_stroke.color);
+    let stroke = Stroke::new(2.0 * scale, color);
     for &[from, to] in icon {
         ui.painter().line_segment([at(from), at(to)], stroke);
         // Lucide's round line caps.
@@ -426,5 +385,45 @@ fn icon_button(ui: &mut Ui, name: &str, icon: &[[(f32, f32); 2]]) -> Response {
             ui.painter().circle_filled(end, stroke.width / 2.0, stroke.color);
         }
     }
+}
+
+/// The background and focus ring of a drawn button.
+fn paint_button(ui: &Ui, rect: egui::Rect, response: &Response) {
+    let visuals = ui.style().interact(response);
+    if response.hovered() || response.has_focus() || response.is_pointer_button_down_on() {
+        ui.painter().rect(rect, visuals.corner_radius, visuals.weak_bg_fill, visuals.bg_stroke, egui::StrokeKind::Inside);
+    }
+    if response.has_focus() {
+        ui.painter().rect_stroke(rect, visuals.corner_radius, ui.visuals().selection.stroke, egui::StrokeKind::Inside);
+    }
+}
+
+/// A 24-point button showing a Lucide line icon, named `name` for screen readers and tooltips.
+fn icon_button(ui: &mut Ui, name: &str, icon: &[[(f32, f32); 2]]) -> Response {
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(24.0), Sense::click());
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, ui.is_enabled(), name));
+    paint_button(ui, rect, &response);
+    paint_icon(ui, rect.center(), icon, ui.style().interact(&response).fg_stroke.color);
     response.on_hover_text(name)
+}
+
+/// A toolbar button: the command's icon, when there is one, then its caption, which is also its
+/// name for screen readers. A disabled one is greyed, can't take focus and doesn't click.
+fn tool_button(ui: &mut Ui, caption: &str, icon: Option<&[[(f32, f32); 2]]>, enabled: bool) -> Response {
+    let galley = WidgetText::from(caption).into_galley(ui, Some(TextWrapMode::Extend), f32::INFINITY, TextStyle::Button);
+    let padding = ui.spacing().button_padding;
+    let icon_width = if icon.is_some() { ICON + ui.spacing().icon_spacing } else { 0.0 };
+    let size = Vec2::new(2.0 * padding.x + icon_width + galley.size().x, (2.0 * padding.y + galley.size().y).max(24.0));
+    let (rect, response) = ui.allocate_exact_size(size, if enabled { Sense::click() } else { Sense::hover() });
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, caption));
+    paint_button(ui, rect, &response);
+    // A hover-only response gets egui's non-interactive, greyed colours.
+    let color = ui.style().interact(&response).fg_stroke.color;
+    let left = rect.left() + padding.x;
+    if let Some(icon) = icon {
+        paint_icon(ui, egui::pos2(left + ICON / 2.0, rect.center().y), icon, color);
+    }
+    let text_at = egui::pos2(left + icon_width, rect.center().y - galley.size().y / 2.0);
+    ui.painter().galley(text_at, galley, color);
+    response
 }

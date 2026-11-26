@@ -2,6 +2,7 @@
 //! running instance, runs them here or becomes the instance; only an instance opens the window.
 
 mod colour_roles;
+mod commands;
 mod handlers;
 mod session_settings;
 mod session_types;
@@ -67,11 +68,18 @@ fn run_window(registry: Registry<Shell>, instance: Instance) -> eframe::Result {
             otd_core::i18n::set_language(catalogs, catalogs.system_lang());
             let ctx = cc.egui_ctx.clone();
             instance.set_waker(move || ctx.request_repaint());
-            Ok(Box::new(App {
-                registry,
-                instance,
-                shell: Shell::new(session_types::session_types()).with_settings(session_settings::session_settings())?,
-            }))
+            let mut shell =
+                Shell::new(session_types::session_types()).with_settings(session_settings::session_settings())?.with_commands(commands::commands());
+            // On macOS the menus go in the native menu bar, the application menu included; when
+            // AppKit refuses them, the window keeps its own bar.
+            #[cfg(target_os = "macos")]
+            let native_menu = craft_menu::mac::install(&cc.egui_ctx, &shell.menu_layout(cc.egui_ctx.os()).bar);
+            #[cfg(not(target_os = "macos"))]
+            let native_menu = None;
+            if native_menu.is_some() {
+                shell.hide_in_window_menu();
+            }
+            Ok(Box::new(App { registry, instance, shell, native_menu }))
         }),
     )
 }
@@ -80,9 +88,18 @@ struct App {
     registry: Registry<Shell>,
     instance: Instance,
     shell: Shell,
+    native_menu: Option<craft_menu::NativeMenu>,
 }
 
 impl eframe::App for App {
+    /// The native menu's key equivalents reach egui as the key presses they were, so shortcuts
+    /// run through the shell's keymap as without a native menu.
+    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+        if let Some(menu) = &mut self.native_menu {
+            menu.raw_input(raw_input);
+        }
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         while let Some(incoming) = self.instance.try_next() {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Focus);
@@ -93,6 +110,18 @@ impl eframe::App for App {
                 eprintln!("otd: {err}");
             }
         }
+        let ctx = ui.ctx().clone();
+        if let Some(menu) = &mut self.native_menu {
+            menu.set_gate(craft_menu::Gate { text_editing: ctx.text_edit_focused(), ..Default::default() });
+            for command in menu.take_clicks(&ctx) {
+                self.shell.run(&command.id);
+            }
+        }
         self.shell.ui(ui);
+        if let Some(menu) = &mut self.native_menu {
+            // Its clashes are the system items macOS gives up for the app's shortcuts (⌘W); the
+            // layout has already resolved them.
+            menu.sync(self.shell.menu_layout(ctx.os()));
+        }
     }
 }

@@ -293,6 +293,25 @@ fn the_windows_shortcuts_wait_while_the_dialog_is_open() {
 }
 
 #[test]
+fn a_shortcut_on_the_frame_the_dialog_opens_waits_too() {
+    // On its first frame the dialog has no modal layer yet.
+    let mut harness = two_alphas();
+    harness.state_mut().session_settings().unwrap();
+    harness.input_mut().events.push(egui::Event::Key {
+        key: Key::W,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::COMMAND,
+    });
+    harness.run();
+    assert!(is_open(&harness));
+    assert_eq!(harness.query_all_by_role(Role::Tab).count() - dialog_tabs(&harness).len(), 3, "the window still has its three tabs");
+    // A native menu click runs a command by id, past the dialog's modal layer.
+    assert!(!harness.state_mut().run("otd.close_tab"), "nor does a menu click");
+}
+
+#[test]
 fn clear_session_gives_an_empty_session_of_the_same_type() {
     let mut harness = dialog();
     tab_to(&mut harness, Role::TextInput, LEFT);

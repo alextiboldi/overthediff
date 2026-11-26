@@ -13,6 +13,7 @@ workspace = true
 otd-core = { path = "../../crates/core" }
 otd-launch = { path = "../../crates/launch" }
 otd-ui = { path = "../../crates/ui" }
+craft-menu = { workspace = true }
 eframe = { workspace = true, features = ["wgpu", "accesskit", "wayland", "x11", "default_fonts"] }
 
 [dev-dependencies]
