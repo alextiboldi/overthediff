@@ -1,0 +1,20 @@
+[package]
+name = "otd-settings"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "OverTheDiff's settings store: one section per feature, saved atomically in a per-user, per-major-version folder"
+
+[lints]
+workspace = true
+
+[dependencies]
+craft-settings = { workspace = true }
+otd-core = { path = "../core" }
+serde = { version = "1", features = ["derive"] }
+toml = "1"
+
+[dev-dependencies]
+craft-testkit = { workspace = true }
+tempfile = "3"
