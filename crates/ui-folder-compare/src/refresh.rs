@@ -7,7 +7,6 @@
 use std::path::{Path, PathBuf};
 
 use otd_core::command::{Command, State};
-use otd_source::ItemKind;
 use otd_ui::Shell;
 
 use crate::{FolderCompare, ID, Scan};
@@ -20,9 +19,9 @@ pub const SWAP_SIDES: &str = "Swap Sides";
 
 const VIEWS: &[&str] = &[ID];
 
-/// Folder Compare's commands, for `apps/otd/src/commands.rs`.
+/// Refresh, Full Refresh, Refresh Selection and Swap Sides.
 // ponytail: no default shortcuts. Q24 gives these none, and Cmd/Ctrl+R is Copy to Right here.
-pub fn commands() -> Vec<Command<Shell>> {
+pub(crate) fn commands() -> Vec<Command<Shell>> {
     vec![
         Command::new("folder-compare.refresh", REFRESH, |shell| with_view(shell, FolderCompare::refresh)).icon("refresh-cw").menu(&["View"]),
         Command::new("folder-compare.full_refresh", FULL_REFRESH, |shell| with_view(shell, FolderCompare::full_refresh))
@@ -60,18 +59,25 @@ impl FolderCompare {
         self.rescan();
     }
 
-    /// Refresh Selection: lists the selected rows' folder again, for their own sizes and times,
-    /// and the listed folders inside a selected folder.
-    // ponytail: the selection is the focused row until selection (E08-S1-T5) lands, and rows are
-    // the base folders' rows, so their folder is the base, until expansion (E08-S1-T3).
+    /// Refresh Selection: lists the focused row's folder again, for its own size and time, and the
+    /// listed folders inside it when it is a folder.
+    // ponytail: the focused row, not yet T5's selection.
     pub fn refresh_selection(&mut self) {
-        let Some(row) = self.rows.get(self.current.0) else { return };
-        // Each side by its own item's spelling: case-insensitive pairing can match `Docs` to `docs`.
-        let folders =
-            [&row.left, &row.right].map(|item| item.as_ref().filter(|item| item.kind == ItemKind::Folder).map(|item| PathBuf::from(&item.name)));
-        self.relist(Path::new(""), false);
-        for (scan, folder) in self.scans.iter_mut().zip(folders) {
-            if let (Some(scan), Some(folder)) = (scan, folder) {
+        let shown = self.shown();
+        let Some(row) = shown.get(crate::expand::current(&shown, &self.current.0)) else { return };
+        // Each side by its own spelling: case-insensitive pairing can match `Docs` to `docs`. A shown
+        // row's parent is shown too, and the base rows' parent is the base.
+        let parents = match row.key.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+            Some(parent) => shown.iter().find(|shown| shown.key == parent).map(|shown| shown.folders.clone()).unwrap_or_default(),
+            None => [Some(PathBuf::new()), Some(PathBuf::new())],
+        };
+        let folders = row.folders.clone();
+        for ((scan, parent), folder) in self.scans.iter_mut().zip(parents).zip(folders) {
+            let Some(scan) = scan else { continue };
+            if let Some(parent) = parent {
+                scan.relist(&parent, false);
+            }
+            if let Some(folder) = folder {
                 scan.relist(&folder, true);
             }
         }

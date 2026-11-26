@@ -166,6 +166,12 @@ impl TreeScan {
         Some(found)
     }
 
+    /// Folders still waiting or being listed now. A listing sends its event before this drops, so
+    /// once it reads zero every event is already in the receiver.
+    pub fn pending(&self) -> usize {
+        self.shared.lock().pending
+    }
+
     /// Lists the next waiting folder on this thread. Returns `false` when nothing was waiting.
     pub fn step(&self) -> bool {
         self.shared.step()

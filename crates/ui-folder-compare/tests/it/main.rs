@@ -4,3 +4,5 @@ mod info;
 mod look;
 mod refresh;
 mod view;
+
+mod expand;

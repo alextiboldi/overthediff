@@ -28,7 +28,8 @@ fn run(harness: &mut Harness<'_, Shell>, id: &str) {
 
 fn same_txt(harness: &Harness<'_, Shell>) -> (Status, Vec<String>) {
     let view = harness.state().view::<FolderCompare>().expect("a Folder Compare tab");
-    let row = view.shown().iter().find(|row| row.name == "same.txt").expect("same.txt has a row");
+    let shown = view.shown();
+    let row = shown.iter().find(|shown| shown.row.name == "same.txt").expect("same.txt has a row").row;
     let cells = rows(harness).into_iter().find(|cells| cells.contains(&on(ON_LEFT, "same.txt"))).expect("same.txt is drawn");
     (row.status.clone(), cells)
 }
