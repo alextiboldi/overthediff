@@ -8,6 +8,8 @@
 //! *File > Open File* and the hidden *Open File on File System*, and [`OpenFiles`] opens two files
 //! given on the command line (E07-S1-T2).
 //!
+//! `edited.rs` holds *Search > Next Edit* and *Previous Edit* (E07-S2-T3).
+//!
 //! Below the headers, [`aligned`] draws the two files aligned row by row, with their differences
 //! highlighted, scrolling together (E07-S1-T4). Each pane body is also an editor, compared again as
 //! the user types, with the Edit menu's commands (E07-S1-T5, `edit.rs`).
@@ -36,6 +38,7 @@ use chrono::{DateTime, Local};
 pub mod aligned;
 mod bookmarks;
 mod edit;
+mod edited;
 mod font_size;
 mod go_to;
 mod layout;
@@ -53,6 +56,7 @@ use otd_ui::{Browse, PathEdit, Session, SessionType, View};
 
 pub use bookmarks::{BOOKMARK, CLEAR_BOOKMARKS, GO_TO_BOOKMARK, TOGGLE_BOOKMARK};
 pub use edit::{COPY, CUT, DELETE, INSERT_TEXT, PASTE, REDO, SELECT_ALL, UNDO};
+pub use edited::{NEXT_EDIT, PREVIOUS_EDIT};
 pub use font_size::{DECREASE_FONT_SIZE, INCREASE_FONT_SIZE, RESET_FONT_SIZE};
 pub use go_to::{COLUMN, GO_TO, GO_TO_LINE, LINE, NOT_A_NUMBER};
 pub use layout::{Layout, SIDE_BY_SIDE, TOP_AND_BOTTOM};

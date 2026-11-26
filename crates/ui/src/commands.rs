@@ -43,7 +43,8 @@ const MENUS: [(&str, MenuRole); 8] = [
     // A view's own files, such as Text Compare's Open File (E07-S1).
     ("File", MenuRole::Other),
     ("Edit", MenuRole::Edit),
-    // A view's own search commands, such as Text Compare's Go To (E07-S6).
+    // A view's search commands and moves through its content, such as Text
+    // Compare's Go To (E07-S6) and Next Edit (E07-S2).
     ("Search", MenuRole::Other),
     ("View", MenuRole::View),
     ("Tools", MenuRole::Other),

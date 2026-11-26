@@ -7,7 +7,8 @@
 //! - [`decode`] detects the encoding (a byte-order mark, valid UTF-8, UTF-16 without a mark, or
 //!   the system code page) and splits the lines, keeping each line's ending.
 //! - A [`Pane`] is edited through its [`Selection`]: typing, pasting and deleting replace it, and
-//!   its [`History`] undoes and redoes each edit (E07-S1-T5).
+//!   its [`History`] undoes and redoes each edit (E07-S1-T5). It marks the lines edited since it
+//!   was loaded, which *Next Edit* and *Previous Edit* visit (E07-S2-T3).
 //! - Its [`Bookmarks`] 0–9 each mark a line, and move with it through edits (E07-S6-T2).
 //! - [`save`] writes a pane back through a data source, and [`save_as`] to a spec, in the pane's
 //!   own encoding and line endings ([`encode`]), so only the edited bytes change (E07-S1-T6).
@@ -59,6 +60,10 @@ pub struct Pane {
     pub history: History,
     /// The numbered bookmarks' lines (E07-S6-T2).
     pub bookmarks: Bookmarks,
+    /// Per line, whether it was edited since the file was loaded, for *Next Edit* and *Previous
+    /// Edit* (E07-S2-T3). Every edit marks the lines it leaves, and Undo puts back the marks it
+    /// found; lines past its end are unedited, so it can start empty.
+    pub edited: Vec<bool>,
 }
 
 /// Why a pane is read-only. The view shows the reason in the pane.
@@ -118,6 +123,7 @@ pub fn load(source: &dyn DataSource, path: &Path, spec: &str, formats: &Registry
         selection: Selection::default(),
         history: History::default(),
         bookmarks: Bookmarks::default(),
+        edited: Vec::new(),
     })
 }
 

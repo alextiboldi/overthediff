@@ -46,6 +46,8 @@ struct Step {
     at: usize,
     removed: Vec<Line>,
     inserted: Vec<Line>,
+    /// The removed lines' edited marks, which Undo puts back.
+    marks: Vec<bool>,
     before: Selection,
     after: Selection,
 }
@@ -194,7 +196,7 @@ impl Pane {
     /// Takes back the last step, if there is one.
     pub fn undo(&mut self) -> bool {
         let Some(step) = self.history.undo.pop() else { return false };
-        if !self.splice(step.at, step.inserted.len(), step.removed.clone()) {
+        if !self.splice(step.at, step.inserted.len(), step.removed.clone(), step.marks.clone()) {
             return false;
         }
         // The inverse edit: from the step's start to the end of what it inserted, the text after
@@ -210,7 +212,7 @@ impl Pane {
     /// Makes the last undone step again, if there is one.
     pub fn redo(&mut self) -> bool {
         let Some(step) = self.history.redo.pop() else { return false };
-        if !self.splice(step.at, step.removed.len(), step.inserted.clone()) {
+        if !self.splice(step.at, step.removed.len(), step.inserted.clone(), vec![true; step.inserted.len()]) {
             return false;
         }
         let (start, end) = step.before.range();
@@ -221,13 +223,37 @@ impl Pane {
         true
     }
 
-    /// Replaces `count` lines at `at` with `with`. A step that no longer fits the lines (they were
-    /// changed without going through these edits) empties the history instead of panicking.
-    fn splice(&mut self, at: usize, count: usize, with: Vec<Line>) -> bool {
+    /// Whether line `line` was edited since the pane was loaded.
+    pub fn is_edited(&self, line: usize) -> bool {
+        self.edited.get(line).copied().unwrap_or(false)
+    }
+
+    /// *Next Edit* from line `from`: the first line of the next run of edited lines after it, so a
+    /// block of edited lines is one stop.
+    pub fn next_edit(&self, from: usize) -> Option<usize> {
+        (from.saturating_add(1)..self.lines.len()).find(|&line| self.starts_edit(line))
+    }
+
+    /// *Previous Edit* from line `from`: the first line of the nearest run of edited lines that
+    /// starts before it, which is its own run's start when `from` is inside one.
+    pub fn previous_edit(&self, from: usize) -> Option<usize> {
+        (0..from.min(self.lines.len())).rev().find(|&line| self.starts_edit(line))
+    }
+
+    fn starts_edit(&self, line: usize) -> bool {
+        self.is_edited(line) && (line == 0 || !self.is_edited(line - 1))
+    }
+
+    /// Replaces `count` lines at `at` with `with`, whose edited marks are `marks`. A step that no
+    /// longer fits the lines (they were changed without going through these edits) empties the
+    /// history instead of panicking.
+    fn splice(&mut self, at: usize, count: usize, with: Vec<Line>, marks: Vec<bool>) -> bool {
         if at.checked_add(count).is_none_or(|end| end > self.lines.len()) {
             self.history.clear();
             return false;
         }
+        self.edited.resize(self.lines.len(), false);
+        self.edited.splice(at..at + count, marks);
         self.lines.splice(at..at + count, with);
         self.unsaved = true;
         true
@@ -267,7 +293,8 @@ impl Pane {
         if reaches_end && inserted.last().is_some_and(|line| line.text.is_empty() && line.ending == LineEnding::None) {
             inserted.pop();
         }
-        if !self.splice(start.line, removed.len(), inserted.clone()) {
+        let marks = (start.line..start.line + removed.len()).map(|line| self.is_edited(line)).collect();
+        if !self.splice(start.line, removed.len(), inserted.clone(), vec![true; inserted.len()]) {
             return;
         }
         self.bookmarks.follow(start, end, head.line, self.lines.len());
@@ -278,7 +305,7 @@ impl Pane {
                 step.inserted = inserted;
                 step.after = after;
             }
-            _ => self.history.undo.push(Step { at: start.line, removed, inserted, before, after }),
+            _ => self.history.undo.push(Step { at: start.line, removed, inserted, marks, before, after }),
         }
         self.history.redo.clear();
         self.history.typing = typing;
@@ -327,6 +354,7 @@ mod tests {
             selection: Selection::default(),
             history: Default::default(),
             bookmarks: Default::default(),
+            edited: Vec::new(),
         }
     }
 
@@ -472,5 +500,37 @@ mod tests {
         doc.bookmarks.toggle(3, 0);
         doc.insert("foo\n");
         assert_eq!(doc.bookmarks.get(3), Some(1));
+    }
+
+    #[test]
+    fn next_edit_visits_each_edited_line_in_order_and_undo_takes_its_mark_back() {
+        let lines: Vec<String> = (1..=50).map(|n| format!("line {n}")).collect();
+        let mut pane = pane(&lines.iter().map(|text| (text.as_str(), LineEnding::CrLf)).collect::<Vec<_>>());
+        for line in [9, 39] {
+            pane.move_caret(Pos { line, column: 0 }, false);
+            pane.type_text("x");
+        }
+        assert_eq!(pane.next_edit(0), Some(9), "from line 1 to line 10");
+        assert_eq!(pane.next_edit(9), Some(39), "then to line 40");
+        assert_eq!(pane.next_edit(39), None, "and no further");
+        assert_eq!(pane.previous_edit(39), Some(9));
+
+        assert!(pane.undo());
+        assert_eq!(pane.next_edit(9), None, "the undone edit's line is no longer edited");
+        assert!(pane.redo());
+        assert_eq!(pane.next_edit(9), Some(39), "Redo marks it again");
+    }
+
+    #[test]
+    fn a_pasted_block_is_one_stop_and_the_lines_after_it_keep_their_marks_as_lines_move() {
+        let mut pane = pane(&[("a", LineEnding::CrLf), ("b", LineEnding::CrLf), ("c", LineEnding::CrLf), ("d", LineEnding::None)]);
+        pane.move_caret(Pos { line: 3, column: 0 }, false);
+        pane.type_text("x");
+        pane.move_caret(Pos { line: 1, column: 0 }, false);
+        pane.insert("1\n2\n");
+        assert_eq!(pane.lines[5].text, "xd", "the typed line moved down");
+        assert_eq!(pane.next_edit(0), Some(1), "the paste's first line");
+        assert_eq!(pane.next_edit(1), Some(5), "skips the rest of the pasted block, to the typed line where it now is");
+        assert_eq!(pane.previous_edit(2), Some(1), "inside a block, Previous Edit goes to its start");
     }
 }
