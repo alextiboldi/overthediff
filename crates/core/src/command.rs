@@ -114,6 +114,9 @@ pub enum Run<C> {
     /// Takes the checked arguments and returns a value, or an error such as
     /// [`CommandError::Failed`].
     Typed(fn(&mut C, &Args) -> Outcome),
+    /// Like `Plain`, given the item it was made for: one command per registered item, such as
+    /// New Session ▸ <type> for each session type.
+    Item(fn(&mut C, &'static str), &'static str),
 }
 
 // Not derived: a derive would ask `C: Copy`.
@@ -304,6 +307,10 @@ impl<C> Call<C> {
                 Ok(None)
             }
             Run::Typed(run) => run(ctx, &self.args),
+            Run::Item(run, item) => {
+                run(ctx, item);
+                Ok(None)
+            }
         }
     }
 }
@@ -330,6 +337,11 @@ impl<C> Command<C> {
     /// A command taking the arguments `params` and returning a result, otherwise like [`new`](Self::new).
     pub fn typed(id: &'static str, caption: &'static str, params: &'static [Param], run: fn(&mut C, &Args) -> Outcome) -> Command<C> {
         Command { params, run: Run::Typed(run), ..Command::new(id, caption, |_| {}) }
+    }
+
+    /// A command made for `item`, which `run` is given, otherwise like [`new`](Self::new).
+    pub fn for_item(id: &'static str, caption: &'static str, item: &'static str, run: fn(&mut C, &'static str)) -> Command<C> {
+        Command { run: Run::Item(run, item), ..Command::new(id, caption, |_| {}) }
     }
 
     /// See [`Command::needs_window`](field@Command::needs_window).

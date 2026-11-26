@@ -1,4 +1,4 @@
-//! The commands features add to the window, beside the shell's own tab commands. A feature adds
+//! The commands features add to the window, beside the shell's own session and tab commands. A feature adds
 //! its `otd_ui::command::Command<Shell>`s here, one line each (`commands.extend(feature::commands())`).
 
 use otd_ui::command::Command;

@@ -13,11 +13,11 @@ use craft_menu::{BarStyle, Gate, ItemKind, ItemRole, Layout, LayoutOptions, Menu
 use egui::accesskit::Role;
 use egui::os::OperatingSystem;
 use egui::{Key as EguiKey, Modifiers, Ui};
-use otd_core::command::{Chord, Command, Key, Mods, Placement, Platform, Views};
+use otd_core::command::{Chord, Command, CommandError, Key, Mods, Outcome, Placement, Platform, Views};
 
 use otd_core::i18n::t;
 
-use crate::{NEW_TAB, OPTIONS, Shell};
+use crate::{NEW_TAB, OPTIONS, SESSION_SETTINGS, SessionError, SessionType, Shell};
 
 /// The application's name: the macOS application menu's title.
 pub const APP_NAME: &str = "OverTheDiff";
@@ -30,6 +30,11 @@ pub const PREVIOUS_TAB: &str = "Previous Tab";
 pub const EXIT: &str = "Exit";
 /// Exit's id, the menus' quit item.
 const EXIT_ID: &str = "otd.exit";
+/// The Session menu's submenu with an entry per session type.
+pub const NEW_SESSION: &str = "New Session";
+pub const OPEN_SESSION: &str = "Open Session";
+pub const CLEAR_SESSION: &str = "Clear Session";
+const SESSION: &[&str] = &["Session"];
 
 /// The top-level menus in bar order, with the role each has in the platform layouts. A command's
 /// menu path starts with one of them; a menu not listed here follows them, in registration order.
@@ -42,14 +47,45 @@ const MENUS: [(&str, MenuRole); 6] = [
     ("Help", MenuRole::Help),
 ];
 
-/// The shell's own commands: the tab commands of the keymap conventions (Q24 in E01-S1) and
-/// Options. They act on the window, so they need it.
-pub(crate) fn shell_commands() -> Vec<Command<Shell>> {
+/// A session command's result: a [`SessionError`] is a failure, not a success.
+fn outcome(result: Result<(), SessionError>) -> Outcome {
+    result.map(|()| None).map_err(|error| CommandError::Failed(error.to_string()))
+}
+
+/// The shell's own commands: the session commands, the tab commands of the keymap conventions
+/// (Q24 in E01-S1) and Options, in Session menu order. They act on the window, so they need it.
+/// New Session has an entry per type in `session_types`; Clear Session and Session Settings
+/// apply to the views of those types.
+pub(crate) fn shell_commands(session_types: &[SessionType]) -> Vec<Command<Shell>> {
     const MAC: &[Platform] = &[Platform::Mac];
+    // ponytail: leaked once per shell, since command ids and view lists are `&'static`; a few bytes
+    // per session type.
+    let session_views: &'static [&'static str] = Box::leak(session_types.iter().map(|t| t.id).collect());
+    let new_sessions = session_types.iter().map(|session_type| {
+        let id: &'static str = Box::leak(format!("otd.new_session.{}", session_type.id).into_boxed_str());
+        // A registered type, so it can't be unknown.
+        Command::for_item(id, session_type.name, session_type.id, |shell: &mut Shell, type_id| {
+            let _ = shell.new_session(type_id);
+        })
+        .icon("file-plus")
+        .menu(&["Session", NEW_SESSION])
+    });
     let several_tabs = |shell: &Shell| otd_core::command::State::enabled(shell.tabs.len() > 1);
-    let commands = vec![
-        Command::new("otd.new_tab", NEW_TAB, Shell::new_tab).icon("plus").menu(&["Session"]).shortcut(Mods::CMD, Key::T),
-        Command::new("otd.close_tab", CLOSE_CURRENT_TAB, Shell::close_tab).icon("x").menu(&["Session"]).shortcut(Mods::CMD, Key::W).shortcut_on(
+    let commands = new_sessions.chain([
+        Command::new("otd.new_tab", NEW_TAB, Shell::new_tab).icon("plus").menu(SESSION).shortcut(Mods::CMD, Key::T),
+        Command::new("otd.open_session", OPEN_SESSION, Shell::open_session).icon("house").menu(SESSION).shortcut(Mods::CMD, Key::O),
+        Command::typed("otd.clear_session", CLEAR_SESSION, &[], |shell: &mut Shell, _| outcome(shell.clear_session()))
+            .views(session_views)
+            .icon("eraser")
+            .menu(SESSION),
+        // The Session menu's Session Settings and the toolbar's Rules button: both named by the
+        // dialog they open (docs/feature-names.md).
+        Command::typed("otd.session_settings", SESSION_SETTINGS, &[], |shell: &mut Shell, _| outcome(shell.session_settings()))
+            .views(session_views)
+            .icon("sliders-horizontal")
+            .menu(SESSION)
+            .toolbar(),
+        Command::new("otd.close_tab", CLOSE_CURRENT_TAB, Shell::close_tab).icon("x").menu(SESSION).shortcut(Mods::CMD, Key::W).shortcut_on(
             &[Platform::Windows],
             Mods::CTRL,
             Key::F4,
@@ -66,11 +102,11 @@ pub(crate) fn shell_commands() -> Vec<Command<Shell>> {
             .shortcut_on(MAC, Mods { shift: true, ..Mods::CMD }, Key::OpenBracket),
         // Q24: Ctrl+Q on Linux; Cmd+Q is the macOS application menu's (craft-menu gives the quit
         // item it), and Windows has none: Alt+F4 closes the window, which exits the same way.
-        Command::new(EXIT_ID, EXIT, Shell::request_exit).menu(&["Session"]).shortcut_on(&[Platform::Linux], Mods::CMD, Key::Q),
+        Command::new(EXIT_ID, EXIT, Shell::request_exit).menu(SESSION).shortcut_on(&[Platform::Linux], Mods::CMD, Key::Q),
         // Q24: Cmd+, in the macOS application menu; no default elsewhere.
         Command::new("otd.options", OPTIONS, Shell::open_options).application_menu(&["Tools"]).shortcut_on(MAC, Mods::CMD, Key::Comma),
-    ];
-    commands.into_iter().map(Command::needs_window).collect()
+    ]);
+    commands.map(Command::needs_window).collect()
 }
 
 /// The default keymap of `commands` on `platform`. A command's shortcuts work in each of its
