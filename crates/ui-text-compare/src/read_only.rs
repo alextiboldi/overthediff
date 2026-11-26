@@ -27,7 +27,8 @@ fn reason(reason: ReadOnly) -> &'static str {
 
 impl TextCompareView {
     /// Records how the comparison ended: a failed or cancelled one makes both panes read-only, and
-    /// a completed one lifts that again. Loading other files forgets it.
+    /// a completed one lifts that again. Loading other files forgets it, so call it once the files
+    /// it compared have loaded.
     pub fn comparison_ended(&mut self, end: End) {
         self.comparison = match end {
             End::Completed => None,
