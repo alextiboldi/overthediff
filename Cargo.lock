@@ -2797,6 +2797,7 @@ dependencies = [
  "otd-format",
  "otd-source",
  "otd-text-engine",
+ "tempfile",
  "windows-registry",
 ]
 

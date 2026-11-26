@@ -46,6 +46,7 @@ fn a_modified_time_past_the_calendar_shows_as_unknown_instead_of_panicking() {
         endings: LineEndings::None,
         lines: Vec::new(),
         read_only: None,
+        unsaved: false,
         selection: Default::default(),
         history: Default::default(),
     };
