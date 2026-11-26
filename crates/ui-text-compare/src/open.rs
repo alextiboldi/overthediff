@@ -30,7 +30,7 @@ pub fn commands() -> Vec<Command<Shell>> {
         Command::typed("text-compare.open_file", OPEN_FILE, PARAMS, open_file).views(&[TEXT_COMPARE]).icon("folder-open").menu(&["File"]),
         Command::typed("text-compare.open_file_on_file_system", OPEN_FILE_ON_FILE_SYSTEM, PARAMS, open_file).views(&[TEXT_COMPARE]),
     ];
-    open.into_iter().map(Command::needs_window).chain(crate::session::commands()).collect()
+    open.into_iter().map(Command::needs_window).chain(crate::session::commands()).chain(crate::edit::commands()).collect()
 }
 
 fn open_file(shell: &mut Shell, args: &Args) -> Outcome {
