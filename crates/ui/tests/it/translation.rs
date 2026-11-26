@@ -66,7 +66,7 @@ fn a_caption_with_a_translation_shows_translated_and_one_without_shows_its_engli
 }
 
 /// Every label and value in the window, with its role.
-fn texts(harness: &Harness<'_, Shell>) -> Vec<(Role, String)> {
+pub(crate) fn texts(harness: &Harness<'_, Shell>) -> Vec<(Role, String)> {
     harness
         .query_all_by(|node| node.label().or_else(|| node.value()).is_some_and(|text| !text.is_empty()))
         .map(|node| {
@@ -78,7 +78,7 @@ fn texts(harness: &Harness<'_, Shell>) -> Vec<(Role, String)> {
 
 /// `text` is one looked-up string, with any looked-up values inside it: `⟦Close Tab ⟦Home⟧⟧`, not
 /// `⟦Result⟧: ⟦Identical⟧`, whose `: ` skipped the lookup.
-fn wholly_marked(text: &str) -> bool {
+pub(crate) fn wholly_marked(text: &str) -> bool {
     let mut depth = 0;
     for (i, c) in text.char_indices() {
         match c {

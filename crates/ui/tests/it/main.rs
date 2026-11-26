@@ -2,4 +2,5 @@
 
 mod colour;
 mod shell;
+mod tasks;
 mod translation;

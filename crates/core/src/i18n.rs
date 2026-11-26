@@ -64,6 +64,13 @@ pub fn measure(value: f64, decimals: usize, unit: &str) -> String {
     catalogs.measure(lang, value, decimals, unit)
 }
 
+/// The wording for a count `n`, `one` or `other` (`{n} item failed:`, `{n} items failed:`), both
+/// English keys, in the interface language's plural form, with `n` written for the user's region.
+pub fn trn(n: u64, one: &str, other: &str) -> String {
+    let (catalogs, lang) = current();
+    catalogs.trn(lang, n, one, other)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

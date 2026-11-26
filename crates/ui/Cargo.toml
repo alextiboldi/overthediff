@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
-description = "OverTheDiff's main-window shell: the tab strip, the Home launcher tab and the status bar"
+description = "OverTheDiff's main-window shell: the tab strip, the Home launcher tab, the status bar and background-task progress"
 
 [lints]
 workspace = true
