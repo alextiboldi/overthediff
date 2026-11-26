@@ -1,5 +1,8 @@
 //! The `otd` executable. `otd-launch` decides first whether this process hands its arguments to the
 //! running instance, runs them here or becomes the instance; only an instance opens the window.
+// A release build on Windows is a GUI binary, so a Start menu launch opens no console window. Its
+// standard streams then reach no console; E11-S1's waiting launchers serve consoles.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod colour_roles;
 mod commands;
