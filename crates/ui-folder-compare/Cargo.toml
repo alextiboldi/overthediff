@@ -1,0 +1,26 @@
+[package]
+name = "otd-ui-folder-compare"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "OverTheDiff's Folder Compare view: two folder trees side by side, aligned by name, opened from Home, New Session or two folders on the command line"
+
+[lints]
+workspace = true
+
+[dependencies]
+egui = { workspace = true }
+otd-core = { path = "../core" }
+otd-folder-engine = { path = "../folder-engine" }
+otd-launch = { path = "../launch" }
+otd-source = { path = "../source" }
+otd-ui = { path = "../ui" }
+# Modified times in the local time zone (AGENTS.md rule 12): `clock` reads the OS's zone.
+chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
+
+[dev-dependencies]
+egui_kittest = { workspace = true }
+tempfile = "3"
+# `default_fonts` so that the tests lay out text, as the app does.
+egui = { workspace = true, features = ["default_fonts"] }
