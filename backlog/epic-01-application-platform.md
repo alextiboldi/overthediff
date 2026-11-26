@@ -250,8 +250,9 @@ Recorded by E01-S2-T1 and confirmed by the operator on 2026-11-25, as proposed, 
 - **Known gap for T3.** The shared workflow's dry run skips its macOS job, and its real run works only on the `release` branch. An unsigned macOS package therefore needs another route, and T3 records it.
 
 #### Tasks
-- **E01-S2-T1** — Decide supported OS versions, CPU architectures, package formats and the executable name · size: S · depends: — · flags: `decision`
+- **E01-S2-T1** — Decide supported OS versions, CPU architectures, package formats and the executable name · size: S · depends: — · flags: `decision` · status: done
   - AC: decision recorded in this story. Proposed default: Windows 10/11 x64 and ARM64; macOS universal build on the two newest major versions; Linux x64 as a distribution-neutral package plus one native package format. Start with unsigned dry-run builds; signing needs secrets and the maintainer's go-ahead.
+  - Implemented: the decision is recorded in E01-S2's Decisions section, confirmed by the operator on 2026-11-25: Windows 10 and 11 on x64 and ARM64 as MSI installers; a universal macOS application bundle in a disk image on the two newest major versions; Linux x64 on glibc 2.35 or newer as an AppImage plus a `.deb`; the executable `otd` (`otd.exe`) on every OS; unsigned dry-run builds until signing is approved; the shared release workflow's other targets built but unsupported. The index and PRD summaries match. Docs only: `cargo xtask ci` passed on macOS after rebasing onto main, plus pull-request CI (Linux, macOS). Pull request: https://github.com/alextiboldi/overthediff/pull/67
 - **E01-S2-T2** — Windows installer with Start menu entry, per-monitor DPI awareness and clean uninstall · size: M · depends: E01-S2-T1
   - AC: after install, the app launches from the Start menu and stays crisp on a 100%/200% monitor pair. After uninstall, the program files are gone and the settings remain.
 - **E01-S2-T3** — macOS application bundle native on Apple silicon and Intel, distributable without security warnings · size: M · depends: E01-S2-T1
