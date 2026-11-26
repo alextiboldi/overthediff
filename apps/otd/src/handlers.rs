@@ -13,5 +13,6 @@ pub fn registry() -> Registry<Shell> {
     registry.register(QuickCompare("quickcompare"));
     registry.register(otd_ui_text_compare::OpenFiles);
     registry.register(otd_ui_folder_compare::OpenFolders);
+    registry.register(crate::open_session::OpenSession(otd_settings::Location::Auto));
     registry
 }

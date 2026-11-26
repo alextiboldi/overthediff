@@ -7,6 +7,7 @@
 mod colour_roles;
 mod commands;
 mod handlers;
+mod open_session;
 mod options;
 mod quick_compare;
 mod session_settings;

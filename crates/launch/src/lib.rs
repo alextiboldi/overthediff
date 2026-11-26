@@ -67,6 +67,10 @@ pub enum Pattern {
     /// ponytail: a folder is what `Path::is_dir` finds from the launching process's working folder;
     /// a URL or a path inside an archive goes to the bare-paths handler.
     Folders,
+    /// One argument that is not a switch and names no existing file or folder, such as a saved
+    /// session's name. Claims the command line after [`Pattern::Folders`] and before
+    /// [`Pattern::BarePaths`], so an existing path wins over a name.
+    Name,
 }
 
 /// What a launch asks for, whichever handler claims its arguments.
@@ -155,9 +159,9 @@ impl<S: ?Sized> Registry<S> {
 
     /// The handler that claims `args`: the handler of the first argument, in command-line order,
     /// that names a registered switch (the earlier registered one if two share that name), else,
-    /// when no argument is a switch, the folders handler for one or two existing folders, or the
-    /// bare-paths handler. `Ok(None)` for no arguments, and
-    /// `Err(argument)` for an argument nobody claims.
+    /// when no argument is a switch, the folders handler for one or two existing folders, the name
+    /// handler for one argument that is no existing path, or the bare-paths handler. `Ok(None)` for
+    /// no arguments, and `Err(argument)` for an argument nobody claims.
     pub fn claim<'a>(&self, args: &'a [String]) -> Result<Option<&dyn Handler<S>>, &'a str> {
         if args.is_empty() {
             return Ok(None);
@@ -171,7 +175,10 @@ impl<S: ?Sized> Registry<S> {
         }
         let pattern = |pattern: Pattern| self.handlers.iter().find(move |h| h.pattern() == pattern);
         let folders = args.len() <= 2 && args.iter().all(|arg| Path::new(arg).is_dir());
-        match pattern(Pattern::Folders).filter(|_| folders).or_else(|| pattern(Pattern::BarePaths)) {
+        // A broken link is an existing path too.
+        let name = matches!(args, [arg] if Path::new(arg).symlink_metadata().is_err());
+        let claimed = pattern(Pattern::Folders).filter(|_| folders).or_else(|| pattern(Pattern::Name).filter(|_| name));
+        match claimed.or_else(|| pattern(Pattern::BarePaths)) {
             Some(handler) => Ok(Some(handler.as_ref())),
             None => Err(args.first().map_or("", String::as_str)),
         }

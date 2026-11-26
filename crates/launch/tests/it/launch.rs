@@ -219,6 +219,47 @@ fn two_folders_go_to_the_folders_handler_and_a_folder_with_a_file_to_the_bare_pa
     assert_eq!(claimed(&["a", "f.txt"]), Some("files"));
 }
 
+/// The registry with a name handler too, registered last so registration order can't be what
+/// picks it. Not in [`registry`]: its tests launch single file names that exist nowhere.
+fn with_name() -> Registry<Views> {
+    let mut registry = registry();
+    registry.register(handler("folders", Pattern::Folders, Mode::ForwardAndExit));
+    registry.register(handler("name", Pattern::Name, Mode::ForwardAndExit));
+    registry
+}
+
+#[test]
+fn one_argument_that_is_no_existing_path_goes_to_the_name_handler_and_an_existing_path_wins() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir(dir.path().join("a")).unwrap();
+    std::fs::write(dir.path().join("f.txt"), "").unwrap();
+    let registry = with_name();
+    let claimed = |names: &[&str]| {
+        let args: Vec<String> = names.iter().map(|name| dir.path().join(name).to_string_lossy().into_owned()).collect();
+        registry.claim(&args).ok().flatten().map(|handler| handler.id())
+    };
+    assert_eq!(claimed(&["Weekly"]), Some("name"));
+    assert_eq!(claimed(&["a"]), Some("folders"));
+    assert_eq!(claimed(&["f.txt"]), Some("files"));
+    assert_eq!(claimed(&["Weekly", "Monthly"]), Some("files"), "a name is one argument");
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(dir.path().join("gone"), dir.path().join("link")).unwrap();
+        assert_eq!(claimed(&["link"]), Some("files"), "a broken link is an existing path");
+    }
+}
+
+#[test]
+fn a_name_reaches_the_running_instance() {
+    let dir = TestDir::new();
+    let instance = dir.start();
+    let config =
+        Config { app_version: "1.2.3".into(), runtime: Some(RuntimeDir::at(&dir.path).expect("runtime folder")), spawn_instance: no_spawn() };
+    assert_eq!(code(otd_launch::launch(&with_name(), &["Weekly".to_owned()], Requested::Default, &config)), 0);
+    let request = next(&instance).request;
+    assert_eq!((request.handler.as_deref(), request.args), (Some("name"), vec!["Weekly".to_owned()]));
+}
+
 #[test]
 fn a_run_here_handler_exits_with_its_own_code_and_sends_nothing_to_the_running_instance() {
     let dir = TestDir::new();

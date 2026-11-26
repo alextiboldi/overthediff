@@ -73,7 +73,8 @@ As a developer who compares the same folders every week, I can save a comparison
   - AC: a renamed session opens under its new name. A deleted session disappears from Home and from the settings store.
 - **E06-S1-T6** — Prompt on exit for named sessions whose specs changed · size: S · depends: E06-S1-T2
   - AC: changing the left folder of a named session and then exiting prompts to save. Exiting without changes doesn't prompt.
-- **E06-S1-T7** — Open a saved session by name from the command line · size: S · depends: E06-S1-T1
+- **E06-S1-T7** — Open a saved session by name from the command line · size: S · depends: E06-S1-T1 · status: done
+  - Implemented: `otd <name>` opens the saved session of that name in its own view (Text Compare or Folder Compare) with its specs and settings, through the `OpenSession` launch handler in `apps/otd/src/open_session.rs`. The new `Pattern::Name` in `crates/launch` claims one argument that names no existing path (an existing file, folder or broken link wins), so a name also reaches a running instance; an unknown name or a session of a type this build lacks gives the usage error and exit code 100. Tests: unit tests in `open_session.rs`, `crates/launch/tests/it/launch.rs` (claiming, hand-off to a running instance) and `apps/otd/tests/it/open_session.rs` (the real executable's refusal). Checks: `cargo xtask ci` (fmt, clippy, tests, ui-free) on macOS, and `cargo check --target x86_64-pc-windows-msvc --all-targets` for `otd-launch` and `otd`; Linux and Windows tests run in main's CI.
   - AC: passing a saved session's name opens it, including when the app is already running. An unknown name gives the usage error.
 
 ### E06-S2 — Session defaults per type
