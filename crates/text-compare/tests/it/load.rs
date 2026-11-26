@@ -5,14 +5,18 @@ use std::time::{Duration, SystemTime};
 
 use otd_format::{CATCH_ALL, Format, Kind, Registry};
 use otd_source::{Capabilities, ErrorKind, MemorySource};
-use otd_text_compare::{Encoding, LineEndings, load};
+use otd_text_compare::{Encoding, LineEndings, ReadOnly, load};
 
 const CONTENT: &[u8] = b"caf\xE9\r\nx\r\n";
 
 fn source(case_sensitive: bool) -> (MemorySource, SystemTime) {
+    source_with(case_sensitive, false)
+}
+
+fn source_with(case_sensitive: bool, read_only: bool) -> (MemorySource, SystemTime) {
     let modified = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
     let capabilities = Capabilities {
-        read_only: false,
+        read_only,
         case_sensitive,
         recycle_bin: false,
         timestamp_resolution: Duration::ZERO,
@@ -56,4 +60,12 @@ fn a_folder_or_a_missing_file_is_an_error() {
     let (source, _) = source(true);
     assert_eq!(load(&source, Path::new("docs"), "docs", &formats(), 1252).map_err(|e| e.kind), Err(ErrorKind::Unsupported));
     assert_eq!(load(&source, Path::new("gone.txt"), "gone.txt", &formats(), 1252).map_err(|e| e.kind), Err(ErrorKind::NotFound));
+}
+
+#[test]
+fn a_file_on_a_read_only_source_loads_read_only_for_its_location() {
+    let path = Path::new("docs/Notes.TXT");
+    let read_only = |read_only| load(&source_with(true, read_only).0, path, "", &formats(), 1252).unwrap().read_only;
+    assert_eq!(read_only(true), Some(ReadOnly::Location));
+    assert_eq!(read_only(false), None);
 }

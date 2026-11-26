@@ -10,6 +10,8 @@
 //!
 //! ponytail: the text is a plain list of lines until E07-S1-T4 draws the aligned comparison.
 
+mod read_only;
+
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chrono::{DateTime, Local};
@@ -20,10 +22,12 @@ use egui::{Id, RichText, ScrollArea, Ui};
 use otd_core::i18n::{file_size, fmt, t};
 use otd_format::{Kind, Registry};
 use otd_launch::Completion;
-use otd_text_compare::{Encoding, LineEndings, Pane};
+use otd_text_compare::{Encoding, LineEndings, Pane, ReadOnly};
 use otd_ui::{Browse, PathEdit, Session, SessionType, View};
 
 pub use open::{OPEN_FILE, OPEN_FILE_ON_FILE_SYSTEM, OpenFiles, commands};
+
+pub use read_only::{COMPARISON_CANCELLED, COMPARISON_FAILED, LOCATION};
 
 /// The session type's and the view type's id.
 pub const TEXT_COMPARE: &str = "text-compare";
@@ -77,6 +81,8 @@ pub struct TextCompareView {
     browse: Option<usize>,
     /// Reports this view's close to a launcher waiting for it (the command line).
     done: Option<Completion>,
+    /// Why the last comparison left both panes read-only, if it did.
+    comparison: Option<ReadOnly>,
 }
 
 impl Drop for TextCompareView {
@@ -109,6 +115,7 @@ impl TextCompareView {
             chosen: 0,
             browse: None,
             done: None,
+            comparison: None,
         }
     }
 
@@ -179,6 +186,7 @@ impl TextCompareView {
         for ((spec, loaded), pane) in specs.iter().zip(&mut self.loaded).zip(&mut self.panes) {
             if loaded.as_ref() != Some(spec) {
                 *loaded = Some(spec.clone());
+                self.comparison = None;
                 *pane = (!spec.trim().is_empty()).then(|| otd_text_compare::open(spec, &self.formats).map_err(|e| e.message));
             }
         }
@@ -207,7 +215,7 @@ impl View for TextCompareView {
                     // names the path edit.
                     let caption = ui.strong(t(SIDES[side]));
                     self.path_edit(ui, side, caption.id);
-                    pane(ui, self.panes.get(side).and_then(Option::as_ref));
+                    pane(ui, self.panes.get(side).and_then(Option::as_ref), self.read_only(side));
                     if ui.input(|i| i.pointer.primary_pressed()) && ui.rect_contains_pointer(ui.min_rect()) {
                         self.chosen = side;
                     }
@@ -217,7 +225,7 @@ impl View for TextCompareView {
     }
 }
 
-fn pane(ui: &mut Ui, pane: Option<&Result<Pane, String>>) {
+fn pane(ui: &mut Ui, pane: Option<&Result<Pane, String>>, read_only: Option<ReadOnly>) {
     match pane {
         None => {}
         Some(Err(message)) => {
@@ -227,6 +235,7 @@ fn pane(ui: &mut Ui, pane: Option<&Result<Pane, String>>) {
         }
         Some(Ok(pane)) => {
             file_info_header(ui, pane);
+            read_only::show(ui, read_only);
             ui.separator();
             lines(ui, pane);
         }

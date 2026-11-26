@@ -31,6 +31,19 @@ pub struct Pane {
     pub encoding: Encoding,
     pub endings: LineEndings,
     pub lines: Vec<Line>,
+    /// Why the pane can't be edited, if it can't. [`load`] sets [`ReadOnly::Location`].
+    pub read_only: Option<ReadOnly>,
+}
+
+/// Why a pane is read-only. The view shows the reason in the pane.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReadOnly {
+    /// The data source refuses writes ([`otd_source::Capabilities::read_only`]).
+    Location,
+    /// The comparison stopped with an error.
+    ComparisonFailed,
+    /// The comparison was cancelled.
+    ComparisonCancelled,
 }
 
 /// Reads the file at `path` in `source`, shown as `spec`. Its format is the first enabled one in
@@ -60,6 +73,9 @@ pub fn load(source: &dyn DataSource, path: &Path, spec: &str, formats: &Registry
         encoding,
         endings,
         lines,
+        // ponytail: the source's capability only; a file's own read-only attribute or mode isn't
+        // checked, so saving such a file fails when it's tried (E07-S1-T6).
+        read_only: source.capabilities().read_only.then_some(ReadOnly::Location),
     })
 }
 
