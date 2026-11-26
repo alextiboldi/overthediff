@@ -49,12 +49,14 @@ use otd_source::{Capabilities, DataSource, Item, ItemKind, LocalSource};
 use otd_ui::colour::{ColourRole, SELECTION, SELECTION_TEXT, colour};
 use otd_ui::{Browse, PathEdit, Session, SessionType, Shell, Status, View, paint_lucide};
 
+mod columns;
 pub mod expand;
 mod flat;
 mod info;
 pub mod look;
 mod refresh;
 
+pub use columns::COLUMNS_MENU;
 use expand::Expansion;
 pub use expand::Shown;
 pub use flat::FLAT_LIST;
@@ -70,6 +72,7 @@ pub fn commands() -> Vec<otd_core::command::Command<Shell>> {
     let mut commands = refresh::commands();
     commands.extend(expand::commands());
     commands.extend(flat::commands());
+    commands.extend(columns::commands());
     commands
 }
 
@@ -116,7 +119,7 @@ pub fn session_type() -> SessionType {
 }
 
 /// A column each pane shows after the name: its caption (an English key) and an item's text in
-/// it, `None` for a blank cell. E08-S6 adds columns here.
+/// it, `None` for a blank cell. E08-S6 adds columns here; the column chooser ([`columns`]) lists each.
 pub struct Column {
     pub caption: &'static str,
     /// Its share of a pane's width; the name has the rest.
@@ -184,6 +187,8 @@ pub struct FolderCompare {
     grid_focus: bool,
     /// Reports the close to a launcher waiting for this view.
     done: Option<Completion>,
+    /// The columns the chooser hides. A rescan keeps them.
+    hidden: columns::Hidden,
 }
 
 impl Default for FolderCompare {
@@ -212,6 +217,7 @@ impl FolderCompare {
             focus_back: None,
             grid_focus: false,
             done: None,
+            hidden: Default::default(),
         }
     }
 
@@ -371,8 +377,9 @@ impl FolderCompare {
 
     fn grid_ui(&mut self, ui: &mut Ui) {
         let height = ui.text_style_height(&TextStyle::Body) + ui.spacing().item_spacing.y;
-        let pane = (ui.available_width() - 2.0 * ui.spacing().item_spacing.x * (1 + COLUMNS.len()) as f32) / 2.0;
-        let name_width = pane * (1.0 - COLUMNS.iter().map(|c| c.width).sum::<f32>());
+        let columns = self.shown_columns();
+        let pane = (ui.available_width() - 2.0 * ui.spacing().item_spacing.x * (1 + columns.len()) as f32) / 2.0;
+        let name_width = pane * (1.0 - columns.iter().map(|c| c.width).sum::<f32>());
         let grid = ui.unique_id();
         ui.ctx().accesskit_node_builder(grid, |node| {
             node.set_role(Role::TreeGrid);
@@ -381,9 +388,9 @@ impl FolderCompare {
         ui.horizontal(|ui| {
             ui.ctx().accesskit_node_builder(ui.unique_id(), |node| node.set_role(Role::Row));
             for _ in 0..2 {
-                header(ui, NAME, name_width, height);
-                for column in COLUMNS {
-                    header(ui, column.caption, pane * column.width, height);
+                header(ui, NAME, name_width, height).context_menu(|ui| columns::menu(ui, self));
+                for column in &columns {
+                    header(ui, column.caption, pane * column.width, height).context_menu(|ui| columns::menu(ui, self));
                 }
             }
         });
@@ -450,7 +457,7 @@ impl FolderCompare {
                             let status = look.as_ref().map_or(ui.visuals().text_color(), |look| colour(ui.ctx(), look.colour()));
                             // A click on any of the side's cells.
                             let mut clicked = activated(&response);
-                            for column in COLUMNS {
+                            for column in &columns {
                                 // A blank cell is still allocated, so it takes the item spacing a filled one does.
                                 let text = item.as_ref().and_then(column.cell).unwrap_or_default();
                                 let response = cell(ui, &text, Vec2::new(pane * column.width, height), Sense::CLICK, selected == Some(true), status);
@@ -554,9 +561,12 @@ impl View for FolderCompare {
     }
 }
 
-fn header(ui: &mut Ui, caption: &str, width: f32, height: f32) {
-    let response = cell(ui, t(caption), Vec2::new(width, height), Sense::hover(), false, ui.visuals().text_color());
+/// A column header. Its right-click menu is the column chooser; `CLICK` rather than `click()`, so
+/// the headers aren't Tab stops.
+fn header(ui: &mut Ui, caption: &str, width: f32, height: f32) -> Response {
+    let response = cell(ui, t(caption), Vec2::new(width, height), Sense::CLICK, false, ui.visuals().text_color());
     ui.ctx().accesskit_node_builder(response.id, |node| node.set_role(Role::ColumnHeader));
+    response
 }
 
 /// A cell showing `text` in `colour`, cut short to fit, named `text` for screen readers.
