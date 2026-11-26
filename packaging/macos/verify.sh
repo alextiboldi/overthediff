@@ -52,7 +52,8 @@ echo "ok: slices$have"
 # signal, or `arch` failing to start the slice): the usage text and codes belong to E01-S1.
 run_slice() {
   local slice="$1" how="$2" out code=0
-  out="$(arch "-$slice" "$EXE" -packaging-smoke-test 2>&1)" || code=$?
+  # Empty keeps settings in memory, so a change to the launch order can't write the real profile.
+  out="$(env "OVERTHEDIFF_${VERSION%%.*}_CONFIG_DIR=" arch "-$slice" "$EXE" -packaging-smoke-test 2>&1)" || code=$?
   if [[ "$code" -ge 1 && "$code" -lt 128 && "$out" == otd:* ]]; then
     echo "ok: the $slice slice runs $how"
   else

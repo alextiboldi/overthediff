@@ -26,6 +26,7 @@ fn main() {
             std::process::exit(EXIT_UNCLAIMED);
         }
     };
+    let args = if cfg!(target_os = "macos") { drop_process_serial_number(args) } else { args };
     let registry = handlers::registry();
     let config = Config { app_version: env!("CARGO_PKG_VERSION").into(), runtime: None, spawn_instance: Box::new(spawn_instance) };
     match otd_launch::launch(&registry, &args, Requested::Default, &config) {
@@ -42,6 +43,18 @@ fn main() {
             }
         }
     }
+}
+
+/// macOS passes a process serial number (`-psn_…`) when Finder opens the app, on older versions and
+/// on the first open of a downloaded copy: it is dropped, unless it comes after `--`.
+fn drop_process_serial_number(args: Vec<String>) -> Vec<String> {
+    let mut options = true;
+    args.into_iter()
+        .filter(|arg| {
+            options &= arg != "--";
+            !(options && arg.starts_with("-psn_"))
+        })
+        .collect()
 }
 
 /// Starts this executable with no arguments, detached, so it becomes the instance. Its standard
@@ -153,5 +166,17 @@ impl eframe::App for App {
 
     fn on_exit(&mut self) {
         self.settings.exit();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::drop_process_serial_number;
+
+    #[test]
+    fn a_finder_process_serial_number_is_dropped_before_double_dash() {
+        let args = |list: &[&str]| list.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(drop_process_serial_number(args(&["-psn_0_12345", "a.txt"])), args(&["a.txt"]));
+        assert_eq!(drop_process_serial_number(args(&["--", "-psn_x.txt"])), args(&["--", "-psn_x.txt"]));
     }
 }

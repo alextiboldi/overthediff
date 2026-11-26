@@ -28,8 +28,15 @@ security set-keychain-settings -lut 21600 "$KEYCHAIN"
 security unlock-keychain -p "$KC_PASS" "$KEYCHAIN"
 security import "$CERT" -P "${APPLE_CERTIFICATE_PASSWORD:-}" -T /usr/bin/codesign -f pkcs12 -k "$KEYCHAIN"
 security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KC_PASS" "$KEYCHAIN" >/dev/null
-# shellcheck disable=SC2046 # the existing keychains, one word each
-security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+# The existing keychains, one quoted path a line; a path may hold spaces.
+KEYCHAINS=()
+while IFS= read -r line; do
+  line="${line#"${line%%[![:space:]]*}"}"
+  line="${line#\"}"
+  line="${line%\"}"
+  if [[ -n "$line" ]]; then KEYCHAINS+=("$line"); fi
+done < <(security list-keychains -d user)
+security list-keychains -d user -s "$KEYCHAIN" ${KEYCHAINS[@]+"${KEYCHAINS[@]}"}
 
 IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" | awk '/Developer ID Application/ { print $2; exit }')"
 if [[ -z "$IDENTITY" ]]; then
