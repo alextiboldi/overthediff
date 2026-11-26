@@ -43,13 +43,13 @@ This epic sets how the application looks and how its windows behave: light and d
 As a developer who works on a dark desktop, I can choose a light or dark theme, or follow the operating system, so that the tool matches my environment and stays readable.
 
 **Acceptance criteria**
-- [ ] The Appearance options page offers *Follow operating system*, *Light theme* and *Dark theme*. The first shows the current OS setting in parentheses, for example "Follow operating system (Dark)".
-- [ ] With *Follow operating system* selected, the app uses the OS light or dark setting at start-up and switches when that setting changes while the app runs (*inferred*).
-- [ ] *Light theme* and *Dark theme* apply whatever the OS setting is.
-- [ ] With the *Preview* checkbox ticked, changes apply to every open view at once. Cancel restores the previous theme and OK keeps the new one.
-- [ ] The window chrome, the selection and every registered colour role take the active theme's value: light values in the light theme, dark values in the dark theme. Acceptance uses harness-registered roles, so it doesn't depend on which views exist. Colour customisations can sit on top.
-- [ ] Chrome and selection text stay readable in both themes. An automated check reports any registered colour role whose text falls below a 4.5:1 contrast ratio against its background (*inferred* target).
-- [ ] The theme choice persists across restarts.
+- [ ] The Appearance options page offers *Follow operating system*, *Light theme* and *Dark theme*. The first shows the current OS setting in parentheses, for example "Follow operating system (Dark)". (Passes under a simulated OS setting; open until E05-S1-T2's and T1's checks by hand confirm the real OS setting.)
+- [ ] With *Follow operating system* selected, the app uses the OS light or dark setting at start-up and switches when that setting changes while the app runs (*inferred*). (Passes under a simulated OS setting; open until E05-S1-T3's check by hand in the running app.)
+- [ ] *Light theme* and *Dark theme* apply whatever the OS setting is. (Passes under a simulated OS setting; open until E05-S1-T1's check by hand with a real OS switch.)
+- [x] With the *Preview* checkbox ticked, changes apply to every open view at once. Cancel restores the previous theme and OK keeps the new one.
+- [x] The window chrome, the selection and every registered colour role take the active theme's value: light values in the light theme, dark values in the dark theme. Acceptance uses harness-registered roles, so it doesn't depend on which views exist. Colour customisations can sit on top.
+- [x] Chrome and selection text stay readable in both themes. An automated check reports any registered colour role whose text falls below a 4.5:1 contrast ratio against its background (*inferred* target).
+- [x] The theme choice persists across restarts.
 
 #### Tasks
 - **E05-S1-T1** — Light and dark palettes for the chrome and selection, and theme switching for every registered colour role · size: M · depends: — · flags: `accessibility` · status: needs-verification
@@ -64,8 +64,9 @@ As a developer who works on a dark desktop, I can choose a light or dark theme, 
   - AC: while Follow operating system is selected, switching the OS between light and dark recolours open views without a restart.
   - Implemented: `follow_system` in `crates/ui/src/colour.rs` (`otd-ui`) makes the active palette the OS setting's (dark while the OS is dark, light otherwise or with no setting), and `Shell::ui` calls `sync_system` every frame, restyling only when `ctx.system_theme()` differs from the active palette, so views recolour on the frame that reports the change and the chrome a frame later, with no restart; `set_palette` picks a fixed palette and stops following. `apps/otd/src/main.rs` follows the OS at start-up until the Appearance option (E05-S1-T2) chooses. Tests: `crates/ui/tests/it/colour.rs` (a simulated OS setting switched light, dark and back recolours an open view and the chrome each time; choosing a palette stops following). Checks: `cargo xtask ci` (fmt, clippy `-D warnings`, `cargo test --workspace --locked`, ui-free) passed on macOS after rebasing onto main, plus pull-request CI (Linux, macOS); no Windows matrix run (no platform-specific code). Pull request: https://github.com/alextiboldi/overthediff/pull/81
   - Verify by hand: run otd on macOS and on Windows and switch the OS appearance between light and dark while it runs: the open window (views and chrome) recolours without a restart. This also proves T1's open check that `ctx.system_theme()` reports live OS changes in the real app.
-- **E05-S1-T4** — Preview checkbox applies changes live, and Cancel reverts them · size: S · depends: E05-S1-T2
+- **E05-S1-T4** — Preview checkbox applies changes live, and Cancel reverts them · size: S · depends: E05-S1-T2 · status: done
   - AC: with Preview on, picking Dark recolours open views at once. Cancel returns them to the previous theme.
+  - Implemented: a Preview checkbox in the Options dialog's button row (`PREVIEW`, `crates/ui/src/options.rs`, `otd-ui`), off each time the dialog opens and not stored; while it is ticked `Options::publish` gives views the dialog's working copy instead of the applied values, so a theme pick recolours open views at once, Cancel and Esc drop the copy and the previous theme returns, and OK keeps the new one. `docs/feature-names.md` has a row for Preview. Tests: `crates/ui/tests/it/theme.rs` (under a simulated light OS, driven by keyboard: without Preview a pick waits for OK; with Preview each pick recolours an open view drawing a harness colour role; Cancel closes the dialog, restores light and applies nothing to save). Checks: `cargo xtask ci` (fmt, clippy `-D warnings`, `cargo test --workspace --locked`, ui-free) passed on macOS after rebasing onto main, plus pull-request CI (Linux, macOS); no Windows matrix run (no platform-specific code). Pull request: https://github.com/alextiboldi/overthediff/pull/88
 
 ### E05-S2 — Multiple windows and tab behaviour
 **Priority**: Should · **Layer**: 1 · **Size**: M · **Platforms**: All
