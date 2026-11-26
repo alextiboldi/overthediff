@@ -18,6 +18,8 @@
 //! `save.rs` holds *File > Save File*, *Save File As* and the hidden *Save File on File System As*,
 //! each pane's unsaved-edits mark, and the view's answers to the shell's unsaved-changes prompts
 //! (E07-S1-T6).
+//!
+//! `font_size.rs` holds the hidden *Increase*, *Decrease* and *Reset Font Size* (E07-S9-T4).
 
 mod read_only;
 pub mod session;
@@ -27,6 +29,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use chrono::{DateTime, Local};
 pub mod aligned;
 mod edit;
+mod font_size;
 mod open;
 mod save;
 
@@ -40,6 +43,7 @@ use otd_text_compare::{Encoding, LineEndings, Pane, ReadOnly};
 use otd_ui::{Browse, PathEdit, Session, SessionType, View};
 
 pub use edit::{COPY, CUT, DELETE, INSERT_TEXT, PASTE, REDO, SELECT_ALL, UNDO};
+pub use font_size::{DECREASE_FONT_SIZE, INCREASE_FONT_SIZE, RESET_FONT_SIZE};
 pub use open::{OPEN_FILE, OPEN_FILE_ON_FILE_SYSTEM, OpenFiles, commands};
 
 pub use read_only::{COMPARISON_CANCELLED, COMPARISON_FAILED, ENCODING_LOSSY, FILE_READ_ONLY, LOCATION};
@@ -130,6 +134,8 @@ pub struct TextCompareView {
     save_as: Option<(usize, bool)>,
     /// Per side, why its last save failed, shown in the pane until it saves or loads again.
     save_errors: [Option<String>; 2],
+    /// Points the editor text is drawn above (or below) its configured size, in both panes.
+    font_step: i8,
 }
 
 impl Drop for TextCompareView {
@@ -177,6 +183,7 @@ impl TextCompareView {
             ime: 0,
             save_as: None,
             save_errors: Default::default(),
+            font_step: 0,
         }
     }
 
@@ -334,6 +341,7 @@ impl View for TextCompareView {
                 if self.pane(side).is_some() {
                     let body = UiBuilder::new().id_salt(side).accessibility_role(Role::Group).accessibility_label(t(SIDES[side]));
                     column.scope_builder(body, |ui| {
+                        font_size::apply(ui, self.font_step);
                         editing |= self.body(ui, side);
                         if clicked(ui) {
                             self.chosen = side;
