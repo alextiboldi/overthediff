@@ -9,12 +9,16 @@
 //! Background tasks show their progress and end-of-task summary through [`show_task`].
 //! A view with unsaved changes says so with [`View::unsaved`] and saves with [`View::save`]; Close
 //! Tab and Exit then ask Save / Don't Save / Cancel first (`unsaved.rs`).
+//! A feature takes a typed or browsed path with a [`PathEdit`], which keeps the field's recent paths.
 
 mod tasks;
 
 pub use tasks::{CANCEL, CANCELLED, CLOSE, FINISHED_WITH_ERRORS, show_task};
 
 pub mod colour;
+
+pub mod path_edit;
+pub use path_edit::{Browse, PathEdit, PathEdits};
 
 mod commands;
 mod unsaved;

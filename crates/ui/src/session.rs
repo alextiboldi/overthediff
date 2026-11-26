@@ -18,7 +18,7 @@ use otd_core::session::check_unique;
 pub use otd_core::session::{DuplicateSetting, Session, Setting, Value};
 pub use otd_format::Kind;
 
-use crate::{CANCEL, SessionType, Shell, View};
+use crate::{Browse, CANCEL, PathEdit, SessionType, Shell, View};
 
 // The dialog's own text: English keys, drawn only through `t`, as in lib.rs.
 /// The Session Settings dialog's title, in our own words (docs/feature-names.md).
@@ -246,9 +246,9 @@ fn labelled(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui) -> Response) -> 
     .inner
 }
 
-/// The control that edits `value`, a value of `setting`, named by its label. Text and Path values are
-/// single-line edits. Returns the editing control's response.
-// ponytail: a Path value is a text edit until E01-S1-T9's path edit control.
+/// The control that edits `value`, a value of `setting`, named by its label. Text values are
+/// single-line edits, and Path values path edits whose recent paths are the setting's own. Returns
+/// the editing control's response.
 pub fn edit_value(ui: &mut Ui, setting: &Setting, value: &mut Value) -> Response {
     match value {
         Value::Bool(on) => ui.checkbox(on, t(setting.label)),
@@ -270,7 +270,11 @@ pub fn edit_value(ui: &mut Ui, setting: &Setting, value: &mut Value) -> Response
             }
             response
         }
-        Value::Text(text) | Value::Path(text) => labelled(ui, t(setting.label), |ui| ui.add(TextEdit::singleline(text))),
+        Value::Text(text) => labelled(ui, t(setting.label), |ui| ui.add(TextEdit::singleline(text))),
+        Value::Path(path) => {
+            let field = format!("{}/{}/{}", setting.session_type, setting.tab, setting.id);
+            labelled(ui, t(setting.label), |ui| PathEdit::new(&field, path, Browse::Both).show(ui))
+        }
         Value::Colour(rgba) => labelled(ui, t(setting.label), |ui| {
             let mut colour = Color32::from_rgba_unmultiplied(rgba[0], rgba[1], rgba[2], rgba[3]);
             let response = ui.color_edit_button_srgba(&mut colour);
