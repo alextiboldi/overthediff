@@ -159,6 +159,19 @@ fn a_click_in_an_open_folder_selects_that_row_by_its_path_through_the_folders() 
 }
 
 #[test]
+fn a_close_that_hides_a_selected_row_drops_it_from_the_selection() {
+    let root = tempfile::tempdir().unwrap();
+    let mut harness = fixture(root.path());
+    run(&mut harness, "folder-compare.expand_all");
+    harness.get_by_label(&on(ON_LEFT, "child.txt")).click();
+    harness.run();
+
+    run(&mut harness, "folder-compare.collapse_all");
+    let view = harness.state().view::<FolderCompare>().expect("a Folder Compare tab");
+    assert!(view.selected(0).is_empty(), "no command may act on a row nobody can see");
+}
+
+#[test]
 fn refresh_selection_on_a_row_in_an_open_folder_lists_that_folder_again() {
     let root = tempfile::tempdir().unwrap();
     let mut harness = fixture(root.path());

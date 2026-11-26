@@ -61,7 +61,7 @@ impl FolderCompare {
 
     /// Refresh Selection: lists the focused row's folder again, for its own size and time, and the
     /// listed folders inside it when it is a folder.
-    // ponytail: the focused row, not yet T5's selection.
+    // ponytail: the focused row, not yet T5's selection (issue #100).
     pub fn refresh_selection(&mut self) {
         let shown = self.shown();
         let Some(row) = shown.get(crate::expand::current(&shown, &self.current.0)) else { return };

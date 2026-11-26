@@ -215,7 +215,8 @@ impl FolderCompare {
     }
 
     /// The rows selected on `side` (0 left, 1 right), as row keys (see [`Shown::key`]), in tree order.
-    /// A path whose row has since gone stays until the next click; `resolve_selection` ignores it.
+    /// A close drops the rows it hides. A path whose row has since gone stays until the next click;
+    /// `resolve_selection` ignores it.
     pub fn selected(&self, side: usize) -> Vec<&Path> {
         self.selected.get(side).into_iter().flatten().map(PathBuf::as_path).collect()
     }

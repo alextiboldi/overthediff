@@ -127,6 +127,7 @@ impl FolderCompare {
         let Some(key) = self.current_folder().map(|shown| shown.key) else { return };
         self.expansion.stop_deep(&key);
         self.expansion.open.remove(&key);
+        self.forget_hidden();
     }
 
     /// Opens the current folder and every folder below it, listing them as needed.
@@ -141,6 +142,7 @@ impl FolderCompare {
         let Some(key) = self.current_folder().map(|shown| shown.key) else { return };
         self.expansion.stop_deep(&key);
         self.expansion.open.retain(|open| !open.starts_with(&key));
+        self.forget_hidden();
     }
 
     /// Opens every folder, listing them as needed.
@@ -152,6 +154,21 @@ impl FolderCompare {
     /// Closes every folder.
     pub fn collapse_all(&mut self) {
         self.expansion = Expansion::default();
+        self.forget_hidden();
+    }
+
+    /// Drops the selected rows and anchors a close hid: `resolve_selection` walks the whole tree, so
+    /// a hidden row left selected would be acted on unseen and unannounced.
+    fn forget_hidden(&mut self) {
+        let shown: BTreeSet<PathBuf> = self.shown().into_iter().map(|shown| shown.key).collect();
+        for selected in &mut self.selected {
+            selected.retain(|key| shown.contains(key));
+        }
+        for anchor in &mut self.anchor {
+            if anchor.as_ref().is_some_and(|key| !shown.contains(key)) {
+                *anchor = None;
+            }
+        }
     }
 
     /// Opens every folder under the deep roots that the scans have reported, asking for the
