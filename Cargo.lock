@@ -2795,6 +2795,7 @@ dependencies = [
  "craft-testkit",
  "encoding_rs",
  "otd-format",
+ "otd-regex",
  "otd-source",
  "otd-text-engine",
  "tempfile",

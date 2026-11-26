@@ -1,7 +1,8 @@
-//! The decoder, and the encoder on what it decodes, never panic or hang on damaged bytes (AGENTS.md hostile-input sweeps).
+//! The decoder, and the encoder on what it decodes, never panic or hang on damaged bytes, nor
+//! does finding damaged text (AGENTS.md hostile-input sweeps).
 
 use craft_testkit::hostile::{HammerConfig, hammer};
-use otd_text_compare::{decode, encode};
+use otd_text_compare::{Direction, FindOptions, Finder, Line, LineEnding, Pos, Selection, Side, Sides, decode, encode};
 
 #[test]
 fn decoding_never_panics_or_hangs_on_truncated_or_damaged_bytes() {
@@ -20,4 +21,19 @@ fn decoding_never_panics_or_hangs_on_truncated_or_damaged_bytes() {
             }
         });
     }
+}
+
+#[test]
+fn finding_never_panics_or_hangs_on_damaged_text_to_find() {
+    let lines: Vec<Line> = ["é☺ apple Apples", "", "  (x)*\\1 e\u{301}"].map(|text| Line { text: text.to_owned(), ending: LineEnding::Lf }).into();
+    let seed = r"(\w+)\s*\1|é☺?^$.*";
+    hammer(&HammerConfig::new("text to find", 2_000), seed.as_bytes(), move |data| {
+        let text = String::from_utf8_lossy(data);
+        for (regex, whole_words) in [(false, false), (true, false), (true, true)] {
+            let options = FindOptions { regex, whole_words, wrap: true, sides: Sides::Both, ..FindOptions::default() };
+            if let Ok(finder) = Finder::new(&text, options) {
+                let _ = finder.find([&lines, &lines], Side::Right, Selection::caret(Pos { line: 9, column: 99 }), Direction::Backward, None);
+            }
+        }
+    });
 }

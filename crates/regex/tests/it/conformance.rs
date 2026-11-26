@@ -203,3 +203,21 @@ fn runaway_backtracking_is_reported_not_endured() {
     let found: Vec<_> = regex.matches(&lines).collect();
     assert_eq!(found, [Err(RegexError::TooComplex)], "the first error ends the search");
 }
+
+#[test]
+fn whole_words_works_on_a_line_too_long_for_the_backtracking_budget() {
+    // A million characters of rejected candidates, then one whole word.
+    let text = format!("{}apple", "apples ".repeat(150_000));
+    let whole = Regex::whole_words("(?i)apple").unwrap_or_else(|e| panic!("{e}"));
+    let found: Vec<_> = whole.matches(&text).map(|found| found.map(|found| found.range())).collect();
+    assert_eq!(found, [Ok(text.len() - 5..text.len())]);
+}
+
+#[test]
+fn whole_words_steps_past_empty_matches_a_character_at_a_time() {
+    let text = "é☺ é";
+    let whole = Regex::whole_words("x*").unwrap_or_else(|e| panic!("{e}"));
+    let found: Vec<_> = whole.matches(text).map(|found| found.unwrap_or_else(|e| panic!("{e}")).range()).collect();
+    assert!(found.len() <= text.chars().count() + 1, "{found:?}");
+    assert!(found.iter().all(|range| range.is_empty() && text.is_char_boundary(range.start)), "{found:?}");
+}
