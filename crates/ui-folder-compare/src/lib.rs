@@ -95,8 +95,8 @@ const BYTES: &str = "{n} bytes";
 // ponytail: English, as `otd_launch::Registry::usage` prints every handler's line.
 const USAGE: &str = "<folder> <folder>   Compare two folders side by side";
 
-/// Size and time quick tests with the default tolerance (E08-S1-T1), and the filename-case and
-/// Unix tests off; the Comparison tab (E08-S4-T4) makes them settings.
+/// Size and time quick tests with the default tolerance (E08-S1-T1), and the filename-case,
+/// Unix, daylight-saving and time-zone tests off; the Comparison tab (E08-S4-T4) makes them settings.
 const CRITERIA: Criteria = Criteria {
     size: true,
     modified: true,
@@ -105,6 +105,8 @@ const CRITERIA: Criteria = Criteria {
     unix_permissions: false,
     unix_owner: false,
     unix_group: false,
+    ignore_daylight_saving: false,
+    ignore_time_zone: false,
 };
 
 /// How often the view looks for scan progress while a scan runs; the scan's worker can't wake it.

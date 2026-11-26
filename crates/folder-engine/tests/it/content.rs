@@ -16,6 +16,8 @@ const BOTH: Criteria = Criteria {
     unix_permissions: false,
     unix_owner: false,
     unix_group: false,
+    ignore_daylight_saving: false,
+    ignore_time_zone: false,
 };
 const TESTS: [ContentTest; 2] = [ContentTest::Crc, ContentTest::Binary];
 

@@ -18,6 +18,8 @@ const CRITERIA: Criteria = Criteria {
     unix_permissions: false,
     unix_owner: false,
     unix_group: false,
+    ignore_daylight_saving: false,
+    ignore_time_zone: false,
 };
 
 fn scan(source: MemorySource, background: bool) -> TreeScan {

@@ -196,14 +196,22 @@ As a release engineer, I can choose which metadata decides "different" so that c
 - [ ] Criteria apply to files. Folders take their status from their contents.
 - [ ] Closing Session Settings after a change recompares the view.
 
+#### Decisions
+**Tolerance around the hour offsets (E08-S4-T1).** Recorded by E08-S4-T1. The catalogue doesn't say on which side of a 1-hour or whole-hour offset the tolerance applies, so this is *unspecified* there and is OverTheDiff's own reading of the task's cases.
+
+- With *Ignore daylight saving difference* or *Ignore timezone differences* on, a gap of the offset or up to the tolerance more counts as same: with 2 seconds, 3600 to 3602 seconds, or 7200 to 7202 seconds.
+- A gap short of the offset is newer: with both on, 3599 seconds is different (E08-S4-T1's case). A band on both sides would make it same.
+- The cost: a daylight-saving shift combined with a time rounded down by up to 2 seconds, such as 3598 seconds, shows as newer.
+
 #### Tasks
-- **E08-S4-T1** — Timestamp rules: tolerance, daylight saving and time zone · size: M · depends: —
+- **E08-S4-T1** — Timestamp rules: tolerance, daylight saving and time zone · size: M · depends: — · status: done
   - AC: unit cases with a 2 s tolerance:
     - Files 1 s apart are same.
     - Files exactly 3600 s apart are same with Ignore daylight saving on.
     - Files 7200 s apart are same with Ignore timezone on.
     - Files 3599 s apart are different with both on.
     - The tolerance also applies around the 1-hour and whole-hour offsets (*inferred*).
+  - Implemented: `Criteria` in `crates/folder-engine/src/status.rs` gets `ignore_daylight_saving` and `ignore_time_zone`, and the Modified test treats a gap of 1 hour, or of any whole number of hours, plus up to the tolerance as the same (E08-S4's *Tolerance around the hour offsets* decision), so with 2 s, 1 s, 3600 s and 7200 s gaps are same and 3599 s is newer with both on. Every existing `Criteria` literal (the view's `CRITERIA` in `crates/ui-folder-compare`, the headless quick compare in `apps/otd`, the test constants) sets them off until E08-S4-T4 adds the controls. Tests in `crates/folder-engine/tests/it/status.rs`. `cargo xtask ci` passed on macOS after rebasing onto main, and pull-request CI passed on Linux and macOS (no platform-dependent code, so no full-matrix run). https://github.com/alextiboldi/overthediff/pull/134
 - **E08-S4-T2** — Filename-case and Unix-metadata tests · size: S · depends: — · status: done
   - AC: `Readme.md` vs `README.md` differ only when Compare filename case is on. A permissions-only difference shows red only when Permissions is on.
   - Implemented: `Criteria` in `crates/folder-engine/src/status.rs` gets four switches, `filename_case`, `unix_permissions`, `unix_owner` and `unix_group`, and `quick_test` makes a file pair different when a switch that is on sees a difference: names equal only after Unicode lower-casing, mode bits `0o1777` (rwx and sticky), or the owner or group as the source reports it. The Unix tests compare only when both sides report a Unix mode (*unspecified*, defaulted). Every existing `Criteria` literal (the view's `CRITERIA` in `crates/ui-folder-compare`, the headless quick compare in `apps/otd`, the test constants) sets them off until E08-S4-T4 adds the controls; red comes from `look`'s `Status::Different` mapping (E08-S1-T4). Tests in `crates/folder-engine/tests/it/status.rs`. `cargo xtask ci` passed on macOS, and pull-request CI passed on Linux and macOS (no platform-dependent code, so no full-matrix run). https://github.com/alextiboldi/overthediff/pull/136
