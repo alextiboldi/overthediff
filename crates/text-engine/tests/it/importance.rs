@@ -2,7 +2,9 @@
 
 use std::ops::Range;
 
-use otd_text_engine::{Classification, Importance, Line, LineEnding, Options, Outcome, RowKind, Rule, Side, char_differences_with, classify, compare, compare_with};
+use otd_text_engine::{
+    Classification, Importance, Line, LineEnding, Options, Outcome, RowKind, Rule, Side, char_differences_with, classify, compare, compare_with,
+};
 
 /// A test rule: every ASCII digit is unimportant.
 struct Digits;
