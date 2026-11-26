@@ -32,6 +32,8 @@ craft-keymap = { git = "https://github.com/storytold/craft-libs", rev = "2c81ed8
 craft-menu = { git = "https://github.com/storytold/craft-libs", rev = "2c81ed850319ef3504ce56d82379b346522af18e" }
 # Settings store (otd-settings): one TOML file in a per-user folder, atomic saves.
 craft-settings = { git = "https://github.com/storytold/craft-libs", rev = "2c81ed850319ef3504ce56d82379b346522af18e" }
+# Exit through the platform's own quit (macOS `terminate:`) once the unsaved-changes prompts allow it.
+craft-quit = { git = "https://github.com/storytold/craft-libs", rev = "2c81ed850319ef3504ce56d82379b346522af18e" }
 
 [workspace.lints.rust]
 # `deny`, not `forbid`, so a module AGENTS.md names can `allow(unsafe_code)` (rule 13).

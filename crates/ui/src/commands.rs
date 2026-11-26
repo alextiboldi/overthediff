@@ -9,7 +9,7 @@
 //! matches key presses against a craft-keymap keymap scoped by view type.
 
 use craft_keymap::{Active, Bindable, Binding, CommandRef, Keymap, Lookup, Scope, Scopes};
-use craft_menu::{BarStyle, Gate, ItemKind, Layout, LayoutOptions, MenuBarUi, MenuRole, Row, Target};
+use craft_menu::{BarStyle, Gate, ItemKind, ItemRole, Layout, LayoutOptions, MenuBarUi, MenuRole, Row, Target};
 use egui::accesskit::Role;
 use egui::os::OperatingSystem;
 use egui::{Key as EguiKey, Modifiers, Ui};
@@ -25,6 +25,11 @@ pub const APP_NAME: &str = "OverTheDiff";
 pub const CLOSE_CURRENT_TAB: &str = "Close Tab";
 pub const NEXT_TAB: &str = "Next Tab";
 pub const PREVIOUS_TAB: &str = "Previous Tab";
+/// The Exit command's caption. The menus show it as the platform's quit item: Exit on Windows,
+/// Quit on Linux and Quit OverTheDiff in the macOS application menu (craft-menu's labels).
+pub const EXIT: &str = "Exit";
+/// Exit's id, the menus' quit item.
+const EXIT_ID: &str = "otd.exit";
 
 /// The top-level menus in bar order, with the role each has in the platform layouts. A command's
 /// menu path starts with one of them; a menu not listed here follows them, in registration order.
@@ -59,6 +64,9 @@ pub(crate) fn shell_commands() -> Vec<Command<Shell>> {
             .state(several_tabs)
             .shortcut(Mods { shift: true, ..Mods::CTRL }, Key::Tab)
             .shortcut_on(MAC, Mods { shift: true, ..Mods::CMD }, Key::OpenBracket),
+        // Q24: Ctrl+Q on Linux; Cmd+Q is the macOS application menu's (craft-menu gives the quit
+        // item it), and Windows has none: Alt+F4 closes the window, which exits the same way.
+        Command::new(EXIT_ID, EXIT, Shell::request_exit).menu(&["Session"]).shortcut_on(&[Platform::Linux], Mods::CMD, Key::Q),
     ];
     commands.into_iter().map(Command::needs_window).collect()
 }
@@ -127,10 +135,10 @@ impl Shell {
     }
 
     /// Runs the command `id`, with no arguments, if it applies to the active view type and is
-    /// enabled, and the Session Settings dialog isn't open (a native menu click reaches here past
-    /// the dialog). Returns whether it ran without an error.
+    /// enabled, and neither the Session Settings dialog nor an unsaved-changes prompt is open (a
+    /// native menu click reaches here past them). Returns whether it ran without an error.
     pub fn run(&mut self, id: &str) -> bool {
-        if self.dialog.is_some() {
+        if self.dialog.is_some() || self.prompt.is_some() {
             return false;
         }
         let view = self.view_type();
@@ -181,6 +189,8 @@ impl Shell {
         }
         let mut bar = craft_menu::from_items(&tops, &rows);
         bar.tag_menu(APP_NAME, MenuRole::App);
+        // Exit is the platform's quit item, in place of craft-menu's own.
+        bar.tag_item(&CommandRef::new(EXIT_ID), ItemRole::Quit);
         for (title, role) in MENUS {
             bar.tag_menu(t(title), role);
         }
@@ -196,8 +206,9 @@ impl Shell {
         ctx.add_plugin(CtrlTab);
         let ctrl_tabs = ctx.data_mut(|data| data.remove_temp::<Vec<Modifiers>>(egui::Id::unique(CTRL_TAB))).unwrap_or_default();
         // A modal dialog (last frame's top modal layer) keeps the window behind it out of reach, and so
-        // does the Session Settings dialog from the frame it opens.
-        if self.dialog.is_some() || ctx.memory(|memory| memory.top_modal_layer().is_some()) {
+        // does the Session Settings dialog or an unsaved-changes prompt from the frame it opens.
+        // Ctrl+Tab presses are dropped, not kept for after it.
+        if self.dialog.is_some() || self.prompt.is_some() || ctx.memory(|memory| memory.top_modal_layer().is_some()) {
             return;
         }
         craft_menu::bar::leave_for_shortcut(&ctx);

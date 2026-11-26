@@ -15,6 +15,7 @@ otd-launch = { path = "../../crates/launch" }
 otd-settings = { path = "../../crates/settings" }
 otd-ui = { path = "../../crates/ui" }
 craft-menu = { workspace = true }
+craft-quit = { workspace = true, features = ["egui"] }
 eframe = { workspace = true, features = ["wgpu", "accesskit", "wayland", "x11", "default_fonts"] }
 
 [dev-dependencies]
