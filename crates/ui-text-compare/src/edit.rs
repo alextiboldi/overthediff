@@ -98,7 +98,7 @@ fn insert_text(shell: &mut Shell, args: &Args) -> Outcome {
     Ok(None)
 }
 
-fn on_view(shell: &mut Shell, edit: fn(&mut TextCompareView)) {
+pub(crate) fn on_view(shell: &mut Shell, edit: fn(&mut TextCompareView)) {
     if let Some(view) = shell.view_mut::<TextCompareView>() {
         edit(view);
     }
@@ -263,8 +263,8 @@ impl TextCompareView {
         let extend = ui.input(|i| !i.pointer.primary_pressed() || i.modifiers.shift);
         let panes = [0, 1].map(|side| loaded(&self.panes, side));
         let lines = panes.map(|pane| pane.map_or(&[][..], |pane| pane.lines.as_slice()));
-        let selection = panes[side].map(|pane| pane.selection).unwrap_or_default();
-        let drawn = aligned::show(ui, side, lines, &mut self.aligned, &Caret { selection, shown: focused, pointer });
+        let (selection, bookmarks) = panes[side].map(|pane| (pane.selection, pane.bookmarks)).unwrap_or_default();
+        let drawn = aligned::show(ui, side, lines, &mut self.aligned, &Caret { selection, shown: focused, pointer, bookmarks });
         if let (Some(at), Some(pane)) = (drawn.hit, loaded_mut(&mut self.panes, side)) {
             pane.move_caret(at, extend);
             ctx.request_repaint();

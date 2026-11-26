@@ -8,11 +8,13 @@
 //!   the system code page) and splits the lines, keeping each line's ending.
 //! - A [`Pane`] is edited through its [`Selection`]: typing, pasting and deleting replace it, and
 //!   its [`History`] undoes and redoes each edit (E07-S1-T5).
+//! - Its [`Bookmarks`] 0–9 each mark a line, and move with it through edits (E07-S6-T2).
 //! - [`save`] writes a pane back through a data source, and [`save_as`] to a spec, in the pane's
 //!   own encoding and line endings ([`encode`]), so only the edited bytes change (E07-S1-T6).
 //! - [`visible`] works out which aligned rows a display [`Filter`] shows (E07-S3-T1).
 //! - A [`Finder`] finds plain text or a regular expression in either pane or both (E07-S5-T1).
 
+mod bookmarks;
 mod decode;
 mod edit;
 mod filter;
@@ -22,6 +24,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
+pub use bookmarks::{BOOKMARKS, Bookmarks};
 pub use decode::{Decoded, Encoding, LineEndings, Unencodable, WESTERN, decode, encode, system_code_page};
 pub use edit::{History, Pos, Selection};
 pub use filter::{Filter, visible};
@@ -54,6 +57,8 @@ pub struct Pane {
     pub selection: Selection,
     /// The edits Undo and Redo walk through.
     pub history: History,
+    /// The numbered bookmarks' lines (E07-S6-T2).
+    pub bookmarks: Bookmarks,
 }
 
 /// Why a pane is read-only. The view shows the reason in the pane.
@@ -112,6 +117,7 @@ pub fn load(source: &dyn DataSource, path: &Path, spec: &str, formats: &Registry
         unsaved: false,
         selection: Selection::default(),
         history: History::default(),
+        bookmarks: Bookmarks::default(),
     })
 }
 

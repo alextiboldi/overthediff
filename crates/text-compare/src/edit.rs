@@ -197,6 +197,10 @@ impl Pane {
         if !self.splice(step.at, step.inserted.len(), step.removed.clone()) {
             return false;
         }
+        // The inverse edit: from the step's start to the end of what it inserted, the text after
+        // that going back to the line it came from.
+        let (start, end) = step.before.range();
+        self.bookmarks.follow(start, step.after.head, end.line, self.lines.len());
         self.selection = step.before;
         self.history.redo.push(step);
         self.history.typing = false;
@@ -209,6 +213,8 @@ impl Pane {
         if !self.splice(step.at, step.removed.len(), step.inserted.clone()) {
             return false;
         }
+        let (start, end) = step.before.range();
+        self.bookmarks.follow(start, end, step.after.head.line, self.lines.len());
         self.selection = step.after;
         self.history.undo.push(step);
         self.history.typing = false;
@@ -264,6 +270,7 @@ impl Pane {
         if !self.splice(start.line, removed.len(), inserted.clone()) {
             return;
         }
+        self.bookmarks.follow(start, end, head.line, self.lines.len());
         let after = Selection::caret(head);
         let joins = typing && self.history.typing && removed.len() == 1 && inserted.len() == 1;
         match self.history.undo.last_mut() {
@@ -319,6 +326,7 @@ mod tests {
             unsaved: false,
             selection: Selection::default(),
             history: Default::default(),
+            bookmarks: Default::default(),
         }
     }
 
@@ -405,5 +413,64 @@ mod tests {
         pane.delete(true);
         assert!(pane.undo(), "Delete at the end changed nothing, so the join is the last step");
         assert_eq!(pane.lines.len(), 2);
+    }
+
+    #[test]
+    fn a_bookmark_keeps_its_line_through_edits_around_and_on_it_and_their_undo() {
+        let mut pane =
+            pane(&[("a", LineEnding::CrLf), ("b", LineEnding::CrLf), ("c", LineEnding::CrLf), ("d", LineEnding::CrLf), ("e", LineEnding::None)]);
+        let original = pane.lines.clone();
+        let marked = |pane: &Pane| pane.bookmarks.get(2).map(|line| pane.lines[line].text.clone());
+        pane.bookmarks.toggle(2, 3);
+
+        // A break at the line's start pushes its text down, and the bookmark with it.
+        pane.move_caret(Pos { line: 3, column: 0 }, false);
+        pane.insert("\n");
+        assert_eq!(marked(&pane).as_deref(), Some("d"));
+        // Lines deleted above pull it up.
+        pane.selection = Selection { anchor: Pos::default(), head: Pos { line: 2, column: 0 } };
+        pane.delete(false);
+        assert_eq!(marked(&pane).as_deref(), Some("d"));
+        // Typing in the line keeps it there.
+        pane.move_caret(pane.line_end(pane.bookmarks.get(2).unwrap()), false);
+        pane.type_text("x");
+        assert_eq!(marked(&pane).as_deref(), Some("dx"));
+
+        while pane.undo() {}
+        assert_eq!(pane.lines, original);
+        assert_eq!(pane.bookmarks.get(2), Some(3), "Undo takes it back to its line");
+
+        // Deleting its line moves it to the line after.
+        pane.selection = Selection { anchor: Pos { line: 3, column: 0 }, head: Pos { line: 4, column: 0 } };
+        pane.delete(false);
+        assert_eq!(marked(&pane).as_deref(), Some("e"));
+    }
+
+    #[test]
+    fn a_bookmark_follows_its_own_line_among_equal_lines() {
+        let blank = |count: usize| vec![("", LineEnding::Lf); count];
+        // Enter at the start of a blank line, three times, carries its bookmark down; Undo back.
+        let mut doc = pane(&blank(60));
+        doc.bookmarks.toggle(2, 50);
+        doc.move_caret(Pos { line: 50, column: 0 }, false);
+        for _ in 0..3 {
+            doc.insert("\n");
+        }
+        assert_eq!(doc.bookmarks.get(2), Some(53));
+        while doc.undo() {}
+        assert_eq!(doc.bookmarks.get(2), Some(50));
+
+        // Backspace at the start of a blank line under another takes its bookmark up with it.
+        let mut doc = pane(&[("", LineEnding::Lf), ("", LineEnding::Lf), ("foo", LineEnding::None)]);
+        doc.bookmarks.toggle(1, 1);
+        doc.move_caret(Pos { line: 1, column: 0 }, false);
+        doc.delete(false);
+        assert_eq!(doc.bookmarks.get(1), Some(0), "its blank line is now line 0, above foo");
+
+        // A copy of a line pasted at its start goes above it, not under its bookmark.
+        let mut doc = pane(&[("foo", LineEnding::Lf), ("bar", LineEnding::None)]);
+        doc.bookmarks.toggle(3, 0);
+        doc.insert("foo\n");
+        assert_eq!(doc.bookmarks.get(3), Some(1));
     }
 }
