@@ -178,7 +178,7 @@ fn no_text_in_the_shell_skips_the_lookup() {
     assert!(options.state_mut().run("otd.options"));
     options.run();
     seen.extend(texts(&options));
-    options.get_by_role_and_label(Role::TreeItem, &format!("⟦{PAGE}⟧")).click_accesskit();
+    options.get_by_role_and_label(Role::TreeItem, &format!("⟦{PAGE}⟧")).click();
     options.run();
     seen.extend(texts(&options));
 

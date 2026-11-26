@@ -114,15 +114,23 @@ impl Shell {
             if specs.is_empty() {
                 ui.label(t(NO_OPTIONS));
             } else {
+                // No separator between the columns: a vertical one takes all the height it is
+                // offered, so the dialog would grow every frame.
                 ui.horizontal_top(|ui| {
                     ui.vertical(|ui| dialog.tree_ui(ui));
-                    ui.separator();
+                    ui.add_space(ui.spacing().item_spacing.x * 2.0);
                     ui.vertical(|ui| dialog.page_ui(ui, specs));
                 });
             }
             ui.separator();
             ui.horizontal(|ui| {
-                ok |= ui.button(t(OK)).clicked();
+                let ok_button = ui.button(t(OK));
+                // With no tree to take it, focus goes to OK.
+                if dialog.focus {
+                    ok_button.request_focus();
+                    dialog.focus = false;
+                }
+                ok |= ok_button.clicked();
                 cancel = ui.button(t(CANCEL)).clicked();
                 apply = ui.button(t(APPLY)).clicked();
             });

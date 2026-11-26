@@ -53,7 +53,8 @@ fn from_toml(option: &OptionSpec, saved: &toml::Value) -> Option<Value> {
 
 /// `#rrggbbaa`, in hex digits of either case.
 fn colour(text: &str) -> Option<[u8; 4]> {
-    let hex = text.strip_prefix('#').filter(|h| h.len() == 8 && h.is_ascii())?;
+    // Hex digits only: `from_str_radix` would also take a sign.
+    let hex = text.strip_prefix('#').filter(|h| h.len() == 8 && h.bytes().all(|b| b.is_ascii_hexdigit()))?;
     let mut rgba = [0; 4];
     for (i, byte) in rgba.iter_mut().enumerate() {
         *byte = u8::from_str_radix(&hex[2 * i..2 * i + 2], 16).ok()?;

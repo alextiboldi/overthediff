@@ -247,3 +247,27 @@ fn an_applied_option_persists_across_a_restart() {
     assert_eq!(wrapping(&harness), "Some(Bool(true))", "the view reads the saved value");
     assert!(wrap_checked(&harness), "and the dialog shows it");
 }
+
+#[test]
+fn the_dialog_keeps_its_size_from_frame_to_frame_so_a_click_lands() {
+    let mut harness = dialog(shell(Default::default()));
+    let ok = |harness: &Harness<'_, Shell>| harness.get_by_role_and_label(Role::Button, OK).accesskit_node().bounding_box();
+    let before = ok(&harness);
+    for _ in 0..10 {
+        harness.step();
+    }
+    assert_eq!(ok(&harness), before, "the buttons stay put");
+    harness.get_by_role_and_label(Role::Button, CANCEL).click();
+    harness.run();
+    assert!(!is_open(&harness), "a click on Cancel closes it");
+}
+
+#[test]
+fn with_nothing_contributed_the_dialog_says_so_and_takes_focus() {
+    let mut harness = Harness::builder().build_ui_state(|ui, shell: &mut Shell| shell.ui(ui), Shell::new(Vec::new()));
+    harness.run();
+    assert!(harness.state_mut().run("otd.options"));
+    harness.run();
+    assert!(harness.query_by_label(otd_ui::NO_OPTIONS).is_some());
+    assert_eq!(focused(&harness), Some((Role::Button, OK.to_owned())));
+}

@@ -52,7 +52,7 @@ fn every_value_type_reads_back_after_a_restart() {
 #[test]
 fn a_saved_value_that_doesnt_fit_its_option_reads_as_its_default_and_leaves_the_others() {
     let dir = tempfile::tempdir().unwrap();
-    let file = "schema_version = 1\n\n[options]\nbool = \"yes\"\nnumber = nan\nchoice = \"Characters\"\ntext = 3\npath = \"kept.txt\"\ncolour = \"#12345\"\n";
+    let file = "schema_version = 1\n\n[options]\nbool = \"yes\"\nnumber = nan\nchoice = \"Characters\"\ntext = 3\npath = \"kept.txt\"\ncolour = \"#+1+2+3+4\"\n";
     std::fs::write(dir.path().join("config.toml"), file).unwrap();
     let mut expected = defaults();
     expected.insert("path".into(), Value::Path("kept.txt".into()));
