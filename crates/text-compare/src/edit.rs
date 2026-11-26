@@ -155,6 +155,17 @@ impl Pane {
         self.replace(text, true);
     }
 
+    /// Typing in overwrite mode: `text` replaces as many characters after the caret, up to the
+    /// line's end. A selection is replaced as in insert mode.
+    pub fn overwrite(&mut self, text: &str) {
+        if self.selection.is_empty() {
+            let head = self.clamp(self.selection.head);
+            let column = head.column.saturating_add(text.chars().count()).min(self.line_len(head.line));
+            self.selection = Selection { anchor: Pos { column, ..head }, head };
+        }
+        self.type_text(text);
+    }
+
     /// Replaces the selection with `text` (a paste, or Enter's line break) as a step of its own.
     /// Line breaks of any style become the pane's.
     pub fn insert(&mut self, text: &str) {
@@ -344,6 +355,19 @@ mod tests {
         assert!(pane.undo());
         assert_eq!(pane.lines[0].text, "ab", "the typing before it is one step");
         assert!(!pane.can_undo());
+    }
+
+    #[test]
+    fn overwriting_replaces_the_characters_after_the_caret_up_to_the_lines_end_in_one_step() {
+        let mut pane = pane(&[("abc", LineEnding::CrLf), ("next", LineEnding::None)]);
+        pane.move_caret(Pos { line: 0, column: 1 }, false);
+        for c in ["x", "y", "z"] {
+            pane.overwrite(c);
+        }
+        assert_eq!(pane.lines[0].text, "axyz", "past the line's end it adds");
+        assert_eq!(pane.lines[1].text, "next", "and never takes the line break");
+        assert!(pane.undo());
+        assert_eq!(pane.lines[0].text, "abc", "one Undo takes it all back");
     }
 
     #[test]

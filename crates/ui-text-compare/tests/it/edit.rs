@@ -2,7 +2,8 @@
 //! hand the editor what a text field gets, and read back through the accessibility tree.
 
 use egui::accesskit::Role;
-use egui::{Event, Key, Modifiers, OutputCommand, PointerButton, Pos2, vec2};
+use egui::os::OperatingSystem;
+use egui::{Event, ImeEvent, Key, Modifiers, OutputCommand, PointerButton, Pos2, ViewportCommand, ViewportId, vec2};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use otd_core::command::{self, Command, Mods};
@@ -63,6 +64,21 @@ fn tab_to_editor(harness: &mut Harness<'_, Shell>, side: &str) {
     panic!("Tab never reached the {side} editor");
 }
 
+/// The status bar's overall result.
+fn result(harness: &Harness<'_, Shell>) -> Option<String> {
+    view(harness).status().result.map(|field| field.value)
+}
+
+/// The left pane's lines.
+fn left_lines(harness: &Harness<'_, Shell>) -> Vec<String> {
+    view(harness).pane(0).unwrap().lines.iter().map(|line| line.text.clone()).collect()
+}
+
+/// Whether this frame's output puts `text` on the clipboard.
+fn copied(harness: &Harness<'_, Shell>, text: &str) -> bool {
+    harness.output().platform_output.commands.iter().any(|c| matches!(c, OutputCommand::CopyText(copied) if copied == text))
+}
+
 /// The descriptions of the line nodes named `label`, one per pane that shows it.
 fn said(harness: &Harness<'_, Shell>, label: &str) -> Vec<Option<String>> {
     harness
@@ -85,8 +101,14 @@ fn typing_the_other_sides_text_into_a_changed_line_clears_its_highlight_and_undo
     for _ in 0.."left".len() {
         key(&mut harness, Modifiers::SHIFT, Key::ArrowLeft);
     }
+    let editor = harness.get_by(|node| node.is_focused()).accesskit_node();
+    let selection = editor.text_selection();
+    assert_eq!(selection.as_ref().map(|range| range.text()).as_deref(), Some("left"), "the editor publishes what is selected");
+    assert!(selection.is_some_and(|range| !range.bounding_boxes().is_empty()), "and where it is on screen");
+    let before = result(&harness);
     harness.event(Event::Text("right".to_owned()));
     harness.run();
+    assert_ne!(result(&harness), before, "the status bar's result follows the typing");
     assert_eq!(said(&harness, "changed right"), [None, None], "both panes show the line, neither as a difference");
     assert!(said(&harness, "changed left").is_empty());
     assert_eq!(focused(&harness), Some((Role::MultilineTextInput, LEFT.to_owned(), None)), "focus stays in the pane, whose line now matches");
@@ -246,4 +268,130 @@ fn insert_text_edits_the_chosen_pane_without_the_window() {
     let lines: Vec<&str> = view(&harness).pane(0).unwrap().lines.iter().map(|line| line.text.as_str()).collect();
     assert_eq!(lines, ["two", "ne"], "inserted at the caret, then the next character deleted");
     assert!(said(&harness, "two").iter().all(Option::is_none), "and compared again");
+}
+
+#[test]
+fn tab_and_shift_tab_leave_a_focused_pane() {
+    let folder = tempfile::tempdir().unwrap();
+    let mut harness = harness(&folder, "one\n", "two\n");
+    tab_to_editor(&mut harness, LEFT);
+    let left = Some((Role::MultilineTextInput, LEFT.to_owned()));
+    for modifiers in [Modifiers::NONE, Modifiers::SHIFT] {
+        key(&mut harness, modifiers, Key::Tab);
+        let now = focused(&harness).map(|(role, name, _)| (role, name));
+        assert!(now.is_some() && now != left, "{modifiers:?}+Tab moves focus out of the pane, to {now:?}");
+        tab_to_editor(&mut harness, LEFT);
+    }
+}
+
+#[test]
+fn redo_by_its_shortcuts_brings_back_what_undo_took() {
+    let folder = tempfile::tempdir().unwrap();
+    let mut harness = harness(&folder, "a\n", "a\n");
+    tab_to_editor(&mut harness, LEFT);
+    harness.event(Event::Text("x".to_owned()));
+    harness.run();
+    key(&mut harness, Modifiers::COMMAND, Key::Z);
+    assert_eq!(left_lines(&harness), ["a"]);
+    key(&mut harness, Modifiers::COMMAND | Modifiers::SHIFT, Key::Z);
+    assert_eq!(left_lines(&harness), ["xa"], "Shift+Command+Z redoes");
+
+    // Windows and Linux also take Ctrl+Y.
+    harness.ctx.set_os(OperatingSystem::Windows);
+    let ctrl = Modifiers { ctrl: true, command: true, ..Modifiers::NONE };
+    key(&mut harness, ctrl, Key::Z);
+    assert_eq!(left_lines(&harness), ["a"]);
+    key(&mut harness, ctrl, Key::Y);
+    assert_eq!(left_lines(&harness), ["xa"], "Ctrl+Y redoes");
+}
+
+#[test]
+fn the_cut_copy_and_paste_commands_reach_the_clipboard_on_the_next_draw() {
+    let folder = tempfile::tempdir().unwrap();
+    let mut harness = harness(&folder, "first\nsecond\n", "first\nsecond\n");
+    tab_to_editor(&mut harness, LEFT);
+    key(&mut harness, Modifiers::SHIFT, Key::ArrowDown);
+
+    // Run as a menu click runs them: the clipboard is reached when the view next draws.
+    assert!(harness.state_mut().run("text-compare.copy"));
+    harness.step();
+    assert!(copied(&harness, "first\n"), "Copy puts the selection on the clipboard");
+    harness.run();
+    assert_eq!(left_lines(&harness), ["first", "second"], "and leaves it");
+    assert!(harness.state_mut().run("text-compare.cut"));
+    harness.step();
+    assert!(copied(&harness, "first\n"), "Cut does too");
+    harness.run();
+    assert_eq!(left_lines(&harness), ["second"], "and deletes it");
+
+    assert!(harness.state_mut().run("text-compare.paste"));
+    harness.step();
+    let asked = harness.output().viewport_output.get(&ViewportId::ROOT).is_some_and(|v| v.commands.contains(&ViewportCommand::RequestPaste));
+    assert!(asked, "Paste asks the window for the clipboard's text");
+    // Which the window sends as a paste event.
+    harness.event(Event::Paste("first\n".to_owned()));
+    harness.run();
+    assert_eq!(left_lines(&harness), ["first", "second"], "the pane takes it at the caret");
+}
+
+#[test]
+fn edit_delete_leaves_the_pane_alone_while_a_path_edit_has_focus() {
+    let folder = tempfile::tempdir().unwrap();
+    let mut harness = harness(&folder, "one\n", "two\n");
+    for _ in 0..40 {
+        if focused(&harness).is_some_and(|(role, name, _)| role != Role::MultilineTextInput && name.starts_with(LEFT)) {
+            break;
+        }
+        key(&mut harness, Modifiers::NONE, Key::Tab);
+    }
+    let path_edit = focused(&harness);
+    assert!(path_edit.as_ref().is_some_and(|(role, _, _)| *role != Role::MultilineTextInput), "the Left path edit has focus: {path_edit:?}");
+
+    assert!(!harness.state_mut().run("text-compare.delete"), "Delete is disabled");
+    harness.run();
+    assert_eq!(left_lines(&harness), ["one"], "the file is unchanged");
+    assert_eq!(focused(&harness), path_edit, "and focus stays");
+}
+
+#[test]
+fn an_input_methods_composition_shows_until_it_commits_into_the_focused_pane() {
+    let folder = tempfile::tempdir().unwrap();
+    let mut harness = harness(&folder, "a\n", "a\n");
+    assert!(harness.output().platform_output.ime.is_none(), "no input method without a focused editor");
+    tab_to_editor(&mut harness, LEFT);
+    assert!(harness.output().platform_output.ime.is_some(), "the focused editor turns input methods on");
+
+    // A dead key's accent, then the letter it composes.
+    harness.event(Event::Ime(ImeEvent::Preedit { text: "´".to_owned(), active_range_chars: None }));
+    harness.run();
+    assert_eq!(left_lines(&harness), ["a"], "a composition isn't in the text yet");
+    harness.event(Event::Ime(ImeEvent::Commit("é".to_owned())));
+    harness.run();
+    assert_eq!(left_lines(&harness), ["éa"], "the committed text is typed at the caret");
+    key(&mut harness, Modifiers::COMMAND, Key::Z);
+    assert_eq!(left_lines(&harness), ["a"], "and undoes as typing");
+
+    // A read-only pane takes no text, so it asks for no input method.
+    harness.state_mut().view_mut::<TextCompareView>().unwrap().comparison_ended(End::Cancelled);
+    harness.run();
+    assert!(harness.output().platform_output.ime.is_none());
+}
+
+#[test]
+fn recompare_files_keeps_the_edits_and_empties_the_undo_history_and_the_status_bar_shows_the_cursor() {
+    let folder = tempfile::tempdir().unwrap();
+    let mut harness = harness(&folder, "a\nbcd\n", "a\nbcd\n");
+    tab_to_editor(&mut harness, LEFT);
+    key(&mut harness, Modifiers::NONE, Key::ArrowDown);
+    key(&mut harness, Modifiers::NONE, Key::End);
+    harness.event(Event::Text("x".to_owned()));
+    harness.run();
+    let cursor = view(&harness).status().fields.into_iter().find(|field| field.id == "cursor").map(|field| field.value);
+    assert!(cursor.as_deref().is_some_and(|at| at.contains('2') && at.contains('5')), "line 2, column 5, counted from 1: {cursor:?}");
+    assert!(view(&harness).can_undo());
+
+    assert!(harness.state_mut().run("text-compare.recompare_files"));
+    harness.run();
+    assert_eq!(left_lines(&harness), ["a", "bcdx"], "the edit stays");
+    assert!(!view(&harness).can_undo(), "but can't be undone");
 }

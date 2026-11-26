@@ -110,6 +110,16 @@ pub struct TextCompareView {
     paste: bool,
     /// The side whose editor takes focus on the next draw, after an Edit menu command.
     focus: Option<usize>,
+    /// The side whose editor last had focus, whose caret the status bar shows.
+    cursor: Option<usize>,
+    /// Whether a text field other than the editors (a path edit) had focus at the last draw. Edit >
+    /// Delete has no shortcut for the menu to hand that field, so it is disabled then.
+    field_focus: bool,
+    /// The input method's composition, drawn at the caret until it commits. It is never part of
+    /// the pane, so it doesn't enter undo, the comparison or a save.
+    preedit: String,
+    /// The editors' input-method context, new each time one gains focus (`IMEOutput`).
+    ime: u64,
 }
 
 impl Drop for TextCompareView {
@@ -151,6 +161,10 @@ impl TextCompareView {
             clipboard: None,
             paste: false,
             focus: None,
+            cursor: None,
+            field_focus: false,
+            preedit: String::new(),
+            ime: 0,
         }
     }
 
@@ -280,12 +294,13 @@ impl View for TextCompareView {
         });
         // The bodies start below both headers, at one height, so their rows line up. Each is named
         // by its side's caption, so a line and its counterpart read apart.
+        let mut editing = false;
         ui.columns(SIDES.len(), |columns| {
             for (side, column) in columns.iter_mut().enumerate() {
                 if self.pane(side).is_some() {
                     let body = UiBuilder::new().id_salt(side).accessibility_role(Role::Group).accessibility_label(t(SIDES[side]));
                     column.scope_builder(body, |ui| {
-                        self.body(ui, side);
+                        editing |= self.body(ui, side);
                         if clicked(ui) {
                             self.chosen = side;
                         }
@@ -293,6 +308,7 @@ impl View for TextCompareView {
                 }
             }
         });
+        self.field_focus = ui.ctx().text_edit_focused() && !editing;
         self.info_ui(ui);
     }
 }

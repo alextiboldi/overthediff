@@ -10,14 +10,15 @@
 
 use std::collections::HashMap;
 use std::ops::Range;
+use std::sync::Arc;
 
 use egui::scroll_area::{ScrollBarVisibility, ScrollSource};
 use egui::text::CCursor;
 use egui::text::{LayoutJob, TextFormat};
-use egui::{Align2, Color32, FontId, Pos2, Rect, Role, ScrollArea, Sense, Stroke, TextStyle, Ui, WidgetInfo, pos2, vec2};
+use egui::{Align2, Color32, FontId, Galley, Pos2, Rect, Role, ScrollArea, Sense, Stroke, TextStyle, Ui, WidgetInfo, pos2, vec2};
 use otd_core::colour::{ColourRole, Contrast, Rgba};
 use otd_core::i18n::t;
-use otd_text_compare::{Line, Pos, Selection};
+use otd_text_compare::{Line, LineEnding, Pos, Selection};
 use otd_text_engine::{CharDifferences, CharRange, Importance, Outcome, Row, RowKind, Side, Statistics, char_differences, classify, compare};
 use otd_ui::colour::{BACKGROUND, SELECTION, SELECTION_TEXT, TEXT, colour};
 
@@ -249,6 +250,18 @@ pub struct Caret {
     pub pointer: Option<Pos2>,
 }
 
+/// What a pane drew this frame, for its editor.
+#[derive(Default)]
+pub struct Drawn {
+    /// The place in the text under `Caret::pointer`, if it is over a line.
+    pub hit: Option<Pos>,
+    /// Where the caret was drawn, if it was.
+    pub caret: Option<Rect>,
+    /// The lines drawn, in order: the line's index, its text laid out, where that was painted, and
+    /// whether the line ends with a line break.
+    pub lines: Vec<(usize, Arc<Galley>, Pos2, bool)>,
+}
+
 /// Byte offset of character `column` in `text`, or its end.
 fn byte_at(text: &str, column: usize) -> usize {
     text.char_indices().nth(column).map_or(text.len(), |(at, _)| at)
@@ -275,9 +288,8 @@ impl Metrics {
 }
 
 /// Side `side`'s pane body (0 is left): every row, in a scroll area whose vertical offset the other
-/// pane shares. `lines` are both panes' lines; a missing pane's are empty. Returns the place in the
-/// text under `caret.pointer`, if it is over a line.
-pub fn show(ui: &mut Ui, side: usize, lines: [&[Line]; 2], aligned: &mut Aligned, caret: &Caret) -> Option<Pos> {
+/// pane shares. `lines` are both panes' lines; a missing pane's are empty.
+pub fn show(ui: &mut Ui, side: usize, lines: [&[Line]; 2], aligned: &mut Aligned, caret: &Caret) -> Drawn {
     let font = TextStyle::Monospace.resolve(ui.style());
     let digit = ui.fonts_mut(|fonts| fonts.glyph_width(&font, '0'));
     let height = ui.text_style_height(&TextStyle::Monospace);
@@ -298,7 +310,7 @@ pub fn show(ui: &mut Ui, side: usize, lines: [&[Line]; 2], aligned: &mut Aligned
     if aligned.drawn.get(side).copied().flatten() != Some(aligned.scroll) {
         area = area.vertical_scroll_offset(aligned.scroll);
     }
-    let mut hit = None;
+    let mut drawn = Drawn::default();
     let output = area
         .auto_shrink(false)
         // A drag selects text instead.
@@ -310,8 +322,7 @@ pub fn show(ui: &mut Ui, side: usize, lines: [&[Line]; 2], aligned: &mut Aligned
         // One blank row after the rest, where the caret can stand after a final line break.
         .show_rows(ui, metrics.height, aligned.rows.len() + 1, |ui, rows| {
             for row in rows {
-                let at = draw_row(ui, row, lines, aligned, &metrics, caret);
-                hit = hit.or(at);
+                draw_row(ui, row, lines, aligned, &metrics, caret, &mut drawn);
             }
         });
     let offset = output.state.clamped_offset().y;
@@ -326,15 +337,15 @@ pub fn show(ui: &mut Ui, side: usize, lines: [&[Line]; 2], aligned: &mut Aligned
         // The pane drawn before this one catches up on the next frame.
         ui.ctx().request_repaint();
     }
-    hit
+    drawn
 }
 
 /// On the row after the pane's last line, `rect`: the caret when it stands after a final line
 /// break, and that place when the pointer is on the row.
-fn after_last_line(ui: &Ui, row: usize, rect: Rect, aligned: &Aligned, metrics: &Metrics, caret: &Caret) -> Option<Pos> {
-    let line = *aligned.lines.get(metrics.side)?;
+fn after_last_line(ui: &Ui, row: usize, rect: Rect, aligned: &Aligned, metrics: &Metrics, caret: &Caret, drawn: &mut Drawn) {
+    let Some(&line) = aligned.lines.get(metrics.side) else { return };
     if aligned.row_of(metrics.side, line) != Some(row) {
-        return None;
+        return;
     }
     if caret.shown && caret.selection.head.line == line {
         let x = rect.left() + metrics.gutter();
@@ -343,18 +354,21 @@ fn after_last_line(ui: &Ui, row: usize, rect: Rect, aligned: &Aligned, metrics: 
         if metrics.reveal == Some(row) {
             ui.scroll_to_rect(caret_rect.expand2(vec2(metrics.gutter() + metrics.digit, 0.0)), None);
         }
+        drawn.caret = Some(caret_rect);
     }
     // The end of the text: after the break, or the last line's end when there is none.
-    caret.pointer.filter(|p| (rect.top()..rect.bottom()).contains(&p.y)).map(|_| Pos { line, column: usize::MAX })
+    if caret.pointer.is_some_and(|p| (rect.top()..rect.bottom()).contains(&p.y)) {
+        drawn.hit = Some(Pos { line, column: usize::MAX });
+    }
 }
 
 /// Draws row `row` of the pane, with the caret and selection where they fall on its line, and
-/// returns the place under `caret.pointer` when it is on this row's line.
-fn draw_row(ui: &mut Ui, row: usize, lines: [&[Line]; 2], aligned: &mut Aligned, metrics: &Metrics, caret: &Caret) -> Option<Pos> {
+/// adds what it drew to `drawn`.
+fn draw_row(ui: &mut Ui, row: usize, lines: [&[Line]; 2], aligned: &mut Aligned, metrics: &Metrics, caret: &Caret, drawn: &mut Drawn) {
     let side = metrics.side;
     let Some(&found) = aligned.rows.get(row) else {
         let (_, rect) = ui.allocate_space(vec2(ui.available_width(), metrics.height));
-        return after_last_line(ui, row, rect, aligned, metrics, caret);
+        return after_last_line(ui, row, rect, aligned, metrics, caret, drawn);
     };
     let index = if side == 0 { found.left } else { found.right };
     let line = index.and_then(|i| lines[side].get(i));
@@ -385,7 +399,9 @@ fn draw_row(ui: &mut Ui, row: usize, lines: [&[Line]; 2], aligned: &mut Aligned,
     let width = ui.available_width().max(gutter + galley.as_ref().map_or(0.0, |g| g.size().x) + digit);
     let (_, rect) = ui.allocate_space(vec2(width, *height));
     // A gap is padding: no number, no text, no node. Its opposite line says how it differs.
-    let (Some(index), Some(galley)) = (index, galley) else { return after_last_line(ui, row, rect, aligned, metrics, caret) };
+    let (Some(index), Some(galley), Some(line)) = (index, galley, line) else {
+        return after_last_line(ui, row, rect, aligned, metrics, caret, drawn);
+    };
     let painter = ui.painter();
     if important {
         // To the pane's right edge, also when it is scrolled sideways past a short line.
@@ -414,10 +430,10 @@ fn draw_row(ui: &mut Ui, row: usize, lines: [&[Line]; 2], aligned: &mut Aligned,
     let name = if galley.text().trim().is_empty() { t(BLANK).to_owned() } else { galley.text().to_owned() };
     let text_painter = painter.with_clip_rect(painter.clip_rect().intersect(Rect::everything_right_of(left + gutter)));
     let origin = pos2(text_rect.left(), rect.center().y - galley.size().y / 2.0);
-    let hit = caret
-        .pointer
-        .filter(|p| (rect.top()..rect.bottom()).contains(&p.y))
-        .map(|p| Pos { line: index, column: galley.cursor_from_pos(p - origin).index.into() });
+    if let Some(p) = caret.pointer.filter(|p| (rect.top()..rect.bottom()).contains(&p.y)) {
+        drawn.hit = Some(Pos { line: index, column: galley.cursor_from_pos(p - origin).index.into() });
+    }
+    drawn.lines.push((index, galley.clone(), origin, line.ending != LineEnding::None));
     if break_selected {
         // A selected line break shows as a space's width of selection after the text.
         let at = origin.x + galley.size().x;
@@ -434,6 +450,7 @@ fn draw_row(ui: &mut Ui, row: usize, lines: [&[Line]; 2], aligned: &mut Aligned,
             // Sideways into view, past the gutter that covers the text's left edge.
             ui.scroll_to_rect(caret_rect.expand2(vec2(gutter + digit, 0.0)), None);
         }
+        drawn.caret = Some(caret_rect);
     }
     let response = ui.interact(text_rect, ui.scope_id().with(("line", row)), Sense::hover());
     response.widget_info(|| WidgetInfo::labeled(Role::Label, true, &name));
@@ -444,7 +461,6 @@ fn draw_row(ui: &mut Ui, row: usize, lines: [&[Line]; 2], aligned: &mut Aligned,
         // Said in text too, since the marked characters then include unchanged ones.
         response.on_hover_text(t(APPROXIMATE));
     }
-    hit
 }
 
 #[cfg(test)]
