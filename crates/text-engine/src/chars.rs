@@ -3,11 +3,24 @@
 //! The two lines lose their common start and end, and a shortest edit between what remains (an
 //! O(ND) search for the fewest characters to delete and insert) leaves the rest unmarked. So when
 //! the result is [exact](CharDifferences::exact), the marked characters are exactly what a
-//! shortest edit changes: drop them from both lines and the two read the same. A pair is searched in one fixed order, so swapping the sides only swaps the
-//! ranges.
+//! shortest edit changes: drop them from both lines and the two read the same. A pair is searched
+//! in one fixed order, so swapping the sides only swaps the ranges.
+//!
+//! [`char_differences_with`] also gives each range its importance by a set of [`Rule`]s. It first
+//! searches the important characters alone, compared as [`classify`](crate::classify) compares
+//! them (case folded where a rule says case doesn't matter): what that search changes is
+//! important. The important characters it keeps pair up in order. A kept pair that differs only in
+//! case is an unimportant change, and between two kept pairs a second search over the unimportant
+//! characters alone marks what changes there as unimportant. So, apart from a different line
+//! ending, a row is unimportant exactly when none of its ranges is important, a range whose characters all lie in spans the rules mark is
+//! unimportant, and dropping every marked character still leaves the two lines the same.
 //!
 //! Characters are Unicode scalar values (`char`), so a changed combining mark is marked on its own,
 //! apart from its base letter.
+
+use crate::Importance;
+use crate::Rule;
+use crate::importance::Marked;
 
 /// Which side of a comparison a range lies on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -17,66 +30,133 @@ pub enum Side {
 }
 
 /// A run of differing characters in one line of a changed row: byte offsets `start..end` into that
-/// line's [`Line::text`](crate::Line), both on character boundaries.
+/// line's [`Line::text`](crate::Line), both on character boundaries, and whether the difference
+/// matters.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CharRange {
     pub side: Side,
     pub start: usize,
     pub end: usize,
+    pub importance: Importance,
 }
 
 /// The characters that differ inside a changed row.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CharDifferences {
-    /// The left ranges, then the right ones, each in order, with no two touching.
+    /// The left ranges, then the right ones, each in order, with no two of the same importance
+    /// touching.
     pub ranges: Vec<CharRange>,
-    /// Whether `ranges` are the fewest characters a shortest edit changes. When the search gives
-    /// up, they are one range per side over everything between the lines' common start and end:
-    /// that still covers every difference, but marks unchanged characters too, and a caller that
-    /// shows them should say they are approximate.
+    /// Whether every search gave the fewest characters a shortest edit changes; with no rules,
+    /// whether `ranges` are the fewest characters a shortest edit changes. When a search gives up,
+    /// it marks everything between its inputs' common start and end: that still covers every
+    /// difference, but marks unchanged characters too, and a caller that shows them should say
+    /// they are approximate.
     pub exact: bool,
 }
 
-/// The most characters a pair may differ by for the search to stay exact. It bounds the search's
+/// The most characters a pair may differ by for a search to stay exact. It bounds a search's
 /// memory, which grows with its square.
 const MAX_EDITS: usize = 2048;
 
-/// The most steps (diagonals tried plus equal characters walked) the search may take. It bounds the
-/// search's time, which grows with the length of the lines times the characters they differ by.
+/// The most steps (diagonals tried plus equal characters walked) the searches of one pair may take
+/// together. It bounds the time, which grows with the length of the lines times the characters
+/// they differ by.
 const MAX_STEPS: usize = 1 << 26;
 
-/// The characters that differ between `left` and `right`, the texts of a changed row's two lines.
-/// Equal texts give no ranges, so a row that differs only in its line ending has none.
+/// The characters that differ between `left` and `right`, the texts of a changed row's two lines,
+/// every range [important](Importance::Important). Equal texts give no ranges, so a row that
+/// differs only in its line ending has none.
 ///
 /// Lines that differ by more than 2,048 characters, or that would take more than 2^26 search steps,
 /// come back not [exact](CharDifferences::exact).
 // ponytail: E03-S1-T6 kept these limits: at either one a row takes under 100 ms in a release build
 // (`cargo bench -p otd-text-engine --bench budgets`), inside its per-row budget.
 pub fn char_differences(left: &str, right: &str) -> CharDifferences {
-    within(left, right, MAX_EDITS, MAX_STEPS)
+    char_differences_with(left, right, &[])
 }
 
-fn within(left: &str, right: &str, max_edits: usize, max_steps: usize) -> CharDifferences {
-    if left > right {
-        let CharDifferences { ranges, exact } = within(right, left, max_edits, max_steps);
-        let mut ranges: Vec<CharRange> =
-            ranges.into_iter().map(|r| CharRange { side: if r.side == Side::Left { Side::Right } else { Side::Left }, ..r }).collect();
-        ranges.sort_by_key(|r| (r.side, r.start));
-        return CharDifferences { ranges, exact };
+/// The characters that differ between `left` and `right`, like [`char_differences`], with each
+/// range's importance by the `rules`, as the module explains. With no rules it gives exactly what
+/// [`char_differences`] gives.
+pub fn char_differences_with(left: &str, right: &str, rules: &[&dyn Rule]) -> CharDifferences {
+    within(left, right, rules, MAX_EDITS, MAX_STEPS)
+}
+
+fn within(left: &str, right: &str, rules: &[&dyn Rule], max_edits: usize, max_steps: usize) -> CharDifferences {
+    let (l, r) = (Marked::new(left, rules), Marked::new(right, rules));
+    let mut steps = max_steps;
+    let mut marks = [vec![None; l.chars.len()], vec![None; r.chars.len()]];
+
+    let (li, lk): (Vec<usize>, Vec<char>) = l.important().unzip();
+    let (ri, rk): (Vec<usize>, Vec<char>) = r.important().unzip();
+    let (lm, rm, mut exact) = edit_marks(&lk, &rk, max_edits, &mut steps);
+    let mut kept = [Vec::new(), Vec::new()];
+    for (side, indices, edited) in [(0, &li, &lm), (1, &ri, &rm)] {
+        for (&k, &m) in indices.iter().zip(edited) {
+            if m {
+                set(&mut marks[side], k, Importance::Important);
+            } else {
+                kept[side].push(k);
+            }
+        }
     }
-    let a: Vec<char> = left.chars().collect();
-    let b: Vec<char> = right.chars().collect();
-    let head = a.iter().zip(&b).take_while(|(x, y)| x == y).count();
+
+    // The kept pairs, then the ends of both lines, bound the stretches of unimportant characters.
+    let [kl, kr] = kept;
+    let bounds = kl.into_iter().zip(kr).map(Some).chain([None]);
+    let (mut from_l, mut from_r) = (0, 0);
+    for pair in bounds {
+        let (to_l, to_r) = pair.unwrap_or((l.chars.len(), r.chars.len()));
+        let ul: Vec<usize> = (from_l..to_l).filter(|&k| l.unimportant.get(k) == Some(&true)).collect();
+        let ur: Vec<usize> = (from_r..to_r).filter(|&k| r.unimportant.get(k) == Some(&true)).collect();
+        let chars = |m: &Marked, at: &[usize]| at.iter().filter_map(|&k| m.chars.get(k).copied()).collect::<Vec<char>>();
+        let (um, vm, ok) = edit_marks(&chars(&l, &ul), &chars(&r, &ur), max_edits, &mut steps);
+        exact &= ok;
+        for (side, at, edited) in [(0, &ul, &um), (1, &ur, &vm)] {
+            for (&k, _) in at.iter().zip(edited).filter(|(_, m)| **m) {
+                set(&mut marks[side], k, Importance::Unimportant);
+            }
+        }
+        if let Some((i, j)) = pair {
+            if l.chars.get(i) != r.chars.get(j) {
+                set(&mut marks[0], i, Importance::Unimportant);
+                set(&mut marks[1], j, Importance::Unimportant);
+            }
+            (from_l, from_r) = (i + 1, j + 1);
+        }
+    }
+
+    let [ml, mr] = marks;
+    let mut ranges = runs(Side::Left, left, &ml);
+    ranges.extend(runs(Side::Right, right, &mr));
+    CharDifferences { ranges, exact }
+}
+
+fn set(marks: &mut [Option<Importance>], k: usize, importance: Importance) {
+    if let Some(m) = marks.get_mut(k) {
+        *m = Some(importance);
+    }
+}
+
+/// Which elements of `a` and of `b` a shortest edit between them changes, and whether the search
+/// was exact. Past a limit, everything between their common start and end is marked. The search
+/// runs in one fixed order of the inputs, so swapping them only swaps the marks.
+fn edit_marks<T: Copy + Ord>(a: &[T], b: &[T], max_edits: usize, steps: &mut usize) -> (Vec<bool>, Vec<bool>, bool) {
+    if a > b {
+        let (b_marks, a_marks, exact) = edit_marks(b, a, max_edits, steps);
+        return (a_marks, b_marks, exact);
+    }
+    let head = a.iter().zip(b).take_while(|(x, y)| x == y).count();
     let (a_rest, b_rest) = (a.get(head..).unwrap_or_default(), b.get(head..).unwrap_or_default());
     let tail = a_rest.iter().rev().zip(b_rest.iter().rev()).take_while(|(x, y)| x == y).count();
     let a_mid = a_rest.get(..a_rest.len() - tail).unwrap_or_default();
     let b_mid = b_rest.get(..b_rest.len() - tail).unwrap_or_default();
 
-    // Everything in the middle is marked, then the characters a shortest edit keeps are unmarked.
+    // Everything in the middle is marked, then the elements a shortest edit keeps are unmarked.
     let mut a_marks: Vec<bool> = (0..a.len()).map(|k| k >= head && k < head + a_mid.len()).collect();
     let mut b_marks: Vec<bool> = (0..b.len()).map(|k| k >= head && k < head + b_mid.len()).collect();
     // With one middle empty, the whole other middle is the shortest edit, so there is nothing to search.
-    let keeps = if a_mid.is_empty() || b_mid.is_empty() { Some(Vec::new()) } else { shortest_edit_keeps(a_mid, b_mid, max_edits, max_steps) };
+    let keeps = if a_mid.is_empty() || b_mid.is_empty() { Some(Vec::new()) } else { shortest_edit_keeps(a_mid, b_mid, max_edits, steps) };
     let exact = keeps.is_some();
     for (x, y) in keeps.unwrap_or_default() {
         if let Some(m) = a_marks.get_mut(head + x) {
@@ -86,36 +166,31 @@ fn within(left: &str, right: &str, max_edits: usize, max_steps: usize) -> CharDi
             *m = false;
         }
     }
-    let mut ranges = runs(Side::Left, left, &a_marks);
-    ranges.extend(runs(Side::Right, right, &b_marks));
-    CharDifferences { ranges, exact }
+    (a_marks, b_marks, exact)
 }
 
-/// The maximal runs of marked characters in `text`, as byte ranges.
-fn runs(side: Side, text: &str, marks: &[bool]) -> Vec<CharRange> {
+/// The maximal runs of marked characters of one importance in `text`, as byte ranges.
+fn runs(side: Side, text: &str, marks: &[Option<Importance>]) -> Vec<CharRange> {
     let mut out: Vec<CharRange> = Vec::new();
-    for ((at, c), &marked) in text.char_indices().zip(marks) {
-        if !marked {
-            continue;
-        }
+    for ((at, c), &mark) in text.char_indices().zip(marks) {
+        let Some(importance) = mark else { continue };
         let end = at + c.len_utf8();
         match out.last_mut() {
-            Some(last) if last.end == at => last.end = end,
-            _ => out.push(CharRange { side, start: at, end }),
+            Some(last) if last.end == at && last.importance == importance => last.end = end,
+            _ => out.push(CharRange { side, start: at, end, importance }),
         }
     }
     out
 }
 
 /// The positions `(in a, in b)` of the equal characters that a shortest edit from `a` to `b`
-/// keeps, or `None` past either limit.
+/// keeps, or `None` past either limit. The search takes its steps from `steps`.
 ///
 /// This is the greedy O(ND) shortest-edit search over diagonals `k = x - y` from Eugene W. Myers,
 /// "An O(ND) Difference Algorithm and Its Variations" (Algorithmica, 1986), keeping each round's
 /// furthest points so the path can be walked back.
-fn shortest_edit_keeps(a: &[char], b: &[char], max_edits: usize, max_steps: usize) -> Option<Vec<(usize, usize)>> {
+fn shortest_edit_keeps<T: Copy + PartialEq>(a: &[T], b: &[T], max_edits: usize, steps: &mut usize) -> Option<Vec<(usize, usize)>> {
     let (n, m) = (isize::try_from(a.len()).ok()?, isize::try_from(b.len()).ok()?);
-    let mut steps = max_steps;
     // `rounds[d]` holds, for each diagonal `k` in `-d, -d + 2, ..., d`, the furthest `x` reached
     // with `d` edits.
     let mut rounds: Vec<Vec<isize>> = Vec::new();
@@ -131,9 +206,9 @@ fn shortest_edit_keeps(a: &[char], b: &[char], max_edits: usize, max_steps: usiz
             while x < n && y < m && at(a, x) == at(b, y) {
                 x += 1;
                 y += 1;
-                steps = steps.checked_sub(1)?;
+                *steps = steps.checked_sub(1)?;
             }
-            steps = steps.checked_sub(1)?;
+            *steps = steps.checked_sub(1)?;
             round.push(x);
             if x >= n && y >= m {
                 rounds.push(round);
@@ -188,8 +263,8 @@ fn furthest(round: &[isize], d: isize, k: isize) -> isize {
     usize::try_from((k + d) / 2).ok().and_then(|i| round.get(i)).copied().unwrap_or(0)
 }
 
-fn at(chars: &[char], i: isize) -> Option<char> {
-    usize::try_from(i).ok().and_then(|i| chars.get(i)).copied()
+fn at<T: Copy>(items: &[T], i: isize) -> Option<T> {
+    usize::try_from(i).ok().and_then(|i| items.get(i)).copied()
 }
 
 fn pair(x: isize, y: isize) -> Option<(usize, usize)> {
@@ -209,7 +284,7 @@ mod tests {
         // Exact, only `X` and `Y` are marked; with no room to search, all of `XdefY` is.
         let (left, right) = ("abcXdefYghi", "abcdefghi");
         for (max_edits, max_steps) in [(0, usize::MAX), (usize::MAX, 1)] {
-            let result = within(left, right, max_edits, max_steps);
+            let result = within(left, right, &[], max_edits, max_steps);
             assert!(!result.exact);
             assert_eq!(marked(left, Side::Left, &result.ranges), "XdefY");
         }

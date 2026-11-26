@@ -2,7 +2,9 @@
 
 use std::ops::Range;
 
-use otd_text_engine::{Classification, Importance, Line, LineEnding, Options, Outcome, RowKind, Rule, classify, compare, compare_with};
+use otd_text_engine::{
+    Classification, Importance, Line, LineEnding, Options, Outcome, RowKind, Rule, Side, char_differences_with, classify, compare, compare_with,
+};
 
 /// A test rule: every ASCII digit is unimportant.
 struct Digits;
@@ -123,6 +125,10 @@ impl Rule for Hostile {
     fn unimportant(&self, text: &str) -> Vec<Range<usize>> {
         vec![Range { start: 5, end: 2 }, 0..usize::MAX, usize::MAX..usize::MAX, 1..2, 0..1, text.len()..text.len() + 9]
     }
+
+    fn case_insensitive(&self, text: &str) -> Vec<Range<usize>> {
+        self.unimportant(text)
+    }
 }
 
 #[test]
@@ -130,4 +136,10 @@ fn a_rule_returning_ranges_outside_or_inside_characters_never_panics() {
     let (left, right) = (side(&["é1", "", "ü"]), side(&["é2", "x", "ö"]));
     let c = run(&left, &right, &[&Hostile, &Digits]);
     assert_eq!(c.rows.len(), compare(&left, &right).rows.len());
+    for (l, r) in left.iter().zip(&right) {
+        for range in char_differences_with(&l.text, &r.text, &[&Hostile, &Digits]).ranges {
+            let text = if range.side == Side::Left { &l.text } else { &r.text };
+            assert!(text.get(range.start..range.end).is_some(), "{range:?}");
+        }
+    }
 }
