@@ -6,6 +6,7 @@ mod edit;
 mod edited;
 mod encoding;
 mod file_format;
+mod filtered;
 mod font_size;
 mod go_to;
 mod header;

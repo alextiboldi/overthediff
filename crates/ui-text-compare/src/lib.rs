@@ -42,6 +42,9 @@
 //! (E07-S10-T2).
 //!
 //! [`importance`] adds the Importance tab's checkboxes, which the comparison follows (E07-S4-T4).
+//!
+//! [`filtered`] holds the Text Editing page's *Number of context lines* and *Show filtered line
+//! counts*, and the rows the display filter leaves in both panes (E07-S3-T3).
 
 mod read_only;
 pub mod session;
@@ -55,6 +58,7 @@ mod edit;
 mod edited;
 pub mod encoding;
 pub mod file_format;
+pub mod filtered;
 mod font_size;
 mod go_to;
 pub mod importance;
@@ -70,7 +74,7 @@ use egui::{Id, Ui, UiBuilder};
 use otd_core::i18n::{file_size, fmt, t};
 use otd_format::{Kind, Registry};
 use otd_launch::Completion;
-use otd_text_compare::{Encoding, LineEndings, Pane, ReadOnly};
+use otd_text_compare::{Encoding, Filter, LineEndings, Pane, ReadOnly};
 use otd_ui::{Browse, PathEdit, Session, SessionType, View};
 
 pub use bookmarks::{BOOKMARK, CLEAR_BOOKMARKS, GO_TO_BOOKMARK, TOGGLE_BOOKMARK};
@@ -186,6 +190,8 @@ pub struct TextCompareView {
     whitespace: bool,
     /// Per side, the encoding override its pane was read in, so a changed override reads it again.
     decoded_as: [Option<Encoding>; 2],
+    /// The display filter both panes show (`filtered.rs`).
+    filter: Filter,
 }
 
 impl Drop for TextCompareView {
@@ -239,6 +245,7 @@ impl TextCompareView {
             pending: None,
             whitespace: false,
             decoded_as: Default::default(),
+            filter: Filter::All,
         }
     }
 

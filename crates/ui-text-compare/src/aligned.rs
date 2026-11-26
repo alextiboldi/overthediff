@@ -5,6 +5,9 @@
 //! isn't the only signal. A gutter marker and each line's accessible description say how the
 //! line differs. The two panes share one vertical scroll offset.
 //!
+//! Under a display filter both panes draw only the rows it leaves, and a summary row for each hidden
+//! run while *Show filtered line counts* is on (E07-S3-T3, `filtered.rs`).
+//!
 //! Each pane also draws its caret and selection, and maps a pointer press to a place in its text,
 //! for the editor (E07-S1-T5, `edit.rs`).
 
@@ -17,13 +20,14 @@ use egui::text::CCursor;
 use egui::text::{LayoutJob, TextFormat};
 use egui::{Align2, Color32, FontId, Galley, Pos2, Rect, Role, ScrollArea, Sense, Stroke, TextStyle, Ui, WidgetInfo, pos2, vec2};
 use otd_core::colour::{ColourRole, Contrast, Rgba};
-use otd_core::i18n::t;
-use otd_text_compare::{Bookmarks, Line, LineEnding, Pos, Selection};
+use otd_core::i18n::{t, trn};
+use otd_text_compare::{Bookmarks, Filter, Line, LineEnding, Pos, Selection};
 use otd_text_engine::{
     BuiltInRules, CharDifferences, CharRange, Importance, Options, Outcome, Row, RowKind, Side, Statistics, char_differences, classify, compare_with,
 };
 use otd_ui::colour::{BACKGROUND, SELECTION, SELECTION_TEXT, TEXT, colour};
 
+use crate::filtered::{self, LINE_HIDDEN, LINES_HIDDEN, Slot};
 use crate::whitespace;
 
 /// An important difference's text.
@@ -86,6 +90,10 @@ pub struct Aligned {
     viewport: [f32; 2],
     /// The pane and line whose caret is to be scrolled into view on the next draw.
     reveal: Option<(usize, usize)>,
+    /// What the display filter leaves, `None` for every row, and the filter, context and counts
+    /// setting it was worked out for.
+    slots: Option<Vec<Slot>>,
+    shown: Option<(Filter, usize, bool)>,
 }
 
 impl Aligned {
@@ -118,6 +126,8 @@ impl Aligned {
             drawn: [None; 2],
             viewport: [0.0; 2],
             reveal: None,
+            slots: None,
+            shown: None,
         }
     }
 
@@ -144,6 +154,37 @@ impl Aligned {
             };
         }
         self.rows.iter().position(|row| if side == 0 { row.left } else { row.right } == Some(line))
+    }
+
+    /// Shows the rows `filter` leaves with `context` lines, summarising hidden runs if `counts`.
+    pub(crate) fn filter(&mut self, filter: Filter, context: usize, counts: bool) {
+        if self.shown != Some((filter, context, counts)) {
+            let differs = (0..self.rows.len()).map(|row| self.importance(row).is_some());
+            self.slots = filtered::slots(differs, self.rows.len(), filter, context, counts);
+            self.shown = Some((filter, context, counts));
+        }
+    }
+
+    /// How many slots the panes draw, before the blank one after them.
+    fn slot_count(&self) -> usize {
+        self.slots.as_ref().map_or(self.rows.len(), Vec::len)
+    }
+
+    /// The slot at `at`; `None` for the blank one after the rest.
+    fn slot(&self, at: usize) -> Option<Slot> {
+        match &self.slots {
+            None => (at < self.rows.len()).then_some(Slot::Row(at)),
+            Some(slots) => slots.get(at).cloned(),
+        }
+    }
+
+    /// The slot that draws row `row`, if the filter shows it; past the rows, the blank slot.
+    fn slot_of(&self, row: usize) -> Option<usize> {
+        match &self.slots {
+            None => Some(row),
+            Some(slots) if row >= self.rows.len() => Some(slots.len()),
+            Some(slots) => slots.iter().position(|slot| *slot == Slot::Row(row)),
+        }
     }
 
     /// How line `line` of side `side` differs, if it does, as an English key.
@@ -325,9 +366,9 @@ pub fn show(ui: &mut Ui, side: usize, lines: [&[Line]; 2], aligned: &mut Aligned
     let reveal = aligned.reveal.take_if(|(s, _)| *s == side && viewport > 0.0).and_then(|(_, line)| aligned.row_of(side, line));
     let metrics = Metrics { height, digit, digits: aligned.digits, colours: Colours::of(ui), font, side, reveal };
     ui.spacing_mut().item_spacing.y = 0.0;
-    if let Some(row) = reveal {
+    if let Some(slot) = reveal.and_then(|row| aligned.slot_of(row)) {
         // The caret's row into view: up to the top, or down to the bottom.
-        let top = row as f32 * metrics.height;
+        let top = slot as f32 * metrics.height;
         let scroll = aligned.scroll.min(top).max(top + metrics.height - viewport);
         if scroll != aligned.scroll {
             aligned.scroll = scroll.max(0.0);
@@ -348,9 +389,13 @@ pub fn show(ui: &mut Ui, side: usize, lines: [&[Line]; 2], aligned: &mut Aligned
         // the other's last row under its bar.
         .scroll_bar_visibility(ScrollBarVisibility::AlwaysVisible)
         // One blank row after the rest, where the caret can stand after a final line break.
-        .show_rows(ui, metrics.height, aligned.rows.len() + 1, |ui, rows| {
-            for row in rows {
-                draw_row(ui, row, lines, aligned, &metrics, caret, &mut drawn);
+        .show_rows(ui, metrics.height, aligned.slot_count() + 1, |ui, slots| {
+            for slot in slots {
+                match aligned.slot(slot) {
+                    Some(Slot::Row(row)) => draw_row(ui, row, lines, aligned, &metrics, caret, &mut drawn),
+                    Some(Slot::Hidden(rows)) => hidden_row(ui, rows, aligned, &metrics),
+                    None => draw_row(ui, aligned.rows.len(), lines, aligned, &metrics, caret, &mut drawn),
+                }
             }
         });
     let offset = output.state.clamped_offset().y;
@@ -388,6 +433,23 @@ fn after_last_line(ui: &Ui, row: usize, rect: Rect, aligned: &Aligned, metrics: 
     if caret.pointer.is_some_and(|p| (rect.top()..rect.bottom()).contains(&p.y)) {
         drawn.hit = Some(Pos { line, column: usize::MAX });
     }
+}
+
+/// A run of hidden rows: how many of the pane's lines it hides, after the gutter, in the line
+/// numbers' colour. A run of the other pane's lines only hides none of this pane's, so its row here
+/// stays blank, like a gap.
+fn hidden_row(ui: &mut Ui, rows: Range<usize>, aligned: &Aligned, metrics: &Metrics) {
+    let side = metrics.side;
+    let hidden =
+        aligned.rows.get(rows.clone()).unwrap_or_default().iter().filter(|row| if side == 0 { row.left } else { row.right }.is_some()).count();
+    let (_, rect) = ui.allocate_space(vec2(ui.available_width(), metrics.height));
+    if hidden == 0 {
+        return;
+    }
+    let text = trn(hidden as u64, LINE_HIDDEN, LINES_HIDDEN);
+    let left = rect.left().max(ui.clip_rect().left());
+    ui.painter().text(pos2(left + metrics.gutter(), rect.center().y), Align2::LEFT_CENTER, &text, metrics.font.clone(), metrics.colours.line_number);
+    ui.interact(rect, ui.scope_id().with(("hidden", rows.start)), Sense::hover()).widget_info(|| WidgetInfo::labeled(Role::Label, true, &text));
 }
 
 /// Draws row `row` of the pane, with the caret and selection where they fall on its line, and
