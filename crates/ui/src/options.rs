@@ -229,6 +229,11 @@ impl Dialog {
         for spec in specs.iter().filter(|s| s.page == page) {
             any = true;
             let value = self.working.entry(spec.id.to_owned()).or_insert_with(|| spec.default.clone());
+            // The theme's choices are radio buttons, so Follow operating system's OS setting shows.
+            if let (crate::theme::THEME, Value::Choice(choice)) = (spec.id, &mut *value) {
+                ui.push_id(spec.id, |ui| crate::theme::edit(ui, spec, choice));
+                continue;
+            }
             let single = matches!(value, Value::Text(_) | Value::Path(_));
             let response = ui.push_id(spec.id, |ui| edit(ui, &format!("options/{}", spec.id), spec.id, spec.label, spec.choices, value)).inner;
             if single {

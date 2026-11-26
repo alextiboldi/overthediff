@@ -8,5 +8,6 @@ mod session;
 mod session_commands;
 mod shell;
 mod tasks;
+mod theme;
 mod translation;
 mod unsaved;
