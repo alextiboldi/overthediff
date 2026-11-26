@@ -168,8 +168,9 @@ As a code reviewer, I can hide matching lines, or show differences with a few li
 - [ ] A line counts as different or same according to the view's current classification.
 
 #### Tasks
-- **E07-S3-T1** — Work out which rows each filter shows (All, Differences, Same, None, Context with *N*) · size: M · depends: —
+- **E07-S3-T1** — Work out which rows each filter shows (All, Differences, Same, None, Context with *N*) · size: M · depends: — · status: done
   - AC: a unit table for a file with two sections and *N* = 2 gives the expected visible rows under every filter, including overlapping context ranges.
+  - Implemented: `crates/text-compare/src/filter.rs` (UI-free, exported from `otd-text-compare`) adds `Filter` (All, Differences, Same, None, Context) and `visible(differs, filter, context)`, which takes each aligned row's different-or-same flag from the view's current classification and returns the shown rows as ascending ranges that neither overlap nor touch, so each gap is one run of hidden rows and both panes show the same rows. Context with *N* shows each different row and *N* rows either side, clamped to the file and merged where ranges overlap or touch. Tests: the unit table `filter::tests::each_filter_shows_the_differences_same_rows_or_context_it_names` (two sections, *N* = 2, every filter, overlapping context) and `nothing_shows_when_there_are_no_rows_or_no_differences_to_give_context_to`. Checks: `cargo xtask ci` on macOS and pull-request CI on Linux and macOS; the Windows matrix did not run, because the change is platform-independent row arithmetic. https://github.com/alextiboldi/overthediff/pull/106
 - **E07-S3-T2** — Display-filter commands on the View menu and toolbar (Show None hidden by default) · size: S · depends: E07-S3-T1 · flags: `naming-check`
   - AC: switching filters keeps the cursor on the same line whenever that line stays visible.
 - **E07-S3-T3** — "Number of context lines" and "Show filtered line counts" options on the Text Editing page · size: S · depends: E07-S3-T1
