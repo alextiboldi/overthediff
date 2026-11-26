@@ -3,6 +3,7 @@
 mod info;
 mod look;
 mod refresh;
+mod sort;
 mod view;
 
 mod expand;

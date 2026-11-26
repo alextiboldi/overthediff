@@ -190,7 +190,8 @@ Folder Compare (crates/ui-folder-compare) draws "x" and "arrow-up-right" the sam
 are among the Lucide icons derived from the Feather project. The toolbar (crates/ui) draws Lucide's
 "sliders-horizontal" icon the same way; it is Lucide's own, under the ISC License alone. The
 Folder Compare view (crates/ui-folder-compare) draws Lucide's "chevron-right" and "chevron-down"
-icons the same way for closed and open folders; both are derived from the Feather project.
+icons the same way for closed and open folders, and "arrow-up" and "arrow-down" after the caption
+of the column it sorts by; all four are derived from the Feather project.
 
 The app icon (assets/app-icon) draws Lucide's "git-compare-arrows" icon, scaled, in white on a
 blue tile.
