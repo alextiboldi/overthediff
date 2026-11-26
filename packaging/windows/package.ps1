@@ -75,6 +75,22 @@ Remove-Item -Recurse -Force $Stage -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $Stage | Out-Null
 Copy-Item $Exe, (Join-Path $Root 'NOTICE'), (Join-Path $Root 'ATTRIBUTION.md') $Stage
 
+# The third-party licence texts NOTICE names, from the locked crates' own sources: the embedded
+# fonts' (epaint_default_fonts) and the MPL-2.0 crate's (option-ext).
+$Licences = Join-Path $Stage 'licences'
+New-Item -ItemType Directory -Force -Path $Licences | Out-Null
+$meta = cargo metadata --format-version 1 --locked --filter-platform $Target --manifest-path (Join-Path $Root 'Cargo.toml') | ConvertFrom-Json
+if ($LASTEXITCODE -ne 0) { throw "cargo metadata failed with exit code $LASTEXITCODE" }
+foreach ($l in @(
+    @('epaint_default_fonts', 'fonts\UFL.txt', 'UFL.txt'),
+    @('epaint_default_fonts', 'fonts\Hack-Regular.txt', 'Hack-Regular.txt'),
+    @('epaint_default_fonts', 'fonts\emoji-icon-font-mit-license.txt', 'emoji-icon-font-mit-license.txt'),
+    @('option-ext', 'LICENSE.txt', 'option-ext-LICENSE.txt'))) {
+  $pkg = @($meta.packages | Where-Object name -EQ $l[0])
+  if ($pkg.Count -ne 1) { throw "expected one $($l[0]) package in Cargo.lock, found $($pkg.Count)" }
+  Copy-Item (Join-Path (Split-Path $pkg[0].manifest_path) $l[1]) (Join-Path $Licences $l[2])
+}
+
 $Msi = Join-Path $Dist "overthediff-$Version-windows-$Arch.msi"
 Invoke-Native 'wix build' {
   wix build (Join-Path $PSScriptRoot 'overthediff.wxs') -arch $Arch -d "Version=$MsiVersion" -d "StageDir=$Stage" -o $Msi

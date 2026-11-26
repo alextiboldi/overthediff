@@ -77,6 +77,7 @@ As a developer, I can set OverTheDiff as my version-control diff tool so that `g
 #### Tasks
 - **E11-S1-T1** — Waiting launchers: Windows GUI-waiting and console-waiting helpers, macOS and Linux waiting command · size: L · depends: — · flags: `licence-check`
   - AC: each launcher blocks until its comparison closes, then exits with 0. Ending the main application while a launcher waits gives 102. With no main application installed, the launcher gives 103.
+  - Note (E01-S2-T2): Windows release builds of `otd.exe` are GUI binaries, so a Start menu launch opens no console window. A GUI binary's standard streams reach a console only when the caller redirects them, and an interactive `cmd` prompt or PowerShell (`& otd.exe ...`, which then leaves `$LASTEXITCODE` unset) doesn't wait for it; a batch file waits and gets the exit code, but the error line is lost. So until this task is built, E11-S2's `/qc` error line and exit code don't reach those callers. The console-waiting helper also covers this: run from `cmd`, PowerShell or a batch file, it passes `otd`'s standard error to the console and returns `otd`'s exit code, `/qc`'s included.
 - **E11-S1-T2** — Install Command Line Tools on macOS · size: S · depends: E11-S1-T1
   - AC: after the install (with the admin password), both commands run from a new terminal. The waiting command blocks and the other returns at once.
 - **E11-S1-T3** — Title and VCS path switches with all aliases · size: M · depends: —
@@ -100,6 +101,7 @@ As a release engineer, I can check from a build script whether two files match, 
 - [x] `/qc=size`, `/qc=crc` and `/qc=binary` (also spelt `/quickcompare=<type>`) compare two files and exit without showing a window or a taskbar entry.
 - [x] The exit code is 1 when the files are the same by the chosen test and 11 when they differ. These codes are specified for binary and *inferred* for size and CRC.
 - [x] A missing or unreadable file, a folder in place of a file, or a wrong number of files gives exit code 100, with a one-line error on standard error (*inferred* for the message).
+  - On Windows release builds, which are GUI binaries (E01-S2-T2), the error line and exit code reach an interactive console or PowerShell only through E11-S1-T1's console-waiting helper, or when the caller redirects standard error and waits (`Start-Process -Wait -RedirectStandardError`). Debug builds print and return them directly.
 - [ ] Any local or network path accepted by the file-system access layer works as an input. (Local paths pass; a network path needs a check by hand, see E11-S2-T2.)
 
 - [x] `/qc` runs in the launching process. It isn't forwarded to a running instance, and it works whether or not one is running.

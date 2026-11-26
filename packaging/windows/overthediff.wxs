@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The Windows installer (WiX v5). package.ps1 builds it; see that script for the variables.
-     It installs otd.exe, NOTICE and ATTRIBUTION.md into Program Files\OverTheDiff and adds a
-     Start menu entry. Uninstalling removes exactly those. The settings folder
-     (%APPDATA%\overthediff-<major>) is the app's, never the installer's, so it stays. -->
+     It installs otd.exe, NOTICE, ATTRIBUTION.md and the third-party licence texts (licences\) into
+     Program Files\OverTheDiff and adds a Start menu entry. Uninstalling removes exactly those. The
+     settings folder (%APPDATA%\overthediff-<major>) is the app's, never the installer's, so it stays. -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package Name="OverTheDiff" Manufacturer="the OverTheDiff contributors" Version="$(var.Version)" UpgradeCode="EC46E2BC-BBAD-468F-BC43-9D75EF7A0423" Scope="perMachine" Compressed="yes" Language="1033">
     <SummaryInformation Description="OverTheDiff" />
@@ -11,7 +11,9 @@
     <MediaTemplate EmbedCab="yes" />
 
     <StandardDirectory Id="ProgramFiles6432Folder">
-      <Directory Id="INSTALLFOLDER" Name="OverTheDiff" />
+      <Directory Id="INSTALLFOLDER" Name="OverTheDiff">
+        <Directory Id="LICENCESFOLDER" Name="licences" />
+      </Directory>
     </StandardDirectory>
     <StandardDirectory Id="ProgramMenuFolder" />
 
@@ -33,6 +35,18 @@
       </Component>
       <Component Id="Attribution">
         <File Id="AttributionFile" Source="$(var.StageDir)\ATTRIBUTION.md" KeyPath="yes" />
+      </Component>
+      <Component Id="UflLicence" Directory="LICENCESFOLDER">
+        <File Id="UflLicenceFile" Source="$(var.StageDir)\licences\UFL.txt" KeyPath="yes" />
+      </Component>
+      <Component Id="HackLicence" Directory="LICENCESFOLDER">
+        <File Id="HackLicenceFile" Source="$(var.StageDir)\licences\Hack-Regular.txt" KeyPath="yes" />
+      </Component>
+      <Component Id="EmojiIconLicence" Directory="LICENCESFOLDER">
+        <File Id="EmojiIconLicenceFile" Source="$(var.StageDir)\licences\emoji-icon-font-mit-license.txt" KeyPath="yes" />
+      </Component>
+      <Component Id="OptionExtLicence" Directory="LICENCESFOLDER">
+        <File Id="OptionExtLicenceFile" Source="$(var.StageDir)\licences\option-ext-LICENSE.txt" KeyPath="yes" />
       </Component>
     </ComponentGroup>
   </Fragment>

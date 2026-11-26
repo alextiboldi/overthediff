@@ -6,11 +6,11 @@
   For a throwaway machine such as a CI runner: it installs per machine, needs an administrator
   without a UAC prompt, and writes a marker file into the per-user settings folder.
 
-  Checks: the install puts otd.exe, NOTICE and ATTRIBUTION.md in Program Files\OverTheDiff and a
-  Start menu entry; the installed otd.exe runs (a launch without a window
-  returns its exit code); uninstalling removes the program folder and the Start menu entry and
-  keeps the settings folder. Opening the window from the Start menu entry is reported only: a
-  hosted runner may have no graphics adapter, so that check is done by hand.
+  Checks: the install puts otd.exe, NOTICE, ATTRIBUTION.md and the licence texts in Program
+  Files\OverTheDiff and a Start menu entry; the installed otd.exe runs (a launch without a window
+  returns its exit code); the Start menu entry starts the installed otd.exe, which is still running
+  10 s later; uninstalling removes the program folder and the Start menu entry and keeps the
+  settings folder.
 
 .EXAMPLE
   pwsh packaging/windows/smoke.ps1 -Msi dist\release\overthediff-0.1.0-windows-x64.msi -Version 0.1.0
@@ -44,7 +44,9 @@ function Invoke-Msiexec([string] $Mode, [string] $LogName) {
 
 Write-Output "==> install $Msi"
 Invoke-Msiexec '/i' 'install.log'
-foreach ($f in 'otd.exe', 'NOTICE', 'ATTRIBUTION.md') { Check (Test-Path (Join-Path $InstallDir $f)) "installed $f" }
+$Installed = 'otd.exe', 'NOTICE', 'ATTRIBUTION.md', 'licences\UFL.txt', 'licences\Hack-Regular.txt',
+  'licences\emoji-icon-font-mit-license.txt', 'licences\option-ext-LICENSE.txt'
+foreach ($f in $Installed) { Check (Test-Path (Join-Path $InstallDir $f)) "installed $f" }
 Check (Test-Path $Shortcut) 'Start menu entry exists'
 
 # An unclaimed argument exits with 100 (otd-launch's EXIT_UNCLAIMED) before any window opens: the
@@ -52,11 +54,11 @@ Check (Test-Path $Shortcut) 'Start menu entry exists'
 $p = Start-Process $Exe -ArgumentList '/no-such-switch' -Wait -PassThru
 Check ($p.ExitCode -eq 100) "installed otd.exe runs (exit $($p.ExitCode), expected 100)"
 
-Write-Output '==> open the window from the Start menu entry (reported, not checked)'
+Write-Output '==> open the window from the Start menu entry'
 Start-Process $Shortcut
 Start-Sleep -Seconds 10
-$running = Get-Process otd -ErrorAction SilentlyContinue
-if ($running) { Write-Output 'report: otd is running after a Start menu launch' } else { Write-Output 'report: otd is not running 10 s after a Start menu launch (no graphics adapter?)' }
+$running = @(Get-Process otd -ErrorAction SilentlyContinue)
+Check (@($running | Where-Object Path -EQ $Exe).Count -ge 1) "the Start menu entry started $Exe, still running 10 s later (running: $($running.Path -join ', '))"
 $running | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 2
 
