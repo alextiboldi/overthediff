@@ -106,8 +106,9 @@ As a release engineer, I can check from a build script whether two files match, 
 - [ ] `/qc` is registered with the run-in-launching-process launch mode.
 - [ ] Because `/qc` claims the whole command line, no comparison view opens for the two files.
 #### Tasks
-- **E11-S2-T1** — Parse `/qc` and `/quickcompare` with the size, crc and binary types · size: S · depends: —
+- **E11-S2-T1** — Parse `/qc` and `/quickcompare` with the size, crc and binary types · size: S · depends: — · status: done
   - AC: every spelling is accepted with `/` on Windows and with `-` on macOS and Linux. An unknown type gives 100.
+  - Implemented: the `QuickCompare` handler in `apps/otd/src/quick_compare.rs`, registered in `apps/otd/src/handlers.rs` under `qc` and `quickcompare` with the run-in-launching-process mode, claims the whole command line and parses `size`, `crc` and `binary` (case-sensitive, *unspecified* and decided here); an unknown type, a missing type, another switch or a file count other than two exits with 100 and a one-line error. `otd_launch::switch` (`crates/launch/src/lib.rs`) now returns a switch's name and value, with `-` everywhere and `/` on Windows. Until E11-S2-T2 runs the comparison, a valid command line says it isn't built yet and exits with 100. Checks: `cargo xtask ci` on macOS, pull-request CI on Linux and macOS, and a manual CI run on Linux, macOS and Windows passed. Pull request: https://github.com/alextiboldi/overthediff/pull/68
 - **E11-S2-T2** — Run the comparison headlessly and map its result to an exit code · size: S · depends: E11-S2-T1 · flags: `licence-check`
   - AC: identical files give 1 for all three types. Files of equal size with different bytes give 1 for size and 11 for crc and binary. No window appears in any run.
 
