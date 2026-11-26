@@ -11,6 +11,13 @@
 //! has visited nothing yet (the cursor at the top of a file whose first row differs) lands on that
 //! section itself rather than asking for the next.
 //!
+//! A caret is inside a change only strictly between its ends, or on it when it is empty. At a
+//! change's start it is before the change and at its end after it, so *next* from the start of a
+//! line finds a change there and *previous* from just after one finds it. A caller that lands on a
+//! change passes its end to *next* and its start to *previous*. An empty change at the cursor (an
+//! orphan line's gap, say) counts as the one the cursor is in; a caller that has visited nothing
+//! yet finds it in [`changes`](Differences::changes).
+//!
 //! Which rows differ is the caller's to say, so navigation follows the view's current
 //! classification: a row the view treats as same is skipped.
 
@@ -86,25 +93,32 @@ impl<F: Fn(usize) -> bool> Differences<'_, F> {
         (start..self.rows.len()).find(|&r| !self.differs(r)).unwrap_or(self.rows.len())
     }
 
-    /// The first change after the cursor: in a later row, or in its row starting right of it.
+    /// The first change after the cursor: in a later row, or in its row starting at or right of it
+    /// and not empty at it.
     pub fn next(&self, at: Cursor) -> Option<Change> {
-        (at.row..self.rows.len())
-            .filter(|&row| self.differs(row))
-            .find_map(|row| self.changes(row).into_iter().find(|c| row > at.row || c.on(at.side).start > at.column))
+        (at.row..self.rows.len()).filter(|&row| self.differs(row)).find_map(|row| {
+            self.changes(row).into_iter().find(|c| {
+                let r = c.on(at.side);
+                row > at.row || (r.start >= at.column && r.end > at.column)
+            })
+        })
     }
 
-    /// The last change before the cursor: in an earlier row, or in its row ending left of it.
+    /// The last change before the cursor: in an earlier row, or in its row ending at or left of it
+    /// and not empty at it.
     pub fn previous(&self, at: Cursor) -> Option<Change> {
-        (0..self.rows.len().min(at.row.saturating_add(1)))
-            .rev()
-            .filter(|&row| self.differs(row))
-            .find_map(|row| self.changes(row).into_iter().rev().find(|c| row < at.row || c.on(at.side).end < at.column))
+        (0..self.rows.len().min(at.row.saturating_add(1))).rev().filter(|&row| self.differs(row)).find_map(|row| {
+            self.changes(row).into_iter().rev().find(|c| {
+                let r = c.on(at.side);
+                row < at.row || (r.end <= at.column && r.start < at.column)
+            })
+        })
     }
 
-    /// Row `row`'s changes, in order.
+    /// Row `row`'s changes, in order, whether or not the view counts the row as different.
     // ponytail: the row's characters are diffed again on each call; at most two rows per step
     // (the cursor's and the target's), so the view's cache isn't threaded through.
-    fn changes(&self, row: usize) -> Vec<Change> {
+    pub fn changes(&self, row: usize) -> Vec<Change> {
         let Some(found) = self.rows.get(row) else { return Vec::new() };
         let left = found.left.and_then(|i| self.left.get(i)).map(|line| line.text.as_str());
         let right = found.right.and_then(|j| self.right.get(j)).map(|line| line.text.as_str());

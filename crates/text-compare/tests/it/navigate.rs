@@ -17,11 +17,12 @@ fn differs(rows: &[Row]) -> impl Fn(usize) -> bool + '_ {
     |k| rows[k].kind != RowKind::Same
 }
 
-/// Every change *Next Difference* visits from `from`, landing each time at the change's start.
+/// Every change *Next Difference* visits from `from`, going on each time from the change's end.
 fn forwards<F: Fn(usize) -> bool>(d: &Differences<'_, F>, from: Cursor) -> Vec<Change> {
-    successors(d.next(from), |c| d.next(Cursor { row: c.row, side: from.side, column: c.on(from.side).start })).collect()
+    successors(d.next(from), |c| d.next(Cursor { row: c.row, side: from.side, column: c.on(from.side).end })).collect()
 }
 
+/// Every change *Previous Difference* visits from `from`, going on each time from the change's start.
 fn backwards<F: Fn(usize) -> bool>(d: &Differences<'_, F>, from: Cursor) -> Vec<Change> {
     successors(d.previous(from), |c| d.previous(Cursor { row: c.row, side: from.side, column: c.on(from.side).start })).collect()
 }
@@ -95,4 +96,23 @@ fn an_ending_only_change_and_an_orphan_line_are_one_stop_each() {
     assert_eq!(forwards(&d, at).iter().map(|c| c.row).collect::<Vec<_>>(), [1, 3]);
     let after = Cursor { row: rows.len(), side: Side::Right, column: 0 };
     assert_eq!(backwards(&d, after).iter().map(|c| c.row).collect::<Vec<_>>(), [3, 1]);
+}
+
+#[test]
+fn a_caret_at_a_change_start_is_before_it_and_at_its_end_after_it() {
+    // The first character of the file differs: Next from the top finds it.
+    let (left, right) = (lf(&["X", "b"]), lf(&["Y", "b"]));
+    let rows = compare(&left, &right).rows;
+    let d = Differences { rows: &rows, left: &left, right: &right, differs: differs(&rows) };
+    let top = Cursor { row: 0, side: Side::Left, column: 0 };
+    assert_eq!(forwards(&d, top).iter().map(|c| (c.row, c.left.start)).collect::<Vec<_>>(), [(0, 0)]);
+
+    // The last character of the line differs: Previous from the end of the line finds it, and
+    // Previous from its start, as after landing on it, goes past it.
+    let (left, right) = (lf(&["let x = 1"]), lf(&["let x = 2"]));
+    let rows = compare(&left, &right).rows;
+    let d = Differences { rows: &rows, left: &left, right: &right, differs: differs(&rows) };
+    let found = d.previous(Cursor { row: 0, side: Side::Left, column: 9 });
+    assert_eq!(found.as_ref().map(|c| c.left.clone()), Some(8..9));
+    assert_eq!(found.and_then(|c| d.previous(Cursor { row: 0, side: Side::Left, column: c.left.start })), None);
 }
