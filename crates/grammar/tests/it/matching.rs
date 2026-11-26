@@ -91,3 +91,19 @@ fn a_match_holds_its_text_against_matches_that_would_start_inside_it() {
     assert_eq!(marked(&g, "s = \"a // b\";"), [(0, "\"a // b\"", "String")]);
     assert_eq!(marked(&g, "// say \"hi\""), [(0, "// say \"hi\"", "Comment")]);
 }
+
+#[test]
+fn a_column_range_gives_way_to_a_higher_item_inside_it() {
+    let g = grammar(
+        vec![element("Keyword", false), element("Data", true)],
+        vec![item("Keyword", list(&["move", "to"])), item("Data", Category::Columns { start: 1, end: None })],
+    );
+    let found = marked(&g, "MOVE A TO B");
+    assert_eq!(found, [(0, "MOVE", "Keyword"), (0, " A ", "Data"), (0, "TO", "Keyword"), (0, " B", "Data")]);
+}
+
+#[test]
+fn a_pattern_anchored_to_the_line_start_matches_only_there() {
+    let g = grammar(vec![element("Directive", true)], vec![Item { regex: true, ..item("Directive", Category::Basic { text: "^#".into() }) }]);
+    assert_eq!(marked(&g, "## x"), [(0, "#", "Directive")]);
+}

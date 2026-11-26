@@ -9,7 +9,9 @@
 //! - **Precedence** (*inferred*): the text is read from the start, and the item whose match starts
 //!   first takes the text; where several start at the same place, the highest item wins. A match
 //!   holds its text until it ends, so a string's `//` starts no comment and a comment's quote
-//!   starts no string.
+//!   starts no string. Columns and Lines items mark positions rather than tokens, so they give way
+//!   where a higher item's match starts inside them; a lower match that starts before a column
+//!   range still holds its text into it.
 //! - **Case**: an item matches case-sensitively only when its `match_case` flag is set and its
 //!   element is case sensitive, so a case-insensitive element makes all its items ignore case
 //!   (*inferred*).
@@ -207,6 +209,11 @@ impl Grammar {
             let Some((index, range)) = best else { break };
             let end = match self.items[index].matcher {
                 Matcher::Delimited { .. } => self.extend(state, index, line, range.end)?,
+                // A column range or header isn't a token: it gives way where a higher item's match
+                // starts inside it, and goes on after that match.
+                Matcher::Columns { .. } | Matcher::Lines { .. } => {
+                    next[..index].iter().flatten().flatten().map(|r| r.start).filter(|&start| start < range.end).min().unwrap_or(range.end)
+                }
                 _ => range.end,
             };
             spans.push(Span { range: range.start..end, element: self.items[index].element });
@@ -222,6 +229,9 @@ impl Grammar {
     fn candidate(&self, state: &State, index: usize, line: &str, at: usize) -> Result<Option<Range<usize>>, RegexError> {
         Ok(match &self.items[index].matcher {
             Matcher::Basic(regex) | Matcher::Delimited { start: regex, .. } => find(regex, line, at)?,
+            // ponytail: every token searches again once `at` passes its last find, so a long line
+            // with many tokens costs tokens × matches searches; keep each token's find if that
+            // shows up in large files.
             Matcher::List(tokens) => {
                 let mut best: Option<Range<usize>> = None;
                 for token in tokens {
