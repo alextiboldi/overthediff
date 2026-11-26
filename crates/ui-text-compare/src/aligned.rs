@@ -22,6 +22,8 @@ use otd_text_compare::{Bookmarks, Line, LineEnding, Pos, Selection};
 use otd_text_engine::{CharDifferences, CharRange, Importance, Outcome, Row, RowKind, Side, Statistics, char_differences, classify, compare};
 use otd_ui::colour::{BACKGROUND, SELECTION, SELECTION_TEXT, TEXT, colour};
 
+use crate::whitespace;
+
 /// An important difference's text.
 pub const IMPORTANT_TEXT: ColourRole =
     ColourRole { id: "text-compare.important.text", light: Rgba::rgb(0xA4, 0x00, 0x00), dark: Rgba::rgb(0xFF, 0x9C, 0x9C) };
@@ -257,6 +259,8 @@ pub struct Caret {
     pub pointer: Option<Pos2>,
     /// The pane's bookmarks, marked in the gutter (E07-S6-T2).
     pub bookmarks: Bookmarks,
+    /// Whether spaces, tabs and line breaks show as glyphs (*Visible Whitespace*).
+    pub whitespace: bool,
 }
 
 /// What a pane drew this frame, for its editor.
@@ -408,7 +412,8 @@ fn draw_row(ui: &mut Ui, row: usize, lines: [&[Line]; 2], aligned: &mut Aligned,
         }
         _ => (0..0, false),
     };
-    let galley = line.map(|line| ui.fonts_mut(|fonts| fonts.layout_job(line_job(&line.text, important, &changed, selected, colours, font.clone()))));
+    let galley =
+        line.map(|line| ui.fonts_mut(|fonts| fonts.layout_job(line_job(&line.text, important, &changed, selected.clone(), colours, font.clone()))));
     let gutter = metrics.gutter();
     // A digit past the text, room for a selected line break.
     let width = ui.available_width().max(gutter + galley.as_ref().map_or(0.0, |g| g.size().x) + digit);
@@ -460,7 +465,13 @@ fn draw_row(ui: &mut Ui, row: usize, lines: [&[Line]; 2], aligned: &mut Aligned,
         let x = origin.x + galley.pos_from_cursor(CCursor::new(caret.selection.head.column)).min.x;
         Rect::from_min_max(pos2(x, rect.top()), pos2(x + 2.0, rect.bottom()))
     });
-    text_painter.galley(origin, galley, text_colour);
+    text_painter.galley(origin, galley.clone(), text_colour);
+    if caret.whitespace {
+        // Over the text, so the selection's background doesn't hide them.
+        let chars = |bytes: usize| line.text.get(..bytes).map_or(0, |before| before.chars().count());
+        let colours = [text_colour, colours.selection_text];
+        whitespace::paint(&text_painter, (&galley, origin, line.ending), (chars(selected.start)..chars(selected.end), break_selected), colours, font);
+    }
     if let Some(caret_rect) = caret_rect {
         text_painter.rect_filled(caret_rect, 0.0, text_colour);
         if *reveal == Some(row) {

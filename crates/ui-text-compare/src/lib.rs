@@ -31,6 +31,8 @@
 //!
 //! `load.rs` asks before the path edit or *Open File* loads another file over a pane's unsaved
 //! edits (E07-S1-T9).
+//! `whitespace.rs` holds *View > Visible Whitespace*, which marks spaces, tabs and line breaks
+//! (E07-S9-T1).
 
 mod read_only;
 pub mod session;
@@ -48,6 +50,7 @@ mod layout;
 mod load;
 mod open;
 mod save;
+mod whitespace;
 
 use aligned::Aligned;
 use egui::accesskit::{Live, Role};
@@ -69,6 +72,7 @@ pub use open::{OPEN_FILE, OPEN_FILE_ON_FILE_SYSTEM, OpenFiles, commands};
 pub use read_only::{COMPARISON_CANCELLED, COMPARISON_FAILED, ENCODING_LOSSY, FILE_READ_ONLY, LOCATION};
 pub use save::{SAVE_FAILED, SAVE_FILE, SAVE_FILE_AS, SAVE_FILE_ON_FILE_SYSTEM_AS, UNSAVED_CHANGES};
 pub use session::{Info, NO_RESULT, RECOMPARE_FILES, RELOAD_FILES, SWAP_SIDES, TEXT_COMPARE_INFO};
+pub use whitespace::VISIBLE_WHITESPACE;
 
 /// The session type's and the view type's id.
 pub const TEXT_COMPARE: &str = "text-compare";
@@ -166,6 +170,8 @@ pub struct TextCompareView {
     headers: [f32; 2],
     /// The side and spec to load once the unsaved-changes question is answered (E07-S1-T9).
     pending: Option<(usize, String)>,
+    /// Whether *View > Visible Whitespace* is on (E07-S9-T1, `whitespace.rs`).
+    whitespace: bool,
 }
 
 impl Drop for TextCompareView {
@@ -219,6 +225,7 @@ impl TextCompareView {
             layout: Layout::default(),
             headers: [0.0; 2],
             pending: None,
+            whitespace: false,
         }
     }
 

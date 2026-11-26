@@ -13,3 +13,4 @@ mod open;
 mod read_only;
 mod save;
 mod session;
+mod whitespace;
