@@ -11,14 +11,13 @@
 # freedesktop runtime and SDK the manifest names are installed per user from Flathub. The bundle
 # is not installed or run here: Flatpak has no smoke test in Release 1.
 set -euo pipefail
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck source=../env.sh
+. "$(dirname "${BASH_SOURCE[0]}")/../env.sh"
 APP_ID=io.github.alextiboldi.overthediff
 FLATHUB=https://dl.flathub.org/repo/flathub.flatpakrepo
 TARBALL="${1:?usage: packaging/linux/flatpak-bundle.sh <overthediff-<version>-linux-<arch>.tar.gz>}"
 [[ -f "$TARBALL" ]] || { echo "error: $TARBALL not found (run packaging/linux/package.sh first)" >&2; exit 1; }
-DIST="${DIST:-$ROOT/dist/release}"
-mkdir -p "$DIST"
-WORK="${CARGO_TARGET_DIR:-$ROOT/target}/flatpak-bundle"
+WORK="$CARGO_TARGET_DIR/flatpak-bundle"
 rm -rf "$WORK"
 mkdir -p "$WORK/stage"
 tar -xzf "$TARBALL" -C "$WORK/stage" --strip-components=1

@@ -15,7 +15,8 @@
 # Environment: OTD_VERSION overrides the [workspace.package] version, DIST the output folder
 # (default dist/release), CARGO_TARGET_DIR cargo's (default target).
 set -euo pipefail
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck source=../env.sh
+. "$(dirname "${BASH_SOURCE[0]}")/../env.sh"
 HERE="$ROOT/packaging/linux"
 APP_ID=io.github.alextiboldi.overthediff
 
@@ -28,13 +29,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-VERSION="${OTD_VERSION:-$(awk '/^\[/ { pkg = ($0 == "[workspace.package]"); next } pkg && $1 == "version" { gsub(/"/, "", $3); print $3; exit }' "$ROOT/Cargo.toml")}"
-[[ -n "$VERSION" ]] || { echo "error: no [workspace.package] version in $ROOT/Cargo.toml" >&2; exit 1; }
-DIST="${DIST:-$ROOT/dist/release}"
-CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT/target}"
-mkdir -p "$DIST"
 DIST="$(cd "$DIST" && pwd)"
-export VERSION CARGO_TARGET_DIR
 
 ARCH="$(uname -m)"
 case "$ARCH" in
@@ -60,9 +55,7 @@ mkdir -p "$STAGE/usr/share/icons"
 cp -R "$ROOT/assets/app-icon/hicolor" "$STAGE/usr/share/icons/"
 # The notices every package carries (E01-S2). The repository has no licence file of its own yet.
 mkdir -p "$STAGE/usr/share/doc/overthediff"
-for f in NOTICE ATTRIBUTION.md LICENSE; do
-  if [[ -f "$ROOT/$f" ]]; then cp "$ROOT/$f" "$STAGE/usr/share/doc/overthediff/"; fi
-done
+copy_notices "$STAGE/usr/share/doc/overthediff"
 
 # The launcher finds the entry only if its icon and executable are where it names them.
 icon="$(sed -n 's/^Icon=//p' "$STAGE/usr/share/applications/$APP_ID.desktop")"
