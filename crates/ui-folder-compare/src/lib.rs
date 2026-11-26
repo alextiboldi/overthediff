@@ -36,7 +36,7 @@ use std::sync::Arc;
 use std::sync::mpsc::Receiver;
 use std::time::Duration;
 
-use egui::accesskit::{Action, Live, Role};
+use egui::accesskit::{Action, Live, Role, SortDirection};
 use egui::{
     Color32, EventFilter, Key, Modifiers, PointerButton, Pos2, Rect, Response, Sense, Stroke, StrokeKind, TextStyle, TextWrapMode, Ui, Vec2,
     WidgetInfo, WidgetText,
@@ -52,6 +52,7 @@ pub mod expand;
 mod info;
 pub mod look;
 mod refresh;
+mod sort;
 
 pub use expand::Shown;
 use expand::{Expansion, flatten};
@@ -61,11 +62,14 @@ pub use info::{
 };
 pub use look::{COLOUR_ROLES, CONTRAST, Look, look};
 pub use refresh::{FULL_REFRESH, REFRESH, REFRESH_SELECTION, SWAP_SIDES};
+use sort::Sort;
+pub use sort::{SORT_BY, SORTED_ASCENDING, SORTED_DESCENDING};
 
 /// Folder Compare's commands, for `apps/otd/src/commands.rs`.
 pub fn commands() -> Vec<otd_core::command::Command<Shell>> {
     let mut commands = refresh::commands();
     commands.extend(expand::commands());
+    commands.extend(sort::commands());
     commands
 }
 
@@ -111,16 +115,22 @@ pub fn session_type() -> SessionType {
     SessionType { id: ID, name: FOLDER_COMPARE, kinds: &[], sides: &[LEFT, RIGHT], new: || Box::new(FolderCompare::new()) }
 }
 
-/// A column each pane shows after the name: its caption (an English key) and an item's text in
-/// it, `None` for a blank cell. E08-S6 adds columns here.
+/// A column each pane shows after the name: its caption (an English key), an item's text in it,
+/// `None` for a blank cell, and how two items order when sorted by it ([`sort`]). E08-S6 adds
+/// columns here.
 pub struct Column {
     pub caption: &'static str,
     /// Its share of a pane's width; the name has the rest.
     pub width: f32,
     pub cell: fn(&Item) -> Option<String>,
+    pub order: fn(&Item, &Item) -> std::cmp::Ordering,
 }
 
-pub const COLUMNS: &[Column] = &[Column { caption: SIZE, width: 0.2, cell: size }, Column { caption: MODIFIED, width: 0.3, cell: modified }];
+pub const COLUMNS: &[Column] = &[
+    Column { caption: SIZE, width: 0.2, cell: size, order: |a, b| a.size.cmp(&b.size) },
+    // An unreadable item's missing time sorts first.
+    Column { caption: MODIFIED, width: 0.3, cell: modified, order: |a, b| a.modified.cmp(&b.modified) },
+];
 
 fn size(item: &Item) -> Option<String> {
     (item.kind == ItemKind::File).then(|| trn(item.size, BYTE, BYTES))
@@ -179,6 +189,8 @@ pub struct FolderCompare {
     grid_focus: bool,
     /// Reports the close to a launcher waiting for this view.
     done: Option<Completion>,
+    /// The order the rows show in. A rescan keeps it.
+    sort: Sort,
 }
 
 impl Default for FolderCompare {
@@ -206,6 +218,7 @@ impl FolderCompare {
             focus_back: None,
             grid_focus: false,
             done: None,
+            sort: Sort::default(),
         }
     }
 
@@ -333,6 +346,7 @@ impl FolderCompare {
             }
             _ => Vec::new(),
         };
+        self.sort.apply(&mut self.rows);
         self.open_deep();
     }
 
@@ -370,15 +384,20 @@ impl FolderCompare {
             node.set_role(Role::TreeGrid);
             node.set_label(t(FOLDER_COMPARE));
         });
+        let mut sort_by = None;
         ui.horizontal(|ui| {
             ui.ctx().accesskit_node_builder(ui.unique_id(), |node| node.set_role(Role::Row));
-            for _ in 0..2 {
-                header(ui, NAME, name_width, height);
-                for column in COLUMNS {
-                    header(ui, column.caption, pane * column.width, height);
+            for side in 0..2 {
+                for (caption, width) in std::iter::once((NAME, name_width)).chain(COLUMNS.iter().map(|c| (c.caption, pane * c.width))) {
+                    if activated(&header(ui, caption, width, height, self.sort.direction(caption, side))) {
+                        sort_by = Some((caption, side));
+                    }
                 }
             }
         });
+        if let Some((caption, side)) = sort_by {
+            self.sort_by(caption, side);
+        }
         ui.ctx().accesskit_node_builder(grid, |node| node.set_multiselectable());
         let shown = flatten(&self.rows, &|key| self.expansion.is_open(key));
         // The current row, or the nearest shown folder above it once a close hides it.
@@ -546,9 +565,32 @@ impl View for FolderCompare {
     }
 }
 
-fn header(ui: &mut Ui, caption: &str, width: f32, height: f32) {
-    let response = cell(ui, t(caption), Vec2::new(width, height), Sense::hover(), false, ui.visuals().text_color());
-    ui.ctx().accesskit_node_builder(response.id, |node| node.set_role(Role::ColumnHeader));
+/// A column header; a click on it sorts by its column (see [`sort`]). `CLICK` rather than `click()`,
+/// so the headers aren't Tab stops: *View > Sort By* is the keyboard's way. The column sorted by
+/// shows Lucide's arrow after its caption and says its direction in its accessible name, a polite
+/// live region so the change is announced.
+fn header(ui: &mut Ui, caption: &str, width: f32, height: f32, sorted: Option<SortDirection>) -> Response {
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(width, height), Sense::CLICK);
+    let colour = ui.visuals().text_color();
+    let text = rect.with_max_x(rect.max.x - if sorted.is_some() { GLYPH } else { 0.0 });
+    let text_width = paint_text(ui, text, t(caption), colour);
+    let name = match sorted {
+        Some(direction) => {
+            let center = egui::pos2((text.left() + text_width + GLYPH / 2.0).min(rect.right() - GLYPH / 2.0), rect.center().y);
+            sort::paint_arrow(&ui.painter_at(rect), center, GLYPH, direction, colour);
+            fmt(t(if direction == SortDirection::Descending { SORTED_DESCENDING } else { SORTED_ASCENDING }), &[("name", t(caption))])
+        }
+        None => t(caption).to_owned(),
+    };
+    response.widget_info(|| WidgetInfo::labeled(Role::ColumnHeader, true, &name));
+    ui.ctx().accesskit_node_builder(response.id, |node| {
+        node.set_role(Role::ColumnHeader);
+        node.set_live(Live::Polite);
+        if let Some(direction) = sorted {
+            node.set_sort_direction(direction);
+        }
+    });
+    response
 }
 
 /// A cell showing `text` in `colour`, cut short to fit, named `text` for screen readers.
