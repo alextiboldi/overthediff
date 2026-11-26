@@ -45,6 +45,21 @@ fn a_line_of_only_whitespace_is_unimportant_against_an_empty_one_when_leading_or
 }
 
 #[test]
+fn an_inserted_or_deleted_blank_line_stays_important_with_every_whitespace_element_unticked() {
+    let rules = BuiltInRules { everything_else: false, character_case: false, ..whitespace([false; 3]) };
+    let without = vec![Line { text: "a".to_owned(), ending: LineEnding::Lf }; 2];
+    for blank in ["", "  \t"] {
+        let mut with = without.clone();
+        with.insert(1, Line { text: blank.to_owned(), ending: LineEnding::Lf });
+        for (left, right) in [(&without, &with), (&with, &without)] {
+            let c = classify(&compare(left, right), left, right, &[&rules]);
+            assert_eq!(c.outcome, Outcome::Important, "{blank:?}");
+            assert_eq!((c.statistics.important, c.statistics.unimportant), (1, 0), "{blank:?}");
+        }
+    }
+}
+
+#[test]
 fn a_case_only_change_is_unimportant_only_when_character_case_is_unticked() {
     let ignore_case = BuiltInRules { character_case: false, ..ALL };
     assert_eq!(outcome("Hello World", "hello world", ALL), Outcome::Important);
