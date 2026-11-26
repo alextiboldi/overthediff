@@ -3,7 +3,8 @@
 //!
 //! The choice is the view's own, so a Refresh, Full Refresh or Swap Sides keeps it. Name always
 //! shows: its cell is each row's focus stop and holds the tree's chevron, the status spot and the
-//! selection, so the chooser lists it checked and disabled (*unspecified*, decided here). A column
+//! selection, so the chooser lists it checked and disabled. That departs from E08-S6's criterion,
+//! which lets Name hide; the story's Decisions record it for the operator to confirm. A column
 //! added to [`COLUMNS`] gets its chooser entry without a change here.
 
 use std::collections::BTreeSet;

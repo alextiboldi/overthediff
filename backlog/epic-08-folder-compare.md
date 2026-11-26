@@ -254,12 +254,20 @@ As an IT administrator, I can choose which file details show and sort by any of 
 **Acceptance criteria**
 - [ ] Clicking a column header sorts by that column, and clicking again reverses the order. Rows stay paired while sorted.
 - [ ] Right-clicking the header, or *View > Columns*, shows or hides **Name**, **Ext**, **Size**, **CRC**, **Modified**, **Attributes**, **Owner** and **Group**.
+  - Name can't be hidden yet: a departure from this criterion that awaits the operator's confirmation (see Decisions).
 - [ ] **Ext** shows the extension.
 - [ ] **Size** shows the file size, or for a folder the total size of its contents. A folder's Size stays blank until its contents are fully loaded.
 - [ ] **CRC** shows the CRC32. A value the data source already holds, such as one stored in a zip, is used as-is. Otherwise it is computed on demand.
 - [ ] **Attributes** shows Windows attribute codes (A archive, C compressed, D directory, E encrypted, H hidden, I not indexed, L symlink or reparse point, M recall on data access, N normal, O offline, P pinned, R read-only, S system, T temporary, U unpinned, Z sparse) or a Unix mode string like `ls` shows.
 - [ ] **Owner** and **Group** show the Unix owner and group.
 - [ ] Column choices and sort order stay in place through a refresh (*inferred*).
+
+#### Decisions
+**Name always shows (E08-S6-T1).** Proposed by E08-S6-T1; awaiting the operator's confirmation. F-8.2 lets the user hide Name, so this departs from a *specified* criterion.
+
+- The chooser lists Name checked and disabled, in *View > Columns* and in the header's right-click menu. The other columns show or hide.
+- Why: the name cell is each row's only focus stop, and it holds the tree's chevron, the colour spot, the status tooltip and the selection. Hiding it would leave keyboard and screen-reader users no cell to focus (DoD 5).
+- Meeting the criterion as written needs the focus stop, chevron and colour spot moved to another visible cell, and a rule for the last visible column. Both are new choices for the operator.
 
 #### Tasks
 - **E08-S6-T1** — Column chooser (header right-click and View > Columns) · size: S · depends: —
