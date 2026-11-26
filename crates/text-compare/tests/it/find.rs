@@ -1,6 +1,6 @@
 //! Finding text in both panes (E07-S5-T1).
 
-use otd_text_compare::{Direction, FindOptions, Finder, Found, Line, LineEnding, Pos, Selection, Side, Sides};
+use otd_text_compare::{Direction, FindOptions, Finder, Found, Line, LineEnding, Pos, RegexError, Selection, Side, Sides};
 
 fn lines(text: &str) -> Vec<Line> {
     text.lines().map(|line| Line { text: line.to_owned(), ending: LineEnding::Lf }).collect()
@@ -53,8 +53,17 @@ fn plain_text_finds_itself_literally() {
 }
 
 #[test]
-fn an_invalid_regex_is_an_error() {
-    assert!(Finder::new("(a", FindOptions { regex: true, ..FindOptions::default() }).is_err());
+fn an_invalid_regex_is_an_error_at_its_place_in_the_text_to_find() {
+    for text in ["a)", "(a", "a\\q", "*a"] {
+        let at = |match_case, whole_words| match Finder::new(text, FindOptions { regex: true, match_case, whole_words, ..FindOptions::default() }) {
+            Err(RegexError::Syntax { at, .. }) => at,
+            other => panic!("{text:?} gave {other:?}"),
+        };
+        assert!(at(true, false) <= text.len(), "{text:?}: the error is inside the text or at its end");
+        for (match_case, whole_words) in [(false, false), (false, true), (true, true)] {
+            assert_eq!(at(match_case, whole_words), at(true, false), "{text:?}: the options don't move the error");
+        }
+    }
 }
 
 #[test]
@@ -77,7 +86,7 @@ fn next_and_previous_step_past_the_selected_match_and_cross_panes() {
     let (left, right) = (lines("ab ab"), lines("ab"));
     let panes = [left.as_slice(), right.as_slice()];
     let finder = finder("ab", FindOptions::default());
-    let step = |side, selection, direction| finder.find(panes, side, selection, direction).unwrap_or_else(|e| panic!("{e}"));
+    let step = |side, selection, direction| finder.find(panes, side, selection, direction, None).unwrap_or_else(|e| panic!("{e}"));
 
     let first = step(Side::Left, at(0, 0), Direction::Forward).unwrap_or_else(|| panic!("a first match"));
     let second = step(Side::Left, first.selection(), Direction::Forward).unwrap_or_else(|| panic!("a second match"));
@@ -93,7 +102,8 @@ fn wrap_search_goes_on_from_the_other_end_only_when_on() {
     let (left, right) = (lines("ab"), lines(""));
     let panes = [left.as_slice(), right.as_slice()];
     for (direction, from) in [(Direction::Forward, at(0, 1)), (Direction::Backward, at(0, 0))] {
-        let search = |wrap| finder("ab", FindOptions { wrap, ..FindOptions::default() }).find(panes, Side::Left, from, direction).ok().flatten();
+        let search =
+            |wrap| finder("ab", FindOptions { wrap, ..FindOptions::default() }).find(panes, Side::Left, from, direction, None).ok().flatten();
         assert_eq!(search(false), None, "{direction:?} without wrap");
         assert!(search(true).is_some(), "{direction:?} with wrap");
     }
@@ -104,14 +114,26 @@ fn a_match_that_selects_nothing_is_stepped_past_both_ways() {
     let (left, right) = (lines("a\n\nb\n  \nc"), lines(""));
     let panes = [left.as_slice(), right.as_slice()];
     let finder = finder(r"^\s*$", FindOptions { regex: true, ..FindOptions::default() });
-    let step = |selection, direction| finder.find(panes, Side::Left, selection, direction).ok().flatten();
+    let step = |selection, direction, previous| finder.find(panes, Side::Left, selection, direction, previous).ok().flatten();
 
-    let first = step(at(0, 0), Direction::Forward).unwrap_or_else(|| panic!("the first blank line"));
+    let first = step(at(0, 0), Direction::Forward, None).unwrap_or_else(|| panic!("the first blank line"));
     assert_eq!(first.line, 1);
-    let second = step(first.selection(), Direction::Forward).unwrap_or_else(|| panic!("the second blank line"));
+    let second = step(first.selection(), Direction::Forward, Some(&first)).unwrap_or_else(|| panic!("the second blank line"));
     assert_eq!(second.line, 3);
-    assert_eq!(step(second.selection(), Direction::Forward), None);
-    assert_eq!(step(Selection::caret(Pos { line: 3, column: 0 }), Direction::Backward), Some(first));
+    assert_eq!(step(second.selection(), Direction::Forward, Some(&second)), None);
+    assert_eq!(step(Selection::caret(Pos { line: 3, column: 0 }), Direction::Backward, None), Some(first.clone()));
+    assert_eq!(step(first.selection(), Direction::Backward, Some(&first)), None, "backward steps past the match just found");
+}
+
+#[test]
+fn a_match_that_selects_nothing_at_a_fresh_caret_is_found() {
+    let (left, right) = (lines("\na"), lines(""));
+    let panes = [left.as_slice(), right.as_slice()];
+    let finder = finder(r"^\s*$", FindOptions { regex: true, ..FindOptions::default() });
+    for direction in [Direction::Forward, Direction::Backward] {
+        let found = finder.find(panes, Side::Left, at(0, 0), direction, None).ok().flatten();
+        assert_eq!(found.map(|f| f.line), Some(0), "{direction:?}");
+    }
 }
 
 #[test]
@@ -119,7 +141,7 @@ fn a_search_from_a_side_not_searched_starts_at_the_first_or_last_match() {
     let (left, right) = (lines("x x"), lines("x"));
     let panes = [left.as_slice(), right.as_slice()];
     let finder = finder("x", FindOptions { sides: Sides::Left, ..FindOptions::default() });
-    let from_right = |direction| finder.find(panes, Side::Right, at(0, 0), direction).ok().flatten().map(|f| f.columns.start);
+    let from_right = |direction| finder.find(panes, Side::Right, at(0, 0), direction, None).ok().flatten().map(|f| f.columns.start);
     assert_eq!(from_right(Direction::Forward), Some(0));
     assert_eq!(from_right(Direction::Backward), Some(2));
 }

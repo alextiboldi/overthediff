@@ -32,7 +32,7 @@ fn finding_never_panics_or_hangs_on_damaged_text_to_find() {
         for (regex, whole_words) in [(false, false), (true, false), (true, true)] {
             let options = FindOptions { regex, whole_words, wrap: true, sides: Sides::Both, ..FindOptions::default() };
             if let Ok(finder) = Finder::new(&text, options) {
-                let _ = finder.find([&lines, &lines], Side::Right, Selection::caret(Pos { line: 9, column: 99 }), Direction::Backward);
+                let _ = finder.find([&lines, &lines], Side::Right, Selection::caret(Pos { line: 9, column: 99 }), Direction::Backward, None);
             }
         }
     });

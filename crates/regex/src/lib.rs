@@ -30,6 +30,9 @@ mod syntax;
 #[derive(Debug, Clone)]
 pub struct Regex {
     inner: fancy_regex::Regex,
+    /// For [`Regex::whole_words`]: the pattern anchored at the search position and bounded by
+    /// non-word characters, tried at each place `inner` matches.
+    whole: Option<fancy_regex::Regex>,
 }
 
 /// One match, with byte ranges into the text that was searched.
@@ -103,15 +106,18 @@ impl Match {
 
 impl Regex {
     pub fn new(pattern: &str) -> Result<Self, RegexError> {
-        Ok(Self { inner: fancy_regex::Regex::new(&syntax::translate(pattern)?)? })
+        Ok(Self { inner: fancy_regex::Regex::new(&syntax::translate(pattern)?)?, whole: None })
     }
 
     /// Like [`Regex::new`], but a match never has a word character (`\w`) just before or after
-    /// it, so `apple` finds no match in `apples`, `applesauce` or `snapple`. The boundary is part of
-    /// the pattern, so every alternative and start is tried against it: `app|apple` still finds
-    /// `apple`. Groups keep their numbers.
+    /// it, so `apple` finds no match in `apples`, `applesauce` or `snapple`. Every alternative and
+    /// start is tried against the boundary: `app|apple` still finds `apple`. Groups keep their
+    /// numbers. A line too long for the backtracking budget of a plain search is no problem here
+    /// either: the boundary is checked only where the plain pattern matches.
     pub fn whole_words(pattern: &str) -> Result<Self, RegexError> {
-        Ok(Self { inner: fancy_regex::Regex::new(&format!(r"(?<!\w)(?:{})(?!\w)", syntax::translate(pattern)?))? })
+        let translated = syntax::translate(pattern)?;
+        let whole = fancy_regex::Regex::new(&format!(r"\G(?<!\w)(?:{translated})(?!\w)"))?;
+        Ok(Self { inner: fancy_regex::Regex::new(&translated)?, whole: Some(whole) })
     }
 
     /// Every non-overlapping match in `text`, line by line, in order. An error ends the search:
@@ -119,7 +125,7 @@ impl Regex {
     /// every following line.
     pub fn matches<'a>(&'a self, text: &'a str) -> impl Iterator<Item = Result<Match, RegexError>> + 'a {
         let mut found = lines(text).flat_map(move |(start, line)| {
-            self.inner.captures_iter(line).map(move |found| {
+            self.line_matches(line).map(move |found| {
                 let found = found?;
                 let shift = |m: fancy_regex::Match<'_>| m.start() + start..m.end() + start;
                 Ok(Match { range: found.get(0).map(shift).unwrap_or_default(), groups: found.iter().skip(1).map(|m| m.map(shift)).collect() })
@@ -133,6 +139,54 @@ impl Regex {
             let next = found.next()?;
             failed = next.is_err();
             Some(next)
+        })
+    }
+
+    /// The matches in one line, as `captures_iter` finds them: an empty match moves the search on
+    /// one character, and one right at the end of the previous match is skipped. With Whole words
+    /// only, each place the plain pattern matches is checked against the boundary.
+    fn line_matches<'a>(&'a self, line: &'a str) -> impl Iterator<Item = Result<fancy_regex::Captures<'a, str>, fancy_regex::Error>> + 'a {
+        let after = |at: usize| at + line.get(at..).and_then(|rest| rest.chars().next()).map_or(1, char::len_utf8);
+        let (mut pos, mut last_end) = (0, None);
+        std::iter::from_fn(move || {
+            loop {
+                if pos > line.len() {
+                    return None;
+                }
+                let found = match &self.whole {
+                    None => self.inner.captures_from_pos(line, pos),
+                    Some(whole) => match self.inner.find_from_pos(line, pos) {
+                        Ok(Some(candidate)) => match whole.captures_from_pos(line, candidate.start()) {
+                            Ok(None) => {
+                                pos = after(candidate.start());
+                                continue;
+                            }
+                            whole => whole,
+                        },
+                        Ok(None) => Ok(None),
+                        Err(error) => Err(error),
+                    },
+                };
+                let found = match found {
+                    Ok(Some(found)) => found,
+                    Ok(None) => return None,
+                    Err(error) => {
+                        pos = usize::MAX;
+                        return Some(Err(error));
+                    }
+                };
+                let range = found.get(0).map(|m| m.range()).unwrap_or_default();
+                if range.is_empty() {
+                    pos = after(range.end);
+                    if last_end == Some(range.end) {
+                        continue;
+                    }
+                } else {
+                    pos = range.end;
+                }
+                last_end = Some(range.end);
+                return Some(Ok(found));
+            }
         })
     }
 

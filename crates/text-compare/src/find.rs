@@ -8,7 +8,8 @@
 //! The searched sides form one sequence: the left pane top to bottom, then the right pane top to
 //! bottom (*inferred*: the catalogue doesn't say how a search crosses from one pane to the other).
 //! A forward search starts at the end of the selection and a backward one ends before its start,
-//! so the match just found and selected isn't found again.
+//! so the match just found and selected isn't found again. A match that selects nothing sits at
+//! the caret, so the search is told the match it found last and steps past that one only.
 
 use std::ops::Range;
 
@@ -79,10 +80,11 @@ pub struct Finder {
 }
 
 impl Finder {
-    /// Compiles `text` with `options`. An invalid regular expression is an error, and nothing is
-    /// searched; plain text always compiles.
+    /// Compiles `text` with `options`. An invalid regular expression is an error, at its byte
+    /// offset in `text`, and nothing is searched; plain text always compiles.
     pub fn new(text: &str, options: FindOptions) -> Result<Self, RegexError> {
-        let mut pattern = if options.match_case { String::new() } else { "(?i)".to_owned() };
+        let prefix = if options.match_case { "" } else { "(?i)" };
+        let mut pattern = prefix.to_owned();
         if options.regex {
             pattern.push_str(text);
         } else {
@@ -94,7 +96,10 @@ impl Finder {
                 pattern.push(c);
             }
         }
-        let regex = if options.whole_words { Regex::whole_words(&pattern) } else { Regex::new(&pattern) }?;
+        let regex = if options.whole_words { Regex::whole_words(&pattern) } else { Regex::new(&pattern) }.map_err(|error| match error {
+            RegexError::Syntax { at, problem } => RegexError::Syntax { at: at.saturating_sub(prefix.len()), problem },
+            other => other,
+        })?;
         Ok(Self { regex, options })
     }
 
@@ -117,19 +122,28 @@ impl Finder {
         Ok(all)
     }
 
-    /// The next match in `direction` from `selection` on `side`: after its end going forward,
-    /// before its start going backward. From a side that isn't searched, a search starts at the
-    /// first (or last) match. With Wrap search off, `None` once the matches run out.
-    pub fn find(&self, panes: [&[Line]; 2], side: Side, selection: Selection, direction: Direction) -> Result<Option<Found>, RegexError> {
+    /// The next match in `direction` from `selection` on `side`: from its end going forward,
+    /// before its start going backward. A match that selects nothing at the selection's edge
+    /// counts unless it is `previous`, the match this search last found. From a side that isn't
+    /// searched, a search starts at the first (or last) match. With Wrap search off, `None` once
+    /// the matches run out.
+    pub fn find(
+        &self,
+        panes: [&[Line]; 2],
+        side: Side,
+        selection: Selection,
+        direction: Direction,
+        previous: Option<&Found>,
+    ) -> Result<Option<Found>, RegexError> {
         let all = self.find_all(panes)?;
         let (start, end) = selection.range();
         let searched = self.options.sides.includes(side);
+        let just_found = |found: &Found| found.columns.is_empty() && previous == Some(found);
         let next = match direction {
-            // A match that selects nothing at the selection's end is the one just found.
-            Direction::Forward => {
-                all.iter().find(|found| !searched || found.start() > (side, end) || (found.start() == (side, end) && !found.columns.is_empty()))
-            }
-            Direction::Backward => all.iter().rev().find(|found| !searched || found.start() < (side, start)),
+            Direction::Forward => all.iter().find(|found| !searched || (found.start() >= (side, end) && !just_found(found))),
+            Direction::Backward => all.iter().rev().find(|found| {
+                !searched || found.start() < (side, start) || (found.start() == (side, start) && found.columns.is_empty() && !just_found(found))
+            }),
         };
         let wrapped = || match direction {
             Direction::Forward => all.first(),
