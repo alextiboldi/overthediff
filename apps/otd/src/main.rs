@@ -96,6 +96,15 @@ struct App {
 }
 
 impl eframe::App for App {
+    /// A window close (its close button, the OS, Alt+F4, or the Exit command) asks about each
+    /// unsaved view first.
+    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.shell.on_close_request(ctx);
+        // Last, so it sees the `CancelClose` above. On macOS it quits through `terminate:` instead
+        // of letting eframe drop the window while AppKit still uses it; elsewhere it does nothing.
+        craft_quit::on_close_request(ctx);
+    }
+
     /// The native menu's key equivalents reach egui as the key presses they were, so shortcuts
     /// run through the shell's keymap as without a native menu.
     fn raw_input_hook(&mut self, _ctx: &egui::Context, raw_input: &mut egui::RawInput) {

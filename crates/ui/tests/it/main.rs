@@ -6,3 +6,4 @@ mod session;
 mod shell;
 mod tasks;
 mod translation;
+mod unsaved;

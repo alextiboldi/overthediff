@@ -11,8 +11,8 @@ use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use otd_core::i18n::{Embedded, I18n, Lang, embedded, set_language, t};
 use otd_ui::command::Command;
 use otd_ui::{
-    CANCEL, CLOSE_TAB, DESCRIPTION, Field, HOME, INPUTS, INSERT, LOAD_TIME, NEW_TAB, NO_SESSION_TYPES, OK, SCOPE, SESSION_SETTINGS, Session,
-    SessionType, Setting, Shell, Status, THIS_VIEW_ONLY, Value, View,
+    CANCEL, CANT_SAVE, CLOSE_TAB, DESCRIPTION, DONT_SAVE, Field, HOME, INPUTS, INSERT, LOAD_TIME, NEW_TAB, NO_SESSION_TYPES, OK, SAVE, SAVE_CHANGES,
+    SCOPE, SESSION_SETTINGS, Session, SessionType, Setting, Shell, Status, THIS_VIEW_ONLY, UNSAVED_LOST, Value, View,
 };
 
 const TRANSLATED: &str = "Alpha Compare";
@@ -43,6 +43,23 @@ impl View for HarnessView {
 
     fn session(&mut self) -> Option<&mut Session> {
         Some(&mut self.0)
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui) {
+        ui.label(t("Harness contents"));
+    }
+}
+
+/// A test view with changes it can't save, so closing it asks and Save shows why it didn't.
+struct UnsavedView;
+
+impl View for UnsavedView {
+    fn title(&self) -> String {
+        t("Harness view").to_owned()
+    }
+
+    fn unsaved(&self) -> bool {
+        true
     }
 
     fn ui(&mut self, ui: &mut egui::Ui) {
@@ -138,6 +155,15 @@ fn no_text_in_the_shell_skips_the_lookup() {
     dialog.get_by_role_and_label(Role::Tab, &format!("⟦{TAB}⟧")).click();
     dialog.run();
     seen.extend(texts(&dialog));
+    // The unsaved-changes prompt, after a Save that failed.
+    let mut prompted = harness(Vec::new());
+    prompted.state_mut().open(Box::new(UnsavedView));
+    prompted.state_mut().close_tab();
+    prompted.run();
+    prompted.key_press(egui::Key::Enter);
+    prompted.run();
+    assert!(prompted.query_by_role(Role::AlertDialog).is_some(), "the prompt stays open after the failed Save");
+    seen.extend(texts(&prompted));
 
     let roles = |role| seen.iter().filter(|(r, _)| *r == role).count();
     assert!(roles(Role::Tab) > 0 && roles(Role::Button) > 0 && roles(Role::Label) > 0, "{seen:?}");
@@ -147,6 +173,7 @@ fn no_text_in_the_shell_skips_the_lookup() {
     let looked_up = embedded().looked_up();
     let keys = [HOME, NEW_TAB, CLOSE_TAB, NO_SESSION_TYPES, INSERT, LOAD_TIME, SESSION_SETTINGS, INPUTS, DESCRIPTION, SCOPE, THIS_VIEW_ONLY];
     let dialog_keys = [OK, CANCEL, SIDE, TAB, LABEL, CHOICE_LABEL, CHOICE];
-    let skipped: Vec<_> = keys.into_iter().chain(dialog_keys).filter(|key| !looked_up.contains(*key)).collect();
+    let prompt_keys = [SAVE_CHANGES, UNSAVED_LOST, SAVE, DONT_SAVE, CANT_SAVE];
+    let skipped: Vec<_> = keys.into_iter().chain(dialog_keys).chain(prompt_keys).filter(|key| !looked_up.contains(*key)).collect();
     assert!(skipped.is_empty(), "drawn without the lookup: {skipped:?}");
 }

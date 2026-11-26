@@ -7,6 +7,8 @@
 //! The session model, the Session Settings dialog and the session commands are in [`session`].
 //! Registered commands fill the menus, the toolbar and the shortcuts ([`commands`]).
 //! Background tasks show their progress and end-of-task summary through [`show_task`].
+//! A view with unsaved changes says so with [`View::unsaved`] and saves with [`View::save`]; Close
+//! Tab and Exit then ask Save / Don't Save / Cancel first (`unsaved.rs`).
 
 mod tasks;
 
@@ -15,11 +17,14 @@ pub use tasks::{CANCEL, CANCELLED, CLOSE, FINISHED_WITH_ERRORS, show_task};
 pub mod colour;
 
 mod commands;
+mod unsaved;
+
+pub use unsaved::{CANT_SAVE, DONT_SAVE, NOT_SAVED, SAVE, SAVE_CHANGES, UNSAVED_LOST};
 
 use std::any::Any;
 use std::time::Duration;
 
-pub use commands::{APP_NAME, CLOSE_CURRENT_TAB, NEXT_TAB, PREVIOUS_TAB, keymap};
+pub use commands::{APP_NAME, CLOSE_CURRENT_TAB, EXIT, NEXT_TAB, PREVIOUS_TAB, keymap};
 pub use otd_core::command;
 
 use egui::accesskit::{Live, Role};
@@ -68,6 +73,18 @@ pub trait View: Any {
     /// for a view that shows no session.
     fn session(&mut self) -> Option<&mut Session> {
         None
+    }
+    /// Whether the view has changes that closing it would lose. Closing its tab or exiting then
+    /// asks Save / Don't Save / Cancel first.
+    fn unsaved(&self) -> bool {
+        false
+    }
+    /// Saves the view's changes, or says in the error, already looked up (`otd_core::i18n::t`), why it
+    /// couldn't; the view then stays open. Called only when [`View::unsaved`] is true.
+    // ponytail: synchronous; a save that needs a file picker or a background task comes with the
+    // first view that saves (E06-S1, E07).
+    fn save(&mut self) -> Result<(), String> {
+        Err(t(CANT_SAVE).to_owned())
     }
     fn ui(&mut self, ui: &mut Ui);
 }
@@ -133,6 +150,14 @@ pub struct Shell {
     settings: Vec<Setting>,
     /// The open Session Settings dialog.
     dialog: Option<session::Dialog>,
+    /// The open unsaved-changes prompt.
+    prompt: Option<unsaved::Prompt>,
+    /// Every unsaved view was answered for, so the window may close.
+    exit_confirmed: bool,
+    /// The Exit command ran; the next draw asks to close the window.
+    exit_requested: bool,
+    /// The widget that takes focus on the next draw, back from a cancelled prompt.
+    refocus: Option<egui::Id>,
 }
 
 impl Shell {
@@ -149,6 +174,10 @@ impl Shell {
             tasks: tasks::Tasks::default(),
             settings: Vec::new(),
             dialog: None,
+            prompt: None,
+            exit_confirmed: false,
+            exit_requested: false,
+            refocus: None,
         };
         shell.push(None);
         shell.focus_active = false;
@@ -183,12 +212,12 @@ impl Shell {
     }
 
     /// Closes the active tab and selects the one after it, or else the one before. Closing the last
-    /// tab leaves Home.
+    /// tab leaves Home. A view with unsaved changes asks first.
     pub fn close_tab(&mut self) {
-        self.close(self.active);
+        self.request_close(self.active);
     }
 
-    /// Closes the tab at `index`. Closing a tab other than the active one keeps the active tab.
+    /// Closes the tab at `index` without asking. Closing a tab other than the active one keeps the active tab.
     fn close(&mut self, index: usize) {
         // The dialog edits a tab by index, so it goes with any close.
         self.dialog = None;
@@ -250,6 +279,15 @@ impl Shell {
         });
         self.dialog_ui(ui.ctx());
         self.tasks.ui(ui.ctx());
+        if std::mem::take(&mut self.exit_requested) && self.exit() {
+            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+        // After the contents are drawn, so egui doesn't drop it as a widget nobody drew yet.
+        if let Some(id) = self.refocus.take() {
+            ui.memory_mut(|memory| memory.request_focus(id));
+        }
+        // Last, so it is the topmost modal.
+        self.prompt_ui(ui.ctx());
         if self.focus_active {
             // A click changed the active tab after the strip was drawn: draw again to move focus.
             ui.ctx().request_repaint();
@@ -282,8 +320,8 @@ impl Shell {
                     node.set_position_in_set(index + 1);
                     node.set_size_of_set(count);
                 });
-                // Not while a dialog is open: a view opened behind it doesn't take its focus.
-                if selected && self.focus_active && self.dialog.is_none() {
+                // Not while a dialog or prompt is open: a view opened behind it doesn't take its focus.
+                if selected && self.focus_active && self.dialog.is_none() && self.prompt.is_none() {
                     response.request_focus();
                 }
                 if response.clicked() {
@@ -300,7 +338,7 @@ impl Shell {
         self.focus_active = false;
         match action {
             Some(Action::Select(index)) => self.active = index,
-            Some(Action::Close(index)) => self.close(index),
+            Some(Action::Close(index)) => self.request_close(index),
             Some(Action::New) => self.new_tab(),
             None => {}
         }
