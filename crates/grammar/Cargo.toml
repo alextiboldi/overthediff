@@ -1,0 +1,17 @@
+[package]
+name = "otd-grammar"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "OverTheDiff's grammars: the ordered items that mark a text format's elements, such as comments, strings and keywords"
+
+[lints]
+workspace = true
+
+# No UI dependency (`cargo xtask ui-free`).
+[dependencies]
+otd-regex = { path = "../regex" }
+
+[dev-dependencies]
+craft-testkit = { workspace = true }

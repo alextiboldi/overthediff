@@ -205,6 +205,13 @@ impl Regex {
         Ok(out)
     }
 
+    /// The first match in `line` that starts at or after byte `from`, which must be a character
+    /// boundary. The whole line is the context, so `^` matches only at its start. `line` is one
+    /// line without its break.
+    pub fn find_at(&self, line: &str, from: usize) -> Result<Option<Range<usize>>, RegexError> {
+        Ok(self.inner.find_from_pos(line, from)?.map(|found| found.range()))
+    }
+
     pub fn is_match(&self, text: &str) -> Result<bool, RegexError> {
         self.matches(text).next().transpose().map(|found| found.is_some())
     }
