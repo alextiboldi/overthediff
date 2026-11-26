@@ -27,6 +27,7 @@
 //! file and comes back on the next start. Keep what can shrink in an array (a list of entries,
 //! not a map or `Option` fields), which is replaced whole (alextiboldi/overthediff#11).
 
+pub mod auto_saved;
 pub mod options;
 pub mod session_defaults;
 pub mod sessions;

@@ -4,6 +4,7 @@
 // standard streams then reach no console; E11-S1's waiting launchers serve consoles.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
+mod auto_save;
 mod colour_roles;
 mod commands;
 mod handlers;
@@ -171,8 +172,11 @@ impl eframe::App for App {
         self.settings.frame(ui);
         self.shell.ui(ui);
         self.path_edits.frame(&ctx, Some(&*frame), &mut self.settings.store);
+        let cap = auto_save::cap(&self.shell);
+        auto_save::closed(&mut self.settings.store, &mut self.shell, cap);
         if let Some(values) = self.shell.take_applied_options() {
             otd_settings::options::write(&mut self.settings.store, &values);
+            otd_settings::auto_saved::trim(&mut self.settings.store, otd_settings::auto_saved::cap(values.get(otd_settings::auto_saved::MAX)));
         }
         let new_defaults = self.shell.take_session_defaults();
         for session in &new_defaults {
@@ -190,6 +194,8 @@ impl eframe::App for App {
     }
 
     fn on_exit(&mut self) {
+        let cap = auto_save::cap(&self.shell);
+        auto_save::exit(&mut self.settings.store, &mut self.shell, cap);
         self.settings.exit();
     }
 }

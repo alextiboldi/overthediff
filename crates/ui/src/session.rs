@@ -121,7 +121,10 @@ impl Shell {
         let mut view = new();
         self.prepare(view.as_mut());
         self.dialog = None;
-        self.tabs[index] = Some(view);
+        // The replaced view closes, so its session is auto-saved as a closed tab's is.
+        if let Some(session) = self.tabs[index].replace(view).as_mut().and_then(|old| old.session()) {
+            self.closed.push(session.clone());
+        }
         self.select(index);
     }
 
@@ -142,6 +145,16 @@ impl Shell {
     /// stores (`otd_settings::session_defaults::write`). Each holds every setting of its type.
     pub fn take_session_defaults(&mut self) -> Vec<Session> {
         std::mem::take(&mut self.new_defaults)
+    }
+
+    /// The sessions of the views closed since the last call, oldest first, for auto-saving them.
+    pub fn take_closed_sessions(&mut self) -> Vec<Session> {
+        std::mem::take(&mut self.closed)
+    }
+
+    /// The session of each open view, in tab order: what exiting closes.
+    pub fn open_sessions(&mut self) -> Vec<Session> {
+        self.tabs.iter_mut().filter_map(|tab| Some(tab.as_mut()?.session()?.clone())).collect()
     }
 
     fn active_session(&mut self) -> Option<&mut Session> {

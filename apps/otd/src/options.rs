@@ -8,6 +8,7 @@ pub fn options() -> Vec<OptionSpec> {
     let mut options = Vec::new();
     options.extend(otd_ui::theme::options());
     options.extend(otd_ui_text_compare::filtered::options());
+    options.extend(otd_settings::auto_saved::options());
     options
 }
 

@@ -1,6 +1,6 @@
 //! The settings reader's hostile-input sweep: whatever is in `config.toml`, opening the store and
-//! reading its sections, the Options dialog's values and the session defaults among them, never
-//! panics or hangs.
+//! reading its sections, the Options dialog's values, the session defaults and the auto-saved
+//! sessions among them, never panics or hangs.
 
 use craft_testkit::hostile::{HammerConfig, hammer};
 use otd_core::options::{OptionSpec, Value};
@@ -25,7 +25,7 @@ struct Window {
 
 #[test]
 fn opening_and_reading_a_damaged_settings_file_never_panics_or_hangs() {
-    let seed = "schema_version = 1\n\n[recent-paths]\npaths = [\"a.txt\", \"dir/b.txt\"]\nlimit = 8\n\n[window]\nmaximised = true\nwidth = 1024.5\ntitle = \"x\"\n\n[options]\nwrap = true\nwidth = 4.5\nunit = \"Words\"\naccent = \"#0a141eff\"\n\n[session-defaults.folder.Rules]\nwrap = true\nunit = \"Words\"\n";
+    let seed = "schema_version = 1\n\n[recent-paths]\npaths = [\"a.txt\", \"dir/b.txt\"]\nlimit = 8\n\n[window]\nmaximised = true\nwidth = 1024.5\ntitle = \"x\"\n\n[options]\nwrap = true\nwidth = 4.5\nunit = \"Words\"\naccent = \"#0a141eff\"\n\n[session-defaults.folder.Rules]\nwrap = true\nunit = \"Words\"\n\n[[auto-saved-sessions.sessions]]\ntype = \"folder\"\nspecs = [\"/a\", \"/b\"]\ndescription = \"d\"\n\n[auto-saved-sessions.sessions.settings.Rules]\nwrap = true\nunit = \"Words\"\n";
     let options = [
         OptionSpec { page: &["P"], id: "wrap", label: "Wrap", default: Value::Bool(false), choices: &[] },
         OptionSpec { page: &["P"], id: "width", label: "Width", default: Value::Number(4.0), choices: &[] },
@@ -53,6 +53,7 @@ fn opening_and_reading_a_damaged_settings_file_never_panics_or_hangs() {
         let _: Window = store.section("window");
         let _ = otd_settings::options::read(&mut store, &options);
         let _ = otd_settings::session_defaults::read(&mut store, &settings, "folder");
+        let _ = otd_settings::auto_saved::load(&mut store, &settings);
     });
 }
 

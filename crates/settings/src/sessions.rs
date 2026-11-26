@@ -39,7 +39,7 @@ struct File {
     #[serde(default)]
     description: String,
     #[serde(default)]
-    settings: BTreeMap<String, toml::Table>,
+    settings: Tables,
 }
 
 /// Saves `session` as the named session `name`, replacing one saved under that name. The write is
@@ -52,7 +52,7 @@ pub fn save(store: &Store, name: &str, session: &Session) -> Result<(), String> 
         type_id: session.type_id.clone(),
         specs: session.specs.clone(),
         description: session.description.clone(),
-        settings: session.rules.iter().map(|(tab, values)| (tab.clone(), values.iter().map(|(id, v)| (id.clone(), to_toml(v))).collect())).collect(),
+        settings: tables(session),
     };
     let text = toml::to_string(&file).map_err(|e| failed(name, &e.to_string()))?;
     let dir = path.parent().unwrap_or(&path);
@@ -116,14 +116,26 @@ fn read(path: &Path, settings: &[Setting]) -> Result<(String, Session), String> 
     if path.file_name().and_then(|n| n.to_str()) != Some(&file_name(&file.name)) {
         return Err(fmt(t("its file name doesn't match the session name \"{name}\""), &[("name", &file.name)]));
     }
-    let mut session = Session { type_id: file.type_id, specs: file.specs, description: file.description, ..Session::default() };
+    Ok((file.name, session(file.type_id, file.specs, file.description, &file.settings, settings)))
+}
+
+/// A session with each registered setting of its type read from `saved` (by tab, then by id).
+pub(crate) fn session(type_id: String, specs: Vec<String>, description: String, saved: &Tables, settings: &[Setting]) -> Session {
+    let mut session = Session { type_id, specs, description, ..Session::default() };
     for setting in settings.iter().filter(|s| s.session_type == session.type_id) {
-        let saved = file.settings.get(setting.tab).and_then(|values| values.get(setting.id));
+        let saved = saved.get(setting.tab).and_then(|values| values.get(setting.id));
         let value = saved.and_then(|v| from_toml(&setting.default, setting.choices, v)).unwrap_or_else(|| setting.default.clone());
         session.rules.entry(setting.tab.to_owned()).or_default().insert(setting.id.to_owned(), value);
     }
-    Ok((file.name, session))
+    session
 }
+
+/// A session's settings as saved: `to_toml` values by tab, then by setting id.
+pub(crate) fn tables(session: &Session) -> Tables {
+    session.rules.iter().map(|(tab, values)| (tab.clone(), values.iter().map(|(id, v)| (id.clone(), to_toml(v))).collect())).collect()
+}
+
+pub(crate) type Tables = BTreeMap<String, toml::Table>;
 
 /// The file the session `name` is saved in.
 fn path(store: &Store, name: &str) -> Result<PathBuf, String> {

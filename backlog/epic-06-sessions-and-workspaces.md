@@ -67,7 +67,8 @@ As a developer who compares the same folders every week, I can save a comparison
   - AC: Save Session on an unnamed session prompts for a name. Saving under an existing name asks before overwriting.
 - **E06-S1-T3** — Home sessions tree with New, Saved and Auto-saved branches · size: M · depends: E06-S1-T1
   - AC: the New branch lists every registered session type, and double-clicking any entry opens the right view. The tree updates when a session is saved, without reopening Home.
-- **E06-S1-T4** — Auto-save recent sessions within the *Max auto-saved sessions* cap · size: S · depends: E06-S1-T1
+- **E06-S1-T4** — Auto-save recent sessions within the *Max auto-saved sessions* cap · size: S · depends: E06-S1-T1 · status: done
+  - Implemented: `otd_settings::auto_saved` (`crates/settings/src/auto_saved.rs`) keeps the recent unnamed sessions, newest first, in the settings store's `auto-saved-sessions` section (type, specs, description and settings, read back as named sessions are); adding past the *Max auto-saved sessions* cap (Options, Tweaks page, default 10) drops the oldest, 0 adds nothing, and the same comparison closed again moves to the front. The shell (`crates/ui`) hands over each closed tab's session and the open ones on exit, and `apps/otd/src/auto_save.rs` stores them under the applied cap; lowering the cap trims the list. Tests: `crates/settings/tests/it/auto_saved.rs`, the hostile-input sweep and unit tests in `auto_save.rs`. Checks: `cargo xtask ci` (fmt, clippy, tests, ui-free) on macOS; Linux and Windows tests run in main's CI.
   - AC: with the cap at 2, closing three sessions keeps the two newest. With the cap at 0, closing a session adds nothing.
 - **E06-S1-T5** — Rename and Delete from the sessions tree · size: S · depends: E06-S1-T3
   - AC: a renamed session opens under its new name. A deleted session disappears from Home and from the settings store.

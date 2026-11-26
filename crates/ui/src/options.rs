@@ -108,6 +108,12 @@ impl Shell {
         self.options.dialog = Some(Dialog { working, pages, selected, focus: true, items: Vec::new(), single_line: Vec::new(), preview: false });
     }
 
+    /// The applied value of the option `id`, never the dialog's previewed copy: for what must not act
+    /// on a value Cancel can take back.
+    pub fn applied_option(&self, id: &str) -> Option<&Value> {
+        self.options.values.get(id)
+    }
+
     /// The values, when Apply or OK changed them since the last call: what the app saves.
     pub fn take_applied_options(&mut self) -> Option<Values> {
         std::mem::take(&mut self.options.applied).then(|| (*self.options.values).clone())

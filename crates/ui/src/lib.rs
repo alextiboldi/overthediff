@@ -177,6 +177,8 @@ pub struct Shell {
     refocus: Option<egui::Id>,
     /// The program options features contribute, their values and the Options dialog.
     options: options::Options,
+    /// The sessions of views closed since the app last took them ([`Shell::take_closed_sessions`]).
+    closed: Vec<Session>,
 }
 
 impl Shell {
@@ -201,6 +203,7 @@ impl Shell {
             exit_requested: false,
             refocus: None,
             options: options::Options::default(),
+            closed: Vec::new(),
         };
         shell.push(None);
         shell.focus_active = false;
@@ -250,7 +253,9 @@ impl Shell {
     fn close(&mut self, index: usize) {
         // The dialog edits a tab by index, so it goes with any close.
         self.dialog = None;
-        self.tabs.remove(index);
+        if let Some(session) = self.tabs.remove(index).as_mut().and_then(|view| view.session()) {
+            self.closed.push(session.clone());
+        }
         if index < self.active {
             self.active -= 1;
         }
