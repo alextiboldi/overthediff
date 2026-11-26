@@ -28,6 +28,9 @@
 //! `bookmarks.rs` holds the Search menu's bookmarks 0–9 and their gutter marks (E07-S6-T2).
 //!
 //! `layout.rs` holds the View menu's Side-by-Side and Top and Bottom layouts (E07-S9-T3).
+//!
+//! `load.rs` asks before the path edit or *Open File* loads another file over a pane's unsaved
+//! edits (E07-S1-T9).
 
 mod read_only;
 pub mod session;
@@ -42,6 +45,7 @@ mod edited;
 mod font_size;
 mod go_to;
 mod layout;
+mod load;
 mod open;
 mod save;
 
@@ -160,6 +164,8 @@ pub struct TextCompareView {
     layout: Layout,
     /// Each pane header's height on the last frame, which places a stacked top body.
     headers: [f32; 2],
+    /// The side and spec to load once the unsaved-changes question is answered (E07-S1-T9).
+    pending: Option<(usize, String)>,
 }
 
 impl Drop for TextCompareView {
@@ -212,6 +218,7 @@ impl TextCompareView {
             bookmark_said: None,
             layout: Layout::default(),
             headers: [0.0; 2],
+            pending: None,
         }
     }
 
@@ -226,18 +233,17 @@ impl TextCompareView {
     }
 
     /// *Open File*: loads `path` into the pane of `side` (the chosen pane when `None`), or with no
-    /// path opens that pane's file picker.
-    pub fn open_file(&mut self, side: Option<usize>, path: Option<&str>) {
+    /// path opens that pane's file picker. Returns `true` when the pane has unsaved edits, so the
+    /// load waits for [`otd_ui::Shell::save_first`].
+    fn open_file(&mut self, side: Option<usize>, path: Option<&str>) -> bool {
         let side = side.unwrap_or(self.chosen).min(SIDES.len() - 1);
         self.chosen = side;
         match path {
-            Some(path) => {
-                if let Some(spec) = self.session.specs.get_mut(side) {
-                    path.clone_into(spec);
-                    self.retry(side);
-                }
+            Some(path) => self.load(side, path.to_owned()),
+            None => {
+                self.browse = Some(side);
+                false
             }
-            None => self.browse = Some(side),
         }
     }
 
@@ -251,13 +257,20 @@ impl TextCompareView {
         }
         let browse = self.browse.take_if(|s| *s == side).is_some();
         let (response, used) = PathEdit::new(field, &mut self.edits[side], Browse::File).browse_now(browse).show_used(ui);
-        if response.labelled_by(caption).has_focus() {
+        let response = response.labelled_by(caption);
+        if response.has_focus() {
             self.chosen = side;
         }
         if used {
-            spec.clone_from(&self.edits[side]);
-            self.synced[side].clone_from(spec);
-            self.retry(side);
+            // The edit shows the loaded file until the load happens, so Cancel leaves it there.
+            let path = std::mem::replace(&mut self.edits[side], spec.clone());
+            if self.load(side, path) {
+                // A typed path left the edit; it keeps focus so Cancel gives it back there.
+                if response.lost_focus() {
+                    response.request_focus();
+                }
+                otd_ui::save_first_later(ui.ctx(), load::load_pending);
+            }
             ui.ctx().request_repaint();
         }
     }
