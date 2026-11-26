@@ -133,8 +133,9 @@ As a code reviewer, I can show only the rows that matter (differences, orphans, 
 - [ ] Changing a filter or mode updates the view without re-scanning the folders (*inferred*).
 
 #### Tasks
-- **E08-S2-T1** — Visibility rules for the 13 display filters · size: M · depends: —
+- **E08-S2-T1** — Visibility rules for the 13 display filters · size: M · depends: — · status: done
   - AC: a unit table of row status (same, left newer, right newer, different, left orphan, right orphan) × filter gives the specified visibility in every cell.
+  - Implemented: `DisplayFilter`, the 13 display filters, with `shows(status)` answering whether a row of a given status shows, in `crates/folder-engine/src/display.rs` (`otd-folder-engine`). A filter worded as hiding something keeps unknown and error rows in view; one worded as showing something only hides them (*unspecified*, decided in the module). `crates/folder-engine/tests/it/display.rs` checks every cell of the row status × filter table. Checks: `cargo xtask ci` on macOS and pull-request CI on Linux and macOS passed. Pull request: https://github.com/alextiboldi/overthediff/pull/131
 - **E08-S2-T2** — Display-filter commands and default toolbar access · size: S · depends: E08-S2-T1 · flags: `naming-check`
   - AC: choosing a filter checks it in the View menu and updates the rows. Show None is hidden from menus by default but callable.
 - **E08-S2-T3** — Folder visibility for the default mode, Always Show Folders, Compare Files and Folder Structure, and Compare Files Only · size: M · depends: E08-S2-T1 · flags: `naming-check`
