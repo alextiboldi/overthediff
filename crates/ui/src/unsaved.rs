@@ -3,7 +3,9 @@
 //! A view opts in with [`View::unsaved`] and [`View::save`]. Closing its tab, or exiting, asks
 //! Save / Don't Save / Cancel in a modal dialog over the window, one view at a time. Cancel aborts
 //! the whole close or exit and leaves every view as it was. [`Shell::save_first`] asks the same
-//! before a view acts on itself in a way that loses its changes, such as Reload Files.
+//! before a view acts on itself in a way that loses its changes, such as Reload Files, and a view
+//! asks it from its own drawing with [`save_first_later`], such as loading another file into an
+//! edited pane.
 
 use egui::accesskit::{Live, Role};
 use egui::{Context, Id, ViewportCommand};
@@ -96,6 +98,14 @@ impl Shell {
             self.prompt = Some(Prompt { then: Some(then), ..Prompt::new(false, vec![index]) });
         } else if let Some(view) = &mut self.tabs[index] {
             then(view.as_mut());
+        }
+    }
+
+    /// Runs [`Shell::save_first`] for what the active view queued with [`save_first_later`] as it
+    /// drew.
+    pub(crate) fn save_first_queued(&mut self, ctx: &Context) {
+        if let Some(then) = ctx.data_mut(|data| data.remove_temp::<Option<fn(&mut dyn View)>>(Id::unique(SAVE_FIRST))).flatten() {
+            self.save_first(then);
         }
     }
 
@@ -199,6 +209,15 @@ impl Shell {
             }
         }
     }
+}
+
+const SAVE_FIRST: &str = "otd-save-first";
+
+/// [`Shell::save_first`] from inside [`View::ui`], which has no shell: the shell runs `then` on the
+/// active view, asking first if it has unsaved changes, once that view has drawn.
+pub fn save_first_later(ctx: &Context, then: fn(&mut dyn View)) {
+    ctx.data_mut(|data| data.insert_temp(Id::unique(SAVE_FIRST), Some(then)));
+    ctx.request_repaint();
 }
 
 /// Saves `view`, or says why it didn't.

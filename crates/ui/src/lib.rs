@@ -26,7 +26,7 @@ pub use path_edit::{Browse, PathEdit, PathEdits};
 mod commands;
 mod unsaved;
 
-pub use unsaved::{CANT_SAVE, DONT_SAVE, NOT_SAVED, SAVE, SAVE_CHANGES, UNSAVED_LOST};
+pub use unsaved::{CANT_SAVE, DONT_SAVE, NOT_SAVED, SAVE, SAVE_CHANGES, UNSAVED_LOST, save_first_later};
 
 use std::any::Any;
 use std::time::Duration;
@@ -319,6 +319,7 @@ impl Shell {
                 self.focus_active = true;
             }
         }
+        self.save_first_queued(ui.ctx());
         // Last, so it is the topmost modal.
         self.prompt_ui(ui.ctx());
         if self.focus_active {

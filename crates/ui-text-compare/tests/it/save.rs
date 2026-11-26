@@ -19,7 +19,7 @@ use otd_ui_text_compare::{LEFT, NAME, RIGHT, SESSION_TYPE, TextCompareView, UNSA
 use crate::open::{Window, harness as window_harness};
 
 /// The window with one Text Compare tab comparing the files `left` and `right` in `folder`.
-fn harness(folder: &Path, left: &[u8], right: &[u8]) -> (Harness<'static, Window>, PathBuf) {
+pub(crate) fn harness(folder: &Path, left: &[u8], right: &[u8]) -> (Harness<'static, Window>, PathBuf) {
     let [left_path, right_path] = [("left.txt", left), ("right.txt", right)].map(|(name, bytes)| {
         let path = folder.join(name);
         std::fs::write(&path, bytes).unwrap();
@@ -34,11 +34,11 @@ fn harness(folder: &Path, left: &[u8], right: &[u8]) -> (Harness<'static, Window
     (window_harness(shell), left_path)
 }
 
-fn view<'a>(harness: &'a Harness<'_, Window>) -> &'a TextCompareView {
+pub(crate) fn view<'a>(harness: &'a Harness<'_, Window>) -> &'a TextCompareView {
     harness.state().shell.view::<TextCompareView>().expect("a Text Compare tab is active")
 }
 
-fn press(harness: &mut Harness<'_, Window>, modifiers: Modifiers, key: Key) {
+pub(crate) fn press(harness: &mut Harness<'_, Window>, modifiers: Modifiers, key: Key) {
     harness.key_press_modifiers(modifiers, key);
     harness.run();
 }
@@ -50,7 +50,7 @@ fn focused(harness: &Harness<'_, Window>) -> Option<(Role, String)> {
 }
 
 /// Moves focus with Tab to the node named `name` in the role `role`.
-fn tab_to(harness: &mut Harness<'_, Window>, role: Role, name: &str) {
+pub(crate) fn tab_to(harness: &mut Harness<'_, Window>, role: Role, name: &str) {
     for _ in 0..40 {
         if focused(harness) == Some((role, name.to_owned())) {
             return;
@@ -61,7 +61,7 @@ fn tab_to(harness: &mut Harness<'_, Window>, role: Role, name: &str) {
 }
 
 /// Types `text` at the start of the left pane's first line, from its focused editor.
-fn edit_left(harness: &mut Harness<'_, Window>, text: &str) {
+pub(crate) fn edit_left(harness: &mut Harness<'_, Window>, text: &str) {
     tab_to(harness, Role::MultilineTextInput, LEFT);
     press(harness, Modifiers::COMMAND, Key::Home);
     harness.event(Event::Text(text.to_owned()));
@@ -76,7 +76,7 @@ fn tab_names(harness: &Harness<'_, Window>) -> Vec<String> {
     harness.query_all_by_role(Role::Tab).map(|tab| tab.accesskit_node().label().unwrap_or_default()).collect()
 }
 
-fn prompt(harness: &Harness<'_, Window>) -> Option<String> {
+pub(crate) fn prompt(harness: &Harness<'_, Window>) -> Option<String> {
     harness.query_by_role(Role::AlertDialog).map(|dialog| dialog.accesskit_node().label().unwrap_or_default())
 }
 

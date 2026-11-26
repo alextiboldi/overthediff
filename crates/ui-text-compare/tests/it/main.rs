@@ -7,6 +7,7 @@ mod font_size;
 mod go_to;
 mod header;
 mod layout;
+mod load;
 mod open;
 mod read_only;
 mod save;

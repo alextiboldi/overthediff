@@ -46,7 +46,9 @@ pub fn commands() -> Vec<Command<Shell>> {
 fn open_file(shell: &mut Shell, args: &Args) -> Outcome {
     let view = shell.view_mut::<TextCompareView>().ok_or_else(|| CommandError::Failed(t(NOT_TEXT_COMPARE).to_owned()))?;
     let side = args.text("side").and_then(|side| SIDES.iter().position(|s| *s == side));
-    view.open_file(side, args.text("path"));
+    if view.open_file(side, args.text("path")) {
+        shell.save_first(crate::load::load_pending);
+    }
     Ok(None)
 }
 
