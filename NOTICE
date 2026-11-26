@@ -45,6 +45,12 @@ The settings store (otd-settings) uses craft-settings (MIT OR Apache-2.0, storyt
 with toml and toml_writer (MIT OR Apache-2.0), and finds the per-user folder with dirs and dirs-sys
 (MIT OR Apache-2.0), redox_users (MIT) on Redox only, and option-ext (MPL-2.0, above).
 
+The path edit (otd-ui) shows the OS file and folder pickers with craft-dialogs (MIT OR Apache-2.0,
+storytold/craft-libs), on rfd (MIT, Copyright (c) 2022 Bartłomiej Maryńczak), which uses pollster
+0.4 (Apache-2.0 OR MIT) on Linux and the BSDs, raw-window-handle (MIT OR Apache-2.0 OR Zlib) for
+the parent window, block2 (MIT) and objc2-app-kit and dispatch2 (Zlib OR Apache-2.0 OR MIT) on
+macOS, and windows-sys (MIT OR Apache-2.0) on Windows.
+
 The local data source moves items to the OS recycle bin or trash with trash (MIT, Copyright 2019
 Artúr Barnabás Kovács), which brings objc2 and objc2-foundation (MIT) on macOS, the windows crates
 (MIT OR Apache-2.0) on Windows, and jiff (Unlicense OR MIT) and urlencoding (MIT) on Linux. It

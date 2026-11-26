@@ -13,10 +13,17 @@ workspace = true
 egui = { workspace = true }
 craft-keymap = { workspace = true, features = ["egui"] }
 craft-menu = { workspace = true }
+craft-dialogs = { workspace = true }
 otd-core = { path = "../core" }
 otd-format = { path = "../format" }
+otd-settings = { path = "../settings" }
+# The window type the path edit's OS pickers take as their parent; craft-dialogs' version.
+raw-window-handle = "0.6.2"
+serde = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
 egui_kittest = { workspace = true }
+tempfile = "3"
+craft-testkit = { workspace = true }
 # `default_fonts` so that the tests lay out text, as the app does.
 egui = { workspace = true, features = ["default_fonts"] }

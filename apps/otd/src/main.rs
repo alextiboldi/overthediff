@@ -68,7 +68,8 @@ fn run_window(registry: Registry<Shell>, instance: Instance) -> eframe::Result {
             let catalogs = otd_core::i18n::embedded();
             otd_core::i18n::set_language(catalogs, catalogs.system_lang());
             // After the language, so its notice is translated.
-            let settings = settings::Settings::open(otd_settings::Location::Auto);
+            let mut settings = settings::Settings::open(otd_settings::Location::Auto);
+            let path_edits = otd_ui::PathEdits::open(&cc.egui_ctx, &mut settings.store);
             let ctx = cc.egui_ctx.clone();
             instance.set_waker(move || ctx.request_repaint());
             let mut shell =
@@ -82,7 +83,7 @@ fn run_window(registry: Registry<Shell>, instance: Instance) -> eframe::Result {
             if native_menu.is_some() {
                 shell.hide_in_window_menu();
             }
-            Ok(Box::new(App { registry, instance, shell, native_menu, settings }))
+            Ok(Box::new(App { registry, instance, shell, native_menu, settings, path_edits }))
         }),
     )
 }
@@ -93,6 +94,7 @@ struct App {
     shell: Shell,
     native_menu: Option<craft_menu::NativeMenu>,
     settings: settings::Settings,
+    path_edits: otd_ui::PathEdits,
 }
 
 impl eframe::App for App {
@@ -113,7 +115,7 @@ impl eframe::App for App {
         }
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         while let Some(incoming) = self.instance.try_next() {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Focus);
             if let Err(err) = self.registry.open(incoming, &mut self.shell) {
@@ -132,6 +134,7 @@ impl eframe::App for App {
         }
         self.settings.frame(ui);
         self.shell.ui(ui);
+        self.path_edits.frame(&ctx, Some(&*frame), &mut self.settings.store);
         if let Some(menu) = &mut self.native_menu {
             // Its clashes are the system items macOS gives up for the app's shortcuts (⌘W); the
             // layout has already resolved them.
