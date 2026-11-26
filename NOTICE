@@ -186,6 +186,9 @@ The tab strip (crates/ui) draws Lucide's "x" and "plus" icons from their path co
 are among the Lucide icons derived from the Feather project. The toolbar (crates/ui) draws Lucide's
 "sliders-horizontal" icon the same way; it is Lucide's own, under the ISC License alone.
 
+The app icon (assets/app-icon) draws Lucide's "git-compare-arrows" icon, scaled, in white on a
+blue tile.
+
 Lucide: ISC License
 
 Copyright (c) 2026 Lucide Icons and Contributors
