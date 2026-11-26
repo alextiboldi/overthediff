@@ -40,7 +40,7 @@ use otd_core::command::{Command, HOME_VIEW};
 use otd_core::i18n::{fmt, measure, t};
 
 mod options;
-pub use options::{APPLY, CHOOSE_A_PAGE, DuplicateOption, NO_OPTIONS, OPTION_PAGES, OPTIONS, OptionSpec, option};
+pub use options::{APPLY, CHOOSE_A_PAGE, DuplicateOption, NO_OPTIONS, OPTION_PAGES, OPTIONS, OptionSpec, PREVIEW, option};
 
 mod session;
 pub use session::{

@@ -4,6 +4,9 @@
 //! page tree of the pages something contributed to (and the pages above them), and the selected
 //! page's options. It edits a copy of the values: Apply makes the copy the values and stays open,
 //! OK does the same and closes, and Cancel and Esc drop the copy. A click outside it does nothing.
+//! While its Preview checkbox is ticked, views read the copy rather than the applied values, so a
+//! change shows at once and Cancel takes it back (E05-S1-T4); Preview is the dialog's alone and
+//! isn't stored.
 //! The app saves the applied values ([`Shell::take_applied_options`]); any view reads one with
 //! [`option`].
 
@@ -23,6 +26,7 @@ use crate::{CANCEL, Shell};
 /// The dialog's title and the command's caption.
 pub const OPTIONS: &str = "Options";
 pub const APPLY: &str = "Apply";
+pub const PREVIEW: &str = "Preview";
 /// The page tree's name.
 pub const OPTION_PAGES: &str = "Option pages";
 pub const NO_OPTIONS: &str = "No options are available yet.";
@@ -50,9 +54,16 @@ pub(crate) struct Options {
 }
 
 impl Options {
-    /// Makes the applied values the ones [`option`] reads.
+    /// Makes the applied values the ones [`option`] reads, or the dialog's copy while it previews.
+    /// The frame after an edit, Preview tick, OK or Cancel publishes it: egui repaints after input.
+    // ponytail: previews every option, not only the theme; a text or path option half typed would
+    // reach views live, so skip those here if one ever reacts badly to an unfinished value.
     pub(crate) fn publish(&self, ctx: &Context) {
-        ctx.data_mut(|data| data.insert_temp(Id::unique(VALUES), self.values.clone()));
+        let values = match &self.dialog {
+            Some(dialog) if dialog.preview => Arc::new(dialog.working.clone()),
+            _ => self.values.clone(),
+        };
+        ctx.data_mut(|data| data.insert_temp(Id::unique(VALUES), values));
     }
 }
 
@@ -70,6 +81,8 @@ pub(crate) struct Dialog {
     items: Vec<Id>,
     /// The single-line edits drawn last frame, where Enter is OK.
     single_line: Vec<Id>,
+    /// Views read `working` rather than the applied values. Off each time the dialog opens.
+    preview: bool,
 }
 
 impl Shell {
@@ -92,7 +105,7 @@ impl Shell {
         let pages = tree(specs);
         let selected = pages.iter().position(|page| specs.iter().any(|s| s.page == *page)).unwrap_or(0);
         let working = (*self.options.values).clone();
-        self.options.dialog = Some(Dialog { working, pages, selected, focus: true, items: Vec::new(), single_line: Vec::new() });
+        self.options.dialog = Some(Dialog { working, pages, selected, focus: true, items: Vec::new(), single_line: Vec::new(), preview: false });
     }
 
     /// The values, when Apply or OK changed them since the last call: what the app saves.
@@ -133,6 +146,7 @@ impl Shell {
                 ok |= ok_button.clicked();
                 cancel = ui.button(t(CANCEL)).clicked();
                 apply = ui.button(t(APPLY)).clicked();
+                ui.checkbox(&mut dialog.preview, t(PREVIEW));
             });
         });
         // Esc closes it as Cancel does, unless it closes a popup first.
