@@ -5,9 +5,10 @@ use std::fs;
 use egui::accesskit::{Live, Role};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
+use otd_core::i18n::t;
 use otd_folder_engine::Status;
 use otd_ui::Shell;
-use otd_ui_folder_compare::{FolderCompare, LEFT, NOT_ON_RIGHT, ON_LEFT, commands, session_type};
+use otd_ui_folder_compare::{FolderCompare, LEFT, NOT_ON_RIGHT, ON_LEFT, RESULT, commands, session_type};
 
 use crate::view::{fixture, on, rows, settle};
 
@@ -61,7 +62,11 @@ fn refresh_shows_a_base_folder_that_could_not_be_listed_once_it_can() {
     fs::create_dir(root.path().join("missing")).unwrap();
     run(&mut harness, "folder-compare.refresh");
     assert!(!rows(&harness).is_empty(), "the rows show");
-    let announced = harness.query_all_by(|node| node.live() == Live::Polite && node.role() == Role::Label).count();
+    // The status bar's result is announced too; only the error's announcement should be gone.
+    let result = t(RESULT);
+    let announced = harness
+        .query_all_by(|node| node.live() == Live::Polite && node.role() == Role::Label && !node.value().is_some_and(|text| text.starts_with(result)))
+        .count();
     assert_eq!(announced, 0, "and the error is gone");
 }
 

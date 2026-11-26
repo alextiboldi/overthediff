@@ -42,12 +42,17 @@ use otd_core::i18n::{fmt, t, trn};
 use otd_folder_engine::{Criteria, DEFAULT_TOLERANCE, Row, ScanEvent, TreeScan, TreeSide, case_sensitive, compare_trees};
 use otd_launch::{Completion, Handler, Pattern, Request};
 use otd_source::{Capabilities, DataSource, Item, ItemKind, LocalSource};
-use otd_ui::colour::{SELECTION, SELECTION_TEXT, colour};
-use otd_ui::{Browse, PathEdit, Session, SessionType, Shell, View, paint_lucide};
+use otd_ui::colour::{ColourRole, SELECTION, SELECTION_TEXT, colour};
+use otd_ui::{Browse, PathEdit, Session, SessionType, Shell, Status, View, paint_lucide};
 
+mod info;
 pub mod look;
 mod refresh;
 
+pub use info::{
+    COUNT_DIFFERENT, COUNT_ERRORS, COUNT_LEFT_NEWER, COUNT_LEFT_ORPHANS, COUNT_RIGHT_NEWER, COUNT_RIGHT_ORPHANS, COUNT_SAME, COUNT_UNKNOWN, Entry,
+    FOLDER_COMPARE_INFO, FOLDERS_LISTED, Info, LEGEND, LEGEND_ENTRIES, NO_RESULT, NOT_FULLY_COMPARED, RESULT, SCAN, STILL_SCANNING, Swatch,
+};
 pub use look::{COLOUR_ROLES, CONTRAST, Look, look};
 pub use refresh::{FULL_REFRESH, REFRESH, REFRESH_SELECTION, SWAP_SIDES, commands};
 
@@ -115,6 +120,9 @@ struct Scan {
     capabilities: Capabilities,
     /// The last event said nothing was left to list.
     idle: bool,
+    /// The last event's folders listed so far and still to list, for the status bar.
+    done: usize,
+    pending: usize,
 }
 
 /// A Folder Compare tab.
@@ -139,6 +147,10 @@ pub struct FolderCompare {
     anchor: [Option<PathBuf>; 2],
     /// Esc hid the focused cell's status tooltip; it shows again when focus moves to a cell.
     quiet: bool,
+    /// The open Info or Legend dialog.
+    dialog: Option<info::Dialog>,
+    /// Gets focus on the next draw: what had it before a dialog opened.
+    focus_back: Option<egui::Id>,
     /// Reports the close to a launcher waiting for this view.
     done: Option<Completion>,
 }
@@ -163,6 +175,8 @@ impl FolderCompare {
             selected: Default::default(),
             anchor: [None, None],
             quiet: false,
+            dialog: None,
+            focus_back: None,
             done: None,
         }
     }
@@ -248,7 +262,7 @@ impl FolderCompare {
                     // ponytail: the Handling tab makes it a setting (E08-S11); expanding opens folders (T3).
                     let (scan, events) = TreeScan::new(Arc::new(source), "", false);
                     match scan.start() {
-                        Ok(()) => self.scans[side] = Some(Scan { scan, events, capabilities, idle: false }),
+                        Ok(()) => self.scans[side] = Some(Scan { scan, events, capabilities, idle: false, done: 0, pending: 0 }),
                         Err(err) => self.errors[side] = Some(err.to_string()),
                     }
                 }
@@ -263,6 +277,7 @@ impl FolderCompare {
         for scan in self.scans.iter_mut().flatten() {
             while let Ok(event) = scan.events.try_recv() {
                 scan.idle = event.pending == 0;
+                (scan.done, scan.pending) = (event.done, event.pending);
                 listed = true;
             }
         }
@@ -459,6 +474,10 @@ impl View for FolderCompare {
         Some(&mut self.session)
     }
 
+    fn status(&self) -> Status {
+        self.status_fields()
+    }
+
     fn ui(&mut self, ui: &mut Ui) {
         let editing = ui.columns(2, |columns| {
             let left = self.pane_header(&mut columns[0], 0).has_focus();
@@ -475,6 +494,7 @@ impl View for FolderCompare {
         }
         ui.separator();
         self.rows_ui(ui);
+        self.dialog_ui(ui);
     }
 }
 
@@ -531,8 +551,8 @@ fn name_cell(ui: &mut Ui, item: Option<&Item>, look: Option<&Look>, side: usize,
     let status = look.map_or(ui.visuals().text_color(), |look| colour(ui.ctx(), look.colour()));
     let text_colour = paint_selection(ui, rect, selected == Some(true), status);
     if let (Some(item), Some(look)) = (item, look) {
-        paint_spot(ui, rect, look);
-        let glyphs = [(look.link, "arrow-up-right", look.colour()), (look.error.is_some(), "x", &look::ERROR_GLYPH)];
+        paint_spot(ui, rect, &look.spot());
+        let glyphs = [(look.link, look::LINK_ICON, look.colour()), (look.error.is_some(), look::ERROR_ICON, &look::ERROR_GLYPH)];
         let glyphs: Vec<_> = glyphs.into_iter().filter(|(on, ..)| *on).collect();
         let text =
             Rect::from_min_max(rect.min + Vec2::new(SPOT + ui.spacing().icon_spacing, 0.0), rect.max - Vec2::new(GLYPH * glyphs.len() as f32, 0.0));
@@ -551,11 +571,10 @@ fn name_cell(ui: &mut Ui, item: Option<&Item>, look: Option<&Look>, side: usize,
 }
 
 /// The colour spot at the left of a name cell: one colour, or a folder's several side by side.
-fn paint_spot(ui: &Ui, cell: Rect, look: &Look) {
+fn paint_spot(ui: &Ui, cell: Rect, colours: &[&ColourRole]) {
     let spot = Rect::from_center_size(egui::pos2(cell.left() + SPOT / 2.0, cell.center().y), Vec2::splat(SPOT));
-    let colours = look.spot();
     let part = SPOT / colours.len().max(1) as f32;
-    for (at, role) in colours.into_iter().enumerate() {
+    for (at, role) in colours.iter().enumerate() {
         let left = spot.left() + part * at as f32;
         let rect = Rect::from_min_max(egui::pos2(left, spot.top()), egui::pos2(left + part, spot.bottom()));
         ui.painter().rect_filled(rect, 0.0, colour(ui.ctx(), role));

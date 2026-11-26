@@ -37,6 +37,7 @@ pub fn commands() -> Vec<Command<Shell>> {
             .menu(&["Session"]),
     ]
     .into_iter()
+    .chain(crate::info::commands())
     .map(|command| command.views(VIEWS))
     .collect()
 }

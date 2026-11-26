@@ -11,11 +11,11 @@ use otd_ui_folder_compare::look::{Cue, DIFFERENT, Look, ORPHAN, SAME, UNKNOWN, l
 
 const CRITERIA: Criteria = Criteria { size: true, modified: true, tolerance: DEFAULT_TOLERANCE };
 
-fn at(seconds: u64) -> SystemTime {
+pub(crate) fn at(seconds: u64) -> SystemTime {
     SystemTime::UNIX_EPOCH + Duration::from_secs(seconds)
 }
 
-fn source() -> MemorySource {
+pub(crate) fn source() -> MemorySource {
     MemorySource::new(Capabilities {
         read_only: false,
         case_sensitive: true,
@@ -27,7 +27,7 @@ fn source() -> MemorySource {
 }
 
 /// Both trees compared, scanned to the end unless `background` is off.
-fn rows(left: MemorySource, right: MemorySource, background: bool) -> Vec<Row> {
+pub(crate) fn rows(left: MemorySource, right: MemorySource, background: bool) -> Vec<Row> {
     let scan = |source| {
         let (scan, _events) = TreeScan::new(Arc::new(source), "", background);
         while scan.step() {}
