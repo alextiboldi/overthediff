@@ -52,17 +52,32 @@ fn same_named_files_in_different_subfolders_share_a_row_that_shows_each_sides_fo
 }
 
 #[test]
-fn turning_the_flat_list_off_brings_back_the_tree_as_it_was() {
+fn turning_the_flat_list_off_brings_back_the_tree_as_it_was_with_focus_still_in_the_rows() {
     let root = tempfile::tempdir().unwrap();
     let mut harness = fixture(root.path());
-    // Folders opened first, so the tree to come back isn't simply the base rows.
-    harness.state_mut().view_mut::<FolderCompare>().unwrap().expand_all();
+    tab_to_rows(&mut harness);
+    // The first row, `d`, opened and the other folders left closed, so the tree to come back is
+    // neither the base rows only nor every folder open.
+    assert!(harness.state_mut().run("folder-compare.open_folder"), "open_folder ran");
     settle(&mut harness);
     let before = rows(&harness);
     toggle(&mut harness);
     assert_ne!(rows(&harness), before, "the flat list shows other rows");
+    assert!(focused(&harness).is_some_and(|(role, _)| role == Role::Cell), "focus stays in the rows");
     toggle(&mut harness);
     assert_eq!(rows(&harness), before);
+    assert!(focused(&harness).is_some_and(|(role, _)| role == Role::Cell), "focus stays in the rows");
+}
+
+/// Tabs to the row area's current name cell.
+fn tab_to_rows(harness: &mut Harness<'_, Shell>) {
+    for _ in 0..40 {
+        if focused(harness).is_some_and(|(role, _)| role == Role::Cell) {
+            return;
+        }
+        press(harness, Key::Tab);
+    }
+    panic!("Tab never reached the rows");
 }
 
 #[test]
@@ -75,12 +90,7 @@ fn files_of_one_name_in_two_folders_on_both_sides_are_two_rows_each_paired_with_
         assert!(rows.iter().any(|row| row.contains(&at(ON_LEFT, dup)) && row.contains(&at(ON_RIGHT, dup))), "{dup}: {rows:?}");
     }
     // Each row is a cell of its own for the keyboard too: Down reaches both.
-    for _ in 0..40 {
-        if focused(&harness).is_some_and(|(role, _)| role == Role::Cell) {
-            break;
-        }
-        press(&mut harness, Key::Tab);
-    }
+    tab_to_rows(&mut harness);
     // From the top: the current cell is wherever the list's first rows put it.
     for _ in 0..rows.len() {
         press(&mut harness, Key::ArrowUp);

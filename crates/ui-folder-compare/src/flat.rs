@@ -150,32 +150,30 @@ impl Scan {
         let mut folders: Vec<(PathBuf, Option<Item>)> = vec![(PathBuf::new(), None)];
         while let Some((dir, item)) = folders.pop() {
             let found = self.scan.folder(&dir);
-            match found {
-                Some(found) if found.state == ScanState::Done => {
-                    if let Some(error) = found.error {
-                        walked.complete = false;
-                        // The base's own error is the view's, shown above its pane.
-                        if let (Some(item), Some(parent)) = (item, dir.parent()) {
-                            walked.unread.push((Placed { folder: parent.to_path_buf(), item }, error));
-                        }
-                        continue;
-                    }
-                    for child in found.items {
-                        if child.kind == ItemKind::Folder {
-                            folders.push((dir.join(&child.name), Some(child)));
-                        } else {
-                            walked.files.push(Placed { folder: dir.clone(), item: child });
-                        }
-                    }
+            if found.as_ref().is_none_or(|found| found.state != ScanState::Done) {
+                walked.complete = false;
+                // A folder already waiting stays where it is in the queue.
+                if found.as_ref().is_none_or(|found| found.state == ScanState::Unscanned) {
+                    self.scan.open(&dir);
+                    self.idle = false;
+                    self.pending = self.scan.pending();
                 }
-                found => {
-                    walked.complete = false;
-                    // A folder already waiting stays where it is in the queue.
-                    if found.is_none_or(|found| found.state == ScanState::Unscanned) {
-                        self.scan.open(&dir);
-                        self.idle = false;
-                        self.pending = self.scan.pending();
-                    }
+            }
+            // A folder waiting to be listed again (Refresh) keeps its old items until it is, as the tree does.
+            let Some(found) = found else { continue };
+            if let Some(error) = found.error {
+                walked.complete = false;
+                // The base's own error is the view's, shown above its pane.
+                if let (Some(item), Some(parent)) = (item, dir.parent()) {
+                    walked.unread.push((Placed { folder: parent.to_path_buf(), item }, error));
+                }
+                continue;
+            }
+            for child in found.items {
+                if child.kind == ItemKind::Folder {
+                    folders.push((dir.join(&child.name), Some(child)));
+                } else {
+                    walked.files.push(Placed { folder: dir.clone(), item: child });
                 }
             }
         }
@@ -237,5 +235,35 @@ mod tests {
         step(&view, 1);
         view.update_flat();
         assert_eq!(status(&view, "x.txt"), Some(Status::LeftOrphan));
+    }
+
+    #[test]
+    fn a_refresh_keeps_the_rows_of_folders_waiting_to_be_listed_again() {
+        let root = tempfile::tempdir().unwrap();
+        for side in ["left", "right"] {
+            std::fs::create_dir_all(root.path().join(side).join("sub")).unwrap();
+            std::fs::write(root.path().join(side).join("sub/x.txt"), "x").unwrap();
+        }
+        let mut view = FolderCompare::new();
+        view.scans = [Some(scan(&root.path().join("left"))), Some(scan(&root.path().join("right")))];
+        let step = |view: &FolderCompare| {
+            for scan in view.scans.iter().flatten() {
+                while scan.scan.step() {}
+            }
+        };
+        view.toggle_flat();
+        // The base, then `sub`, which the flat list asks for once the base shows it.
+        for _ in 0..2 {
+            step(&view);
+            view.update_flat();
+        }
+        assert_eq!(status(&view, "x.txt"), Some(Status::Same), "everything listed");
+        view.refresh();
+        // One of the two folders listed again so far; the other still waits, with its old items.
+        for scan in view.scans.iter().flatten() {
+            scan.scan.step();
+        }
+        view.update_flat();
+        assert_eq!(status(&view, "x.txt"), Some(Status::Same));
     }
 }
