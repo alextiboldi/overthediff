@@ -5,11 +5,19 @@ use std::path::Path;
 use std::time::{Duration, SystemTime};
 
 use otd_folder_engine::{Aligned, Criteria, Status, align, quick_test};
-use otd_source::{DataSource, ErrorKind, Links, MemorySource};
+use otd_source::{Attributes, DataSource, ErrorKind, Links, MemorySource};
 
 use crate::fixture::{at, caps};
 
-const BOTH: Criteria = Criteria { size: true, modified: true, tolerance: Duration::from_secs(2) };
+const BOTH: Criteria = Criteria {
+    size: true,
+    modified: true,
+    tolerance: Duration::from_secs(2),
+    filename_case: false,
+    unix_permissions: false,
+    unix_owner: false,
+    unix_group: false,
+};
 
 fn ms(millis: u64) -> SystemTime {
     SystemTime::UNIX_EPOCH + Duration::from_millis(millis)
@@ -105,4 +113,46 @@ fn a_folders_own_timestamp_never_makes_it_newer() {
     let folder = |modified| MemorySource::new(caps(true)).folder("f", modified);
     assert_eq!(quick_test(&row(&folder(at(1_000)), &folder(at(1))), &BOTH), Status::Unknown);
     assert_eq!(quick_test(&row(&folder(at(1)), &folder(at(1_000))), &BOTH), Status::Unknown);
+}
+
+#[test]
+fn names_that_differ_only_in_case_are_different_only_with_the_filename_case_test_on() {
+    let source = |name| MemorySource::new(caps(false)).file(name, "same", at(1));
+    let list = |source: &MemorySource| source.list(Path::new(""), Links::Report).expect("the root lists");
+    let mut rows = align(list(&source("Readme.md")), list(&source("README.md")), false);
+    assert_eq!(rows.len(), 1, "a case-insensitive alignment pairs them: {rows:#?}");
+    let paired = rows.remove(0);
+    assert_eq!(quick_test(&paired, &BOTH), Status::Same);
+    assert_eq!(quick_test(&paired, &Criteria { filename_case: true, ..BOTH }), Status::Different);
+    let exact = row(&file(4, at(1)), &file(4, at(1)));
+    assert_eq!(quick_test(&exact, &Criteria { filename_case: true, ..BOTH }), Status::Same);
+}
+
+#[test]
+fn each_unix_metadata_difference_is_different_only_with_its_own_test_on() {
+    let unix = |mode, owner: &str, group: &str| {
+        let attributes = Attributes::Unix { mode, owner: owner.to_owned(), group: group.to_owned() };
+        file(4, at(1)).attributes("f", attributes)
+    };
+    let base = unix(0o100644, "ann", "staff");
+    let on = |permissions, owner, group| Criteria { unix_permissions: permissions, unix_owner: owner, unix_group: group, ..BOTH };
+    let all = on(true, true, true);
+    // (other side, the one test that sees it)
+    let cases = [
+        (unix(0o100664, "ann", "staff"), on(true, false, false)),
+        (unix(0o101644, "ann", "staff"), on(true, false, false)),
+        (unix(0o100644, "bob", "staff"), on(false, true, false)),
+        (unix(0o100644, "ann", "wheel"), on(false, false, true)),
+    ];
+    for (index, (other, its_test)) in cases.iter().enumerate() {
+        let pair = row(&base, other);
+        assert_eq!(quick_test(&pair, &BOTH), Status::Same, "case {index} with every Unix test off");
+        assert_eq!(quick_test(&pair, its_test), Status::Different, "case {index} with its test on");
+        let others =
+            Criteria { unix_permissions: !its_test.unix_permissions, unix_owner: !its_test.unix_owner, unix_group: !its_test.unix_group, ..BOTH };
+        assert_eq!(quick_test(&pair, &others), Status::Same, "case {index} with only the other Unix tests on");
+    }
+    // Set-user-ID isn't one of the Permissions bits, and a side with no Unix mode gives nothing to compare.
+    assert_eq!(quick_test(&row(&base, &unix(0o104644, "ann", "staff")), &all), Status::Same);
+    assert_eq!(quick_test(&row(&base, &file(4, at(1))), &all), Status::Same);
 }

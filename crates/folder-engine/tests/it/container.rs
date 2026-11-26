@@ -125,7 +125,15 @@ fn an_expanded_container_aligns_with_a_folder_and_its_children_pair_up_like_a_fo
 
 #[test]
 fn an_unopened_container_pair_gets_a_files_status_and_an_expanded_one_a_folders() {
-    let criteria = Criteria { size: true, modified: true, tolerance: Duration::from_secs(2) };
+    let criteria = Criteria {
+        size: true,
+        modified: true,
+        tolerance: Duration::from_secs(2),
+        filename_case: false,
+        unix_permissions: false,
+        unix_owner: false,
+        unix_group: false,
+    };
     // Right-side content and time against the left's "ab" at 10 s: different size, newer, within tolerance.
     let mut seen = Vec::new();
     for (content, time) in [("abc", 10), ("ab", 20), ("ab", 11)] {

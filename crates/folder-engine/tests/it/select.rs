@@ -10,7 +10,15 @@ use otd_source::{DataSource, Item, MemorySource};
 
 use crate::fixture::{at, caps};
 
-const CRITERIA: Criteria = Criteria { size: true, modified: true, tolerance: Duration::from_secs(2) };
+const CRITERIA: Criteria = Criteria {
+    size: true,
+    modified: true,
+    tolerance: Duration::from_secs(2),
+    filename_case: false,
+    unix_permissions: false,
+    unix_owner: false,
+    unix_group: false,
+};
 
 fn scan(source: MemorySource, background: bool) -> TreeScan {
     let (scan, _events) = TreeScan::new(Arc::new(source), "", background);

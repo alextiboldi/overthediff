@@ -8,7 +8,15 @@ use otd_source::{DataSource, Delete, ErrorKind, Links, MemorySource};
 
 use crate::fixture::{at, caps};
 
-const BOTH: Criteria = Criteria { size: true, modified: true, tolerance: Duration::from_secs(2) };
+const BOTH: Criteria = Criteria {
+    size: true,
+    modified: true,
+    tolerance: Duration::from_secs(2),
+    filename_case: false,
+    unix_permissions: false,
+    unix_owner: false,
+    unix_group: false,
+};
 const TESTS: [ContentTest; 2] = [ContentTest::Crc, ContentTest::Binary];
 
 /// The CRC-32 check value: the CRC of `123456789` (ISO-HDLC, the zip and PNG CRC).
