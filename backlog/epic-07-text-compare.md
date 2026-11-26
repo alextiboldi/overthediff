@@ -282,6 +282,7 @@ As a developer merging by hand, I can copy a difference section or selected line
 #### Tasks
 - **E07-S7-T1** — Work out which source and target lines a copy covers · size: M · depends: —
   - AC: unit cases cover a changed section, left-only lines (a gap on the target), right-only lines (removed from the target) and a partial selection inside a section.
+  - With nothing selected, a section with no lines on the source side holds no line for the caret, so the caret on the line just above it takes it, or else the line just below it (*inferred*). The caret line after the last line break, the only line an empty pane has, takes the section after the last line, which has no lines on the source side (*inferred*).
 - **E07-S7-T2** — Copy to Other Side with a dynamic caption, plus the hidden Copy to Right/Left · size: S · depends: E07-S7-T1
   - AC: the caption reads "Copy to Right" while focus is in the left pane, and "Copy to Left" from the right pane.
 - **E07-S7-T3** — Copy Line to Right/Left/Other Side · size: S · depends: E07-S7-T1

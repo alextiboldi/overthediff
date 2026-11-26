@@ -11,7 +11,10 @@
 //! - [`save`] writes a pane back through a data source, and [`save_as`] to a spec, in the pane's
 //!   own encoding and line endings ([`encode`]), so only the edited bytes change (E07-S1-T6).
 //! - [`visible`] works out which aligned rows a display [`Filter`] shows (E07-S3-T1).
+//! - [`copy_selection`], [`copy_section`] and [`copy_lines`] work out which lines a copy to the
+//!   other side takes and which target lines they replace (E07-S7-T1).
 
+mod copy;
 mod decode;
 mod edit;
 mod filter;
@@ -20,6 +23,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
+pub use copy::{CopyLines, copy_lines, copy_section, copy_selection};
 pub use decode::{Decoded, Encoding, LineEndings, Unencodable, WESTERN, decode, encode, system_code_page};
 pub use edit::{History, Pos, Selection};
 pub use filter::{Filter, visible};
