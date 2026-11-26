@@ -107,6 +107,25 @@ fn tab_reaches_the_buttons_without_changing_the_selection() {
 }
 
 #[test]
+fn the_list_is_one_stop_that_arrows_move_within() {
+    let mut harness = manager();
+    let row = |name: &str| Some((Role::CheckBox, name.to_owned()));
+    for _ in 0..3 {
+        press(&mut harness, Key::ArrowDown);
+    }
+    assert_eq!(focused(&harness), row(LOGS), "Down stops at the bottom row");
+    press(&mut harness, Key::ArrowUp);
+    assert_eq!(focused(&harness), row(NOTES));
+
+    // Shift+Tab leaves the list rather than walking up it; Tab wraps back in at the selected row.
+    harness.key_press_modifiers(Modifiers::SHIFT, Key::Tab);
+    harness.run();
+    assert_eq!(focused(&harness), button(CLOSE));
+    press(&mut harness, Key::Tab);
+    assert_eq!(focused(&harness), row(NOTES));
+}
+
+#[test]
 fn moving_a_format_to_the_bottom_gives_focus_to_its_row() {
     let mut harness = manager();
     press(&mut harness, Key::ArrowDown);

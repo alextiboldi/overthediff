@@ -166,6 +166,7 @@ impl Shell {
                     if can && std::mem::take(&mut focus_first) {
                         button.request_focus();
                         dialog.focus = None;
+                        dialog.row_focused = false;
                     }
                     if button.clicked() {
                         dialog.move_selected(registry, up);
@@ -175,6 +176,7 @@ impl Shell {
                 if matches!(dialog.focus, Some(Target::Buttons | Target::Close)) {
                     close_button.request_focus();
                     dialog.focus = None;
+                    dialog.row_focused = false;
                 }
                 close = close_button.clicked();
             });
