@@ -66,8 +66,10 @@ As a developer who works with uncommon file types, I can manage the ordered list
 
 - [ ] On macOS, *File Formats* is in the application menu. On Windows and Linux, it is under *Tools*.
 #### Tasks
-- **E10-S1-T1** — Manager list with order, enable checkbox, and kind and mask columns · size: M · depends: —
+- **E10-S1-T1** — Manager list with order, enable checkbox, and kind and mask columns · size: M · depends: — · status: needs-verification
   - AC: swapping the order of two overlapping formats changes which one a test filename resolves to.
+  - Implemented: the File Formats manager (`otd.file_formats`, placed with `.application_menu(&["Tools"])`) in `crates/ui/src/formats.rs`: a modal dialog whose table lists the shell's format `Registry` top first, one row per format with an enable checkbox named by the format, its kind and its mask, plus Move Up and Move Down; the list is one Tab stop with arrow-key selection, and Close or Esc gives focus back to the window. `Registry::move_format` in `crates/format` swaps a format with its neighbour, and the hidden commands `otd.move_format_up`, `otd.move_format_down` and `otd.enable_format` act by name without the window. egui_kittest tests in `crates/ui/tests/it/formats.rs` cover the AC (moving `*.txt` above `*.*` changes what `a.txt` resolves to) and the keyboard paths. Checks: `cargo xtask ci` (fmt, clippy `-D warnings`, `cargo test --workspace --locked`, ui-free) on macOS after rebasing onto main, plus pull-request CI (Linux, macOS). Pull request: https://github.com/alextiboldi/overthediff/pull/125
+  - Verify by hand: in the running app on macOS, File Formats appears in the native application menu, and on Windows and Linux under Tools; tests cover only the shared `.application_menu` placement.
 - **E10-S1-T2** — Shadowing detection with red and gray cues · size: M · depends: E10-S1-T1 · flags: `accessibility`
   - AC: `*.txt` below `*.*` shows red, and above it does not. A disabled format shows gray. Complex masks may use a conservative check that never marks a reachable format red (*inferred*).
 - **E10-S1-T3** — New, Duplicate, Edit and Delete, with the General tab (Mask, Description) · size: M · depends: E10-S1-T1

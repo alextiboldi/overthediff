@@ -53,7 +53,7 @@ pub const SELECTION_TEXT: ColourRole = role("selection.text", Rgba::rgb(0x00, 0x
 pub const CHROME: [ColourRole; 9] = [BACKGROUND, WINDOW, TEXT, CONTROL, CONTROL_ACTIVE, INPUT, BORDER, SELECTION, SELECTION_TEXT];
 
 /// What the chrome and selection roles are drawn on, for the contrast check.
-pub const CHROME_CONTRAST: [Contrast; 10] = [
+pub const CHROME_CONTRAST: [Contrast; 11] = [
     Contrast::text(&TEXT, &BACKGROUND),
     Contrast::text(&TEXT, &WINDOW),
     Contrast::text(&TEXT, &CONTROL),
@@ -63,6 +63,8 @@ pub const CHROME_CONTRAST: [Contrast; 10] = [
     // Every control's edge, in every state, on the panel or window it sits on.
     Contrast::control(&BORDER, &BACKGROUND),
     Contrast::control(&BORDER, &WINDOW),
+    // A control's edge on a selected row, and the focus ring there.
+    Contrast::control(&SELECTION_TEXT, &SELECTION),
     // The focus ring.
     Contrast::control(&SELECTION_TEXT, &BACKGROUND),
     Contrast::control(&SELECTION_TEXT, &WINDOW),
