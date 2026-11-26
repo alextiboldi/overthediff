@@ -17,8 +17,10 @@
 //! `container` set, and keeping its own size and time), so alignment, status and aggregation treat
 //! it as one.
 //!
-//! ponytail: links are reported, not followed (following them is E08-S11-T5). Rescanning is
-//! E08-S1-T6.
+//! [`TreeScan::refresh`] lists folders again (E08-S1-T6), so a view's Refresh sees what changed
+//! on disk since.
+//!
+//! ponytail: links are reported, not followed (following them is E08-S11-T5).
 
 use std::collections::{HashMap, VecDeque};
 use std::io;
@@ -120,6 +122,35 @@ impl TreeScan {
         }
         state.queue.push_front(folder.to_path_buf());
         self.shared.wake.notify_all();
+    }
+
+    /// Lists `folder` again, ahead of everything else still waiting, if it has been listed; with
+    /// `below`, every listed folder under it too. Until each is listed again it is pending and
+    /// keeps its old items. A folder not listed yet, or being listed now, is left alone, so this
+    /// never scans more of the tree than was already scanned. Returns how many it queued.
+    ///
+    /// ponytail: a child folder that vanished keeps its old entry, which nothing reaches through
+    /// the new listing; a folder recreated there shows that entry until it is refreshed itself.
+    pub fn refresh(&self, folder: &Path, below: bool) -> usize {
+        let mut state = self.shared.lock();
+        let state = &mut *state;
+        let listed: Vec<PathBuf> = state
+            .folders
+            .iter()
+            .filter(|(path, found)| found.state == ScanState::Done && (*path == folder || below && path.starts_with(folder)))
+            .map(|(path, _)| path.clone())
+            .collect();
+        for path in &listed {
+            if let Some(found) = state.folders.get_mut(path) {
+                found.state = ScanState::Pending;
+            }
+            state.queue.push_front(path.clone());
+        }
+        // Listed again, not listed twice: `done` counts each folder once.
+        state.done = state.done.saturating_sub(listed.len());
+        state.pending += listed.len();
+        self.shared.wake.notify_all();
+        listed.len()
     }
 
     /// The folder as scanned so far, or `None` if no listing has reported it and nobody opened it.

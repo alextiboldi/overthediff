@@ -8,6 +8,7 @@ use crate::Shell;
 pub fn commands() -> Vec<Command<Shell>> {
     let mut commands = Vec::new();
     commands.extend(otd_ui_text_compare::commands());
+    commands.extend(otd_ui_folder_compare::commands());
     commands
 }
 
