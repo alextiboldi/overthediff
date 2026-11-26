@@ -264,8 +264,8 @@ impl TextCompareView {
         let panes = [0, 1].map(|side| loaded(&self.panes, side));
         let lines = panes.map(|pane| pane.map_or(&[][..], |pane| pane.lines.as_slice()));
         let (selection, bookmarks) = panes[side].map(|pane| (pane.selection, pane.bookmarks)).unwrap_or_default();
-        let drawn =
-            aligned::show(ui, side, lines, &mut self.aligned, &Caret { selection, shown: focused, pointer, bookmarks, whitespace: self.whitespace });
+        let caret = Caret { selection, shown: focused, pointer, bookmarks, whitespace: self.whitespace };
+        let drawn = aligned::show(ui, side, lines, &mut self.aligned, &caret, self.wrap);
         if let (Some(at), Some(pane)) = (drawn.hit, loaded_mut(&mut self.panes, side)) {
             pane.move_caret(at, extend);
             ctx.request_repaint();
@@ -325,62 +325,91 @@ fn preedit(ui: &Ui, text: &str, caret: Rect, rect: Rect) {
 /// AccessKit's character indices in a text run are `u8`, as egui's text widgets keep them.
 const RUN: usize = 255;
 
+/// One text run: at most [`RUN`] characters of one row of a drawn line (a wrapped line has a row
+/// per continuation), with their left edges and widths and the row's top and bottom, as laid out.
+struct Run {
+    chars: Vec<(char, f32, f32)>,
+    top: f32,
+    bottom: f32,
+    /// Whether it carries on the run before it on the same row, past [`RUN`] characters.
+    continues: bool,
+}
+
 /// The drawn `lines` as text runs of the editor `editor`, with `selection` as its text selection,
 /// so screen readers follow the caret and selection inside a line and magnifiers find the caret.
 /// Only the drawn lines have runs; an end of the selection outside them is taken to the nearest.
 fn text_runs(ui: &mut Ui, editor: Id, lines: &[(usize, Arc<Galley>, Pos2, bool)], selection: Selection) {
-    // Each drawn line's characters, with their left edges and widths as drawn.
-    let glyphs: Vec<Vec<(char, f32, f32)>> = lines
+    let runs: Vec<Vec<Run>> = lines
         .iter()
         .map(|(_, galley, _, _)| {
-            galley.rows.iter().flat_map(|row| row.glyphs.iter().map(|g| (g.chr, row.pos.x + g.pos.x, g.advance_width))).collect()
+            let mut runs = Vec::new();
+            for row in &galley.rows {
+                let chars: Vec<(char, f32, f32)> = row.glyphs.iter().map(|g| (g.chr, row.pos.x + g.pos.x, g.advance_width)).collect();
+                let (top, bottom) = (row.rect().top(), row.rect().bottom());
+                if chars.is_empty() {
+                    runs.push(Run { chars, top, bottom, continues: false });
+                    continue;
+                }
+                runs.extend(chars.chunks(RUN).enumerate().map(|(i, part)| Run { chars: part.to_vec(), top, bottom, continues: i > 0 }));
+            }
+            runs
         })
         .collect();
-    let chunks = |chars: &[(char, f32, f32)]| chars.len().max(1).div_ceil(RUN);
-    let run_id = |line: usize, chunk: usize| editor.with(("run", line, chunk));
+    let run_id = |line: usize, run: usize| editor.with(("run", line, run));
+    // The run holding a line's character `column`, and its index there. A column where a wrapped
+    // line breaks is the next row's first; the line's end, with its line break, is the last run's.
+    let place = |at: usize, column: usize| -> Option<(usize, usize)> {
+        let runs = runs.get(at)?;
+        let mut before = 0;
+        for (index, run) in runs.iter().enumerate() {
+            if column < before + run.chars.len() || index + 1 == runs.len() {
+                return Some((index, column.saturating_sub(before).min(run.chars.len() + usize::from(lines[at].3))));
+            }
+            before += run.chars.len();
+        }
+        None
+    };
     let position = |pos: Pos| -> Option<TextPosition> {
         let found = lines.iter().position(|line| line.0 == pos.line);
-        let (at, column) = match found {
-            Some(at) => (at, pos.column.min(glyphs[at].len())),
-            None if pos.line < lines.first()?.0 => (0, 0),
+        let (at, (run, character_index)) = match found {
+            Some(at) => (at, place(at, pos.column)?),
+            None if pos.line < lines.first()?.0 => (0, (0, 0)),
             // Past the drawn lines, or after a final line break: the end of the last drawn line.
-            None => (lines.len() - 1, glyphs.last()?.len() + usize::from(lines.last()?.3)),
+            None => (lines.len() - 1, place(lines.len() - 1, usize::MAX)?),
         };
-        let chunk = (column / RUN).min(chunks(&glyphs[at]) - 1);
-        Some(TextPosition { node: run_id(lines[at].0, chunk).accesskit_id(), character_index: column - chunk * RUN })
+        Some(TextPosition { node: run_id(lines[at].0, run).accesskit_id(), character_index })
     };
     let (Some(anchor), Some(focus)) = (position(selection.anchor), position(selection.head)) else { return };
     ui.ctx().accesskit_node_builder(editor, |node| node.set_text_selection(TextSelection { anchor, focus }));
     ui.scope_builder(UiBuilder::new().accessibility_parent(editor), |ui| {
-        for ((index, galley, origin, ends_with_break), glyphs) in lines.iter().zip(&glyphs) {
-            let end = glyphs.last().map_or(0.0, |&(_, x, width)| x + width);
-            let chunks = chunks(glyphs);
-            for chunk in 0..chunks {
-                let part = glyphs.get(chunk * RUN..glyphs.len().min((chunk + 1) * RUN)).unwrap_or_default();
-                let left = part.first().map_or(end, |&(_, x, _)| x);
-                let right = part.last().map_or(end, |&(_, x, width)| x + width);
-                let mut value: String = part.iter().map(|&(c, _, _)| c).collect();
-                let mut lengths: Vec<u8> = part.iter().map(|&(c, _, _)| c.len_utf8() as u8).collect();
-                let mut positions: Vec<f32> = part.iter().map(|&(_, x, _)| x - left).collect();
-                let mut widths: Vec<f32> = part.iter().map(|&(_, _, width)| width).collect();
-                if *ends_with_break && chunk + 1 == chunks {
+        for ((index, _, origin, ends_with_break), runs) in lines.iter().zip(&runs) {
+            for (at, run) in runs.iter().enumerate() {
+                let end = run.chars.last().map_or(0.0, |&(_, x, width)| x + width);
+                let left = run.chars.first().map_or(end, |&(_, x, _)| x);
+                let mut value: String = run.chars.iter().map(|&(c, _, _)| c).collect();
+                let mut lengths: Vec<u8> = run.chars.iter().map(|&(c, _, _)| c.len_utf8() as u8).collect();
+                let mut positions: Vec<f32> = run.chars.iter().map(|&(_, x, _)| x - left).collect();
+                let mut widths: Vec<f32> = run.chars.iter().map(|&(_, _, width)| width).collect();
+                let last = at + 1 == runs.len();
+                if *ends_with_break && last {
                     value.push('\n');
                     lengths.push(1);
-                    positions.push(right - left);
+                    positions.push(end - left);
                     widths.push(0.0);
                 }
                 let mut word_starts = Vec::new();
                 let mut in_word = false;
-                for (i, &(c, _, _)) in part.iter().enumerate() {
+                for (i, &(c, _, _)) in run.chars.iter().enumerate() {
                     let word = c.is_alphanumeric() || c == '_';
                     if word && !in_word {
                         word_starts.push(i as u8);
                     }
                     in_word = word;
                 }
-                let bounds = Rect::from_min_max(*origin + vec2(left, 0.0), *origin + vec2(right, galley.size().y));
-                let id = run_id(*index, chunk);
+                let bounds = Rect::from_min_max(*origin + vec2(left, run.top), *origin + vec2(end, run.bottom));
+                let id = run_id(*index, at);
                 ui.interact(bounds, id, Sense::hover());
+                let next = runs.get(at + 1).is_some_and(|next| next.continues);
                 ui.ctx().accesskit_node_builder(id, |node| {
                     node.set_role(Role::TextRun);
                     // ponytail: left to right, as the lines are laid out; split runs by direction
@@ -397,11 +426,11 @@ fn text_runs(ui: &mut Ui, editor: Id, lines: &[(usize, Arc<Galley>, Pos2, bool)]
                     node.set_character_positions(positions);
                     node.set_character_widths(widths);
                     node.set_word_starts(word_starts);
-                    if chunk > 0 {
-                        node.set_previous_on_line(run_id(*index, chunk - 1).accesskit_id());
+                    if run.continues {
+                        node.set_previous_on_line(run_id(*index, at - 1).accesskit_id());
                     }
-                    if chunk + 1 < chunks {
-                        node.set_next_on_line(run_id(*index, chunk + 1).accesskit_id());
+                    if next {
+                        node.set_next_on_line(run_id(*index, at + 1).accesskit_id());
                     }
                 });
             }
@@ -510,6 +539,8 @@ fn key_press(pane: &mut Pane, key: EguiKey, modifiers: Modifiers, input: Input) 
         // its chord reaches the pane, which leaves the caret alone rather than move it as a plain
         // arrow would.
         EguiKey::ArrowUp | EguiKey::ArrowDown if modifiers.alt && modifiers.shift => return None,
+        // ponytail: by file line, also through a wrapped line's continuation rows (Word Wrap); move
+        // by drawn row (the galley's rows) if users miss it.
         EguiKey::ArrowUp => Pos { line: head.line.saturating_sub(1), ..head },
         EguiKey::ArrowDown => Pos { line: head.line + 1, ..head },
         EguiKey::PageUp => Pos { line: head.line.saturating_sub(page), ..head },

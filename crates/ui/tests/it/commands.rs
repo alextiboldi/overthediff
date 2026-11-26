@@ -1,15 +1,16 @@
-//! Registered commands in the window: menus and toolbar per view type, disabled, hidden-by-default
-//! and dynamic-caption commands, and application-level placement, with test views and commands.
+//! Registered commands in the window: menus and toolbar per view type, disabled, hidden-by-default,
+//! dynamic-caption and toggle commands, and application-level placement, with test views and
+//! commands.
 
 use std::cell::Cell;
 
-use craft_menu::{MenuBar, Node};
-use egui::accesskit::Role;
+use craft_menu::{ItemKind, MenuBar, Node};
+use egui::accesskit::{Role, Toggled};
 use egui::os::OperatingSystem;
 use egui::{Key as EguiKey, Modifiers};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
-use otd_ui::command::{Command, Key, Mods, State};
+use otd_ui::command::{Command, Key, Mark, Mods, State};
 use otd_ui::{APP_NAME, SessionType, Shell, View};
 
 const ALPHA: &str = "alpha";
@@ -21,6 +22,7 @@ const HIDDEN: &str = "Copy Across";
 const SHOW: &str = "Show Details";
 const HIDE: &str = "Hide Details";
 const OPTIONS: &str = "Test Options";
+const RULER: &str = "Ruler";
 
 thread_local! {
     /// How many times a test command ran. Each test runs on a thread of its own.
@@ -98,6 +100,12 @@ fn commands() -> Vec<Command<Shell>> {
             let details = shell.view::<TestView>().is_some_and(|view| view.details);
             State { caption: details.then(|| HIDE.to_owned()), icon: details.then_some("x"), ..State::default() }
         }),
+        // A toggle, like Word Wrap.
+        Command::new("test.ruler", RULER, toggle_details)
+            .views(&[ALPHA])
+            .menu(&["View"])
+            .toolbar()
+            .state(|shell: &Shell| State { mark: Some(Mark::Check(shell.view::<TestView>().is_some_and(|view| view.details))), ..State::default() }),
         Command::new("test.options", OPTIONS, record).application_menu(&["Tools"]),
         // A plain-key shortcut, like Del in a manager list.
         Command::new("test.delete", "Delete Item", record).views(&[ALPHA, EDITOR]).shortcut(Mods::NONE, Key::Delete),
@@ -237,6 +245,30 @@ fn a_dynamic_caption_and_icon_follow_the_commands_state_in_the_menu_and_on_the_t
     press(&mut harness, Modifiers::NONE, EguiKey::Enter);
     assert!(labels(&menus(&harness), "View").contains(&HIDE.to_owned()), "the menu shows the new caption");
     assert!(on_toolbar(&harness, HIDE) && !on_toolbar(&harness, SHOW), "and so does the toolbar");
+}
+
+#[test]
+fn a_toggles_state_shows_as_a_check_item_in_the_menu_and_a_toggled_toolbar_button() {
+    let mut harness = harness_on(OperatingSystem::Windows);
+    previous_tab(&mut harness);
+    let state = |harness: &Harness<'_, Shell>| {
+        let kind = menus(harness).menus.iter().filter(|menu| menu.title == "View").flat_map(|menu| &menu.children).find_map(|node| match node {
+            Node::Item(item) if item.label == RULER => Some(item.kind),
+            _ => None,
+        });
+        let button = harness.get_by(|node| node.role() == Role::Button && node.label().as_deref() == Some(RULER));
+        (kind, button.accesskit_node().toggled())
+    };
+    assert_eq!(state(&harness), (Some(ItemKind::Check(false)), Some(Toggled::False)), "off");
+
+    for _ in 0..20 {
+        if harness.query_by(|node| node.is_focused()).is_some_and(|node| node.accesskit_node().label().as_deref() == Some(RULER)) {
+            break;
+        }
+        press(&mut harness, Modifiers::NONE, EguiKey::Tab);
+    }
+    press(&mut harness, Modifiers::NONE, EguiKey::Enter);
+    assert_eq!(state(&harness), (Some(ItemKind::Check(true)), Some(Toggled::True)), "on, after the button runs it from the keyboard");
 }
 
 #[test]

@@ -7,6 +7,11 @@
 //!
 //! Each pane also draws its caret and selection, and maps a pointer press to a place in its text,
 //! for the editor (E07-S1-T5, `edit.rs`).
+//!
+//! With Word Wrap on (E07-S9-T2, `wrap.rs`), each line wraps to its pane's width. A row is then as
+//! tall as the taller of its two lines, so the continuation rows of a line sit opposite those of its
+//! counterpart, or opposite padding, and the next line starts on the same row in both panes. The
+//! line number and marker stay on a line's first row.
 
 use std::collections::HashMap;
 use std::ops::Range;
@@ -15,7 +20,7 @@ use std::sync::Arc;
 use egui::scroll_area::{ScrollBarVisibility, ScrollSource};
 use egui::text::CCursor;
 use egui::text::{LayoutJob, TextFormat};
-use egui::{Align2, Color32, FontId, Galley, Pos2, Rect, Role, ScrollArea, Sense, Stroke, TextStyle, Ui, WidgetInfo, pos2, vec2};
+use egui::{Align2, Color32, FontId, Galley, Pos2, Rect, Role, ScrollArea, Sense, Stroke, TextStyle, Ui, UiBuilder, WidgetInfo, pos2, vec2};
 use otd_core::colour::{ColourRole, Contrast, Rgba};
 use otd_core::i18n::t;
 use otd_text_compare::{Bookmarks, Line, LineEnding, Pos, Selection};
@@ -82,6 +87,14 @@ pub struct Aligned {
     viewport: [f32; 2],
     /// The pane and line whose caret is to be scrolled into view on the next draw.
     reveal: Option<(usize, usize)>,
+    /// Each pane's viewport width when it was last drawn, which Word Wrap wraps its lines to.
+    widths: [Option<f32>; 2],
+    /// Each row's top, then the blank row's after them, then the end: `rows.len() + 2` offsets
+    /// from the first row's top, as laid out for `laid_out`.
+    tops: Vec<f32>,
+    /// What `tops` was laid out for: each side's wrap width (`None` when not wrapping) and the
+    /// line height.
+    laid_out: Option<([Option<f32>; 2], f32)>,
 }
 
 impl Aligned {
@@ -114,6 +127,9 @@ impl Aligned {
             drawn: [None; 2],
             viewport: [0.0; 2],
             reveal: None,
+            widths: [None; 2],
+            tops: Vec::new(),
+            laid_out: None,
         }
     }
 
@@ -121,8 +137,8 @@ impl Aligned {
     // ponytail: a full compare and classify per edit, like `otd_text_engine::Pair`, inside E03-S1's
     // budget for a recompare after a one-line edit; reuse the rows past the edit if that is missed.
     pub fn recompare(&mut self, left: Option<&[Line]>, right: Option<&[Line]>) {
-        let Self { scroll, drawn, viewport, reveal, .. } = *self;
-        *self = Self { scroll, drawn, viewport, reveal, ..Self::new(left, right) };
+        let Self { scroll, drawn, viewport, reveal, widths, .. } = *self;
+        *self = Self { scroll, drawn, viewport, reveal, widths, ..Self::new(left, right) };
     }
 
     /// The row that shows line `line` of side `side`. The place after a final line break is the
@@ -135,6 +151,58 @@ impl Aligned {
             };
         }
         self.rows.iter().position(|row| if side == 0 { row.left } else { row.right } == Some(line))
+    }
+
+    /// Row `row`'s top, from the first row's.
+    fn top(&self, row: usize) -> f32 {
+        self.tops.get(row).or(self.tops.last()).copied().unwrap_or_default()
+    }
+
+    /// The row at height `y` from the first row's top.
+    fn row_at(&self, y: f32) -> usize {
+        self.tops.partition_point(|&top| top <= y).saturating_sub(1)
+    }
+
+    /// Each side's wrap width: its viewport's, less the gutter and room for the caret, or the other
+    /// side's before it has been drawn. `None` when not wrapping.
+    fn wrap_widths(&self, wrap: bool, metrics: &Metrics) -> [Option<f32>; 2] {
+        let text = |width: f32| (width - metrics.gutter() - metrics.digit).max(metrics.digit);
+        [0, 1].map(|side| if wrap { self.widths[side].or(self.widths[1 - side]).map(text) } else { None })
+    }
+
+    /// Lays the rows out for `wrap` and the line height, unless they already are: unwrapped, every
+    /// row is one line high; wrapped, each is as tall as the taller of its two lines. When the
+    /// layout changes, the row at the top of the panes stays there.
+    // ponytail: wrapped, every line is laid out again after each edit, toggle and resize, which a
+    // large file feels while typing or resizing; lay out only the rows past an edit if it shows.
+    fn lay_out(&mut self, ui: &Ui, lines: [&[Line]; 2], wrap: [Option<f32>; 2], metrics: &Metrics) {
+        let key = (wrap, metrics.height);
+        if self.laid_out == Some(key) {
+            return;
+        }
+        let top_row = self.laid_out.is_some().then(|| self.row_at(self.scroll));
+        let height = metrics.height;
+        let mut tops = Vec::with_capacity(self.rows.len() + 2);
+        let mut y = 0.0;
+        ui.fonts_mut(|fonts| {
+            let mut measure = |side: usize, index: Option<usize>| {
+                let (Some(width), Some(line)) = (wrap[side], index.and_then(|i| lines[side].get(i))) else { return height };
+                let mut job = LayoutJob::single_section(line.text.clone(), TextFormat::simple(metrics.font.clone(), Color32::PLACEHOLDER));
+                job.wrap.max_width = width;
+                fonts.layout_job(job).size().y
+            };
+            for row in &self.rows {
+                tops.push(y);
+                y += measure(0, row.left).max(measure(1, row.right)).max(height);
+            }
+        });
+        tops.extend([y, y + height]);
+        self.tops = tops;
+        self.laid_out = Some(key);
+        if let Some(row) = top_row {
+            self.scroll = self.top(row);
+            self.drawn = [None; 2];
+        }
     }
 
     /// How line `line` of side `side` differs, if it does, as an English key.
@@ -293,6 +361,8 @@ struct Metrics {
     side: usize,
     /// The row whose caret is scrolled into view sideways.
     reveal: Option<usize>,
+    /// The width this pane's lines wrap to, if they wrap.
+    wrap: Option<f32>,
 }
 
 impl Metrics {
@@ -302,8 +372,9 @@ impl Metrics {
 }
 
 /// Side `side`'s pane body (0 is left): every row, in a scroll area whose vertical offset the other
-/// pane shares. `lines` are both panes' lines; a missing pane's are empty.
-pub fn show(ui: &mut Ui, side: usize, lines: [&[Line]; 2], aligned: &mut Aligned, caret: &Caret) -> Drawn {
+/// pane shares, its lines wrapped to the pane's width when `wrap` is set. `lines` are both panes'
+/// lines; a missing pane's are empty.
+pub fn show(ui: &mut Ui, side: usize, lines: [&[Line]; 2], aligned: &mut Aligned, caret: &Caret, wrap: bool) -> Drawn {
     let font = TextStyle::Monospace.resolve(ui.style());
     let digit = ui.fonts_mut(|fonts| fonts.glyph_width(&font, '0'));
     let height = ui.text_style_height(&TextStyle::Monospace);
@@ -314,12 +385,14 @@ pub fn show(ui: &mut Ui, side: usize, lines: [&[Line]; 2], aligned: &mut Aligned
         ui.ctx().request_repaint();
     }
     let reveal = aligned.reveal.take_if(|(s, _)| *s == side && viewport > 0.0).and_then(|(_, line)| aligned.row_of(side, line));
-    let metrics = Metrics { height, digit, digits: aligned.digits, colours: Colours::of(ui), font, side, reveal };
+    let mut metrics = Metrics { height, digit, digits: aligned.digits, colours: Colours::of(ui), font, side, reveal, wrap: None };
     ui.spacing_mut().item_spacing.y = 0.0;
+    aligned.lay_out(ui, lines, aligned.wrap_widths(wrap, &metrics), &metrics);
     if let Some(row) = reveal {
-        // The caret's row into view: up to the top, or down to the bottom.
-        let top = row as f32 * metrics.height;
-        let scroll = aligned.scroll.min(top).max(top + metrics.height - viewport);
+        // The caret's row into view: up to the top, or down to the bottom, keeping the top of a row
+        // taller than the pane in view. Drawing the caret then brings it in.
+        let (top, bottom) = (aligned.top(row), aligned.top(row + 1));
+        let scroll = aligned.scroll.max(bottom - viewport).min(top);
         if scroll != aligned.scroll {
             aligned.scroll = scroll.max(0.0);
             aligned.drawn = [None; 2];
@@ -330,6 +403,7 @@ pub fn show(ui: &mut Ui, side: usize, lines: [&[Line]; 2], aligned: &mut Aligned
         area = area.vertical_scroll_offset(aligned.scroll);
     }
     let mut drawn = Drawn::default();
+    let laid_out = aligned.laid_out;
     let output = area
         .auto_shrink(false)
         // A drag selects text instead.
@@ -338,18 +412,39 @@ pub fn show(ui: &mut Ui, side: usize, lines: [&[Line]; 2], aligned: &mut Aligned
         // bar in one pane only, the shared offset would stop at the shorter pane's end and hide
         // the other's last row under its bar.
         .scroll_bar_visibility(ScrollBarVisibility::AlwaysVisible)
-        // One blank row after the rest, where the caret can stand after a final line break.
-        .show_rows(ui, metrics.height, aligned.rows.len() + 1, |ui, rows| {
-            for row in rows {
-                draw_row(ui, row, lines, aligned, &metrics, caret, &mut drawn);
+        .show_viewport(ui, |ui, viewport| {
+            if let Some(width) = aligned.widths.get_mut(side) {
+                *width = Some(ui.available_width());
             }
+            let wrap = aligned.wrap_widths(wrap, &metrics);
+            aligned.lay_out(ui, lines, wrap, &metrics);
+            metrics.wrap = wrap[side];
+            // One blank row after the rest, where the caret can stand after a final line break.
+            let rows = aligned.rows.len() + 1;
+            ui.set_height(aligned.top(rows));
+            let first = aligned.row_at(viewport.min.y).min(rows);
+            let last = aligned.tops.partition_point(|&top| top < viewport.max.y).clamp(first, rows);
+            let top = ui.max_rect().top();
+            let shown = Rect::from_x_y_ranges(ui.max_rect().x_range(), top + aligned.top(first)..=top + aligned.top(last));
+            ui.scope_builder(UiBuilder::new().max_rect(shown), |ui| {
+                ui.skip_ahead_auto_ids(first);
+                for row in first..last {
+                    draw_row(ui, row, lines, aligned, &metrics, caret, &mut drawn);
+                }
+            });
         });
     let offset = output.state.clamped_offset().y;
-    if let Some(drawn) = aligned.drawn.get_mut(side) {
-        *drawn = Some(offset);
-    }
     if let Some(viewport) = aligned.viewport.get_mut(side) {
         *viewport = output.inner_rect.height();
+    }
+    if aligned.laid_out != laid_out {
+        // Laid out again while drawing, as the pane's width changed: the shared offset already
+        // keeps the top row, and both panes take it on the next frame.
+        ui.ctx().request_repaint();
+        return drawn;
+    }
+    if let Some(drawn) = aligned.drawn.get_mut(side) {
+        *drawn = Some(offset);
     }
     if offset != aligned.scroll {
         aligned.scroll = offset;
@@ -385,6 +480,7 @@ fn after_last_line(ui: &Ui, row: usize, rect: Rect, aligned: &Aligned, metrics: 
 /// adds what it drew to `drawn`.
 fn draw_row(ui: &mut Ui, row: usize, lines: [&[Line]; 2], aligned: &mut Aligned, metrics: &Metrics, caret: &Caret, drawn: &mut Drawn) {
     let side = metrics.side;
+    let row_height = aligned.top(row + 1) - aligned.top(row);
     let Some(&found) = aligned.rows.get(row) else {
         let (_, rect) = ui.allocate_space(vec2(ui.available_width(), metrics.height));
         return after_last_line(ui, row, rect, aligned, metrics, caret, drawn);
@@ -412,12 +508,15 @@ fn draw_row(ui: &mut Ui, row: usize, lines: [&[Line]; 2], aligned: &mut Aligned,
         }
         _ => (0..0, false),
     };
-    let galley =
-        line.map(|line| ui.fonts_mut(|fonts| fonts.layout_job(line_job(&line.text, important, &changed, selected.clone(), colours, font.clone()))));
+    let galley = line.map(|line| {
+        let mut job = line_job(&line.text, important, &changed, selected.clone(), colours, font.clone());
+        job.wrap.max_width = metrics.wrap.unwrap_or(f32::INFINITY);
+        ui.fonts_mut(|fonts| fonts.layout_job(job))
+    });
     let gutter = metrics.gutter();
     // A digit past the text, room for a selected line break.
     let width = ui.available_width().max(gutter + galley.as_ref().map_or(0.0, |g| g.size().x) + digit);
-    let (_, rect) = ui.allocate_space(vec2(width, *height));
+    let (_, rect) = ui.allocate_space(vec2(width, row_height));
     // A gap is padding: no number, no text, no node. Its opposite line says how it differs.
     let (Some(index), Some(galley), Some(line)) = (index, galley, line) else {
         return after_last_line(ui, row, rect, aligned, metrics, caret, drawn);
@@ -445,25 +544,26 @@ fn draw_row(ui: &mut Ui, row: usize, lines: [&[Line]; 2], aligned: &mut Aligned,
     };
     let text_colour = if important { colours.important_text } else { colours.text };
     if let Some(marker) = marker {
-        painter.text(pos2(number_rect.right() + digit * 1.5, rect.center().y), Align2::CENTER_CENTER, marker, font.clone(), text_colour);
+        painter.text(pos2(number_rect.right() + digit * 1.5, number_rect.center().y), Align2::CENTER_CENTER, marker, font.clone(), text_colour);
     }
     // To the row's end, so a blank line's node has a size too.
     let text_rect = Rect::from_min_max(pos2(rect.left() + gutter, rect.top()), rect.max);
     let name = if galley.text().trim().is_empty() { t(BLANK).to_owned() } else { galley.text().to_owned() };
     let text_painter = painter.with_clip_rect(painter.clip_rect().intersect(Rect::everything_right_of(left + gutter)));
-    let origin = pos2(text_rect.left(), rect.center().y - galley.size().y / 2.0);
+    // At the row's top: a wrapped line opposite a longer one leaves padding below it.
+    let origin = pos2(text_rect.left(), rect.top());
     if let Some(p) = caret.pointer.filter(|p| (rect.top()..rect.bottom()).contains(&p.y)) {
         drawn.hit = Some(Pos { line: index, column: galley.cursor_from_pos(p - origin).index.into() });
     }
     drawn.lines.push((index, galley.clone(), origin, line.ending != LineEnding::None));
-    if break_selected {
-        // A selected line break shows as a space's width of selection after the text.
-        let at = origin.x + galley.size().x;
-        text_painter.rect_filled(Rect::from_min_max(pos2(at, rect.top()), pos2(at + digit, rect.bottom())), 0.0, colours.selection);
+    if let Some(last) = galley.rows.last().filter(|_| break_selected) {
+        // A selected line break shows as a space's width of selection after the text's last row.
+        let last = last.rect().translate(origin.to_vec2());
+        text_painter.rect_filled(Rect::from_min_max(last.right_top(), pos2(last.right() + digit, last.bottom())), 0.0, colours.selection);
     }
     let caret_rect = (caret.shown && caret.selection.head.line == index).then(|| {
-        let x = origin.x + galley.pos_from_cursor(CCursor::new(caret.selection.head.column)).min.x;
-        Rect::from_min_max(pos2(x, rect.top()), pos2(x + 2.0, rect.bottom()))
+        let at = galley.pos_from_cursor(CCursor::new(caret.selection.head.column)).translate(origin.to_vec2());
+        Rect::from_min_max(at.min, pos2(at.min.x + 2.0, at.max.y))
     });
     text_painter.galley(origin, galley.clone(), text_colour);
     if caret.whitespace {
