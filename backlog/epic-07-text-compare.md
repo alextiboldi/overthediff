@@ -344,8 +344,9 @@ As a developer, I can show whitespace, wrap long lines, stack the panes and resi
   - AC: a 300-character changed line wraps in both panes, and the line after it starts on the same row in both panes.
 - **E07-S9-T3** — Side-by-Side and Over-Under layouts · size: M · depends: — · flags: `naming-check`
   - AC: switching layout keeps the current line in view, and both panes still scroll together.
-- **E07-S9-T4** — Font size increase, decrease and reset · size: S · depends: —
+- **E07-S9-T4** — Font size increase, decrease and reset · size: S · depends: — · status: done
   - AC: two increases followed by a reset return the text to the configured size.
+  - Implemented: `crates/ui-text-compare/src/font_size.rs` registers the hidden-by-default commands *Increase Font Size*, *Decrease Font Size* and *Reset Font Size* (`text-compare.increase_font_size`, `text-compare.decrease_font_size`, `text-compare.reset_font_size`) through the command registry. They draw both panes' editor text a whole point larger or smaller than the configured size (the theme's monospace size until E22-S3's Editor Font), within limits, and reset returns to that size. The size is the tab's view state. The commands have no menu entry or default shortcut, because egui's window zoom already uses Cmd/Ctrl + plus, minus and 0. `crates/ui-text-compare/tests/it/font_size.rs` checks that two increases followed by a reset return the text to the configured size. The names are checked in `docs/feature-names.md`. Checks: `cargo xtask ci` on macOS after rebasing onto main, and pull-request CI on Linux and macOS. https://github.com/alextiboldi/overthediff/pull/116
 
 ### E07-S10 — Per-side file format and encoding overrides
 **Priority**: Must · **Layer**: 2 · **Size**: M · **Platforms**: All
