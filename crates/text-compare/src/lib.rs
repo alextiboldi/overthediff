@@ -4,6 +4,7 @@
 //!
 //! - [`load`] reads one file from any [`DataSource`]; [`open`] reads a spec as people type it (an
 //!   OS path, `~/…` or `smb://…`) through the local source.
+//! - [`load_as`] and [`open_as`] decode in an encoding override instead ([`decode_as`], E07-S10-T2).
 //! - [`decode`] detects the encoding (a byte-order mark, valid UTF-8, UTF-16 without a mark, or
 //!   the system code page) and splits the lines, keeping each line's ending.
 //! - A [`Pane`] is edited through its [`Selection`]: typing, pasting and deleting replace it, and
@@ -28,7 +29,7 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 pub use bookmarks::{BOOKMARKS, Bookmarks};
-pub use decode::{Decoded, Encoding, LineEndings, Unencodable, WESTERN, decode, encode, system_code_page};
+pub use decode::{Decoded, Encoding, LineEndings, Unencodable, WESTERN, decode, decode_as, encode, system_code_page};
 pub use edit::{History, Pos, Selection};
 pub use filter::{Filter, visible};
 pub use find::{Direction, FindOptions, Finder, Found, Sides};
@@ -90,6 +91,20 @@ pub enum ReadOnly {
 // ponytail: the whole file is read into memory on the caller's thread; a background load with
 // progress comes when large files need one.
 pub fn load(source: &dyn DataSource, path: &Path, spec: &str, formats: &Registry, code_page: u16) -> Result<Pane, SourceError> {
+    load_as(source, path, spec, formats, code_page, None)
+}
+
+/// [`load`], decoded in `encoding` ([`decode_as`]) when one is given instead of detected: an
+/// encoding override (E07-S10-T2). A file that doesn't read without loss in it is
+/// [`ReadOnly::Encoding`], as with a detected one.
+pub fn load_as(
+    source: &dyn DataSource,
+    path: &Path,
+    spec: &str,
+    formats: &Registry,
+    code_page: u16,
+    encoding: Option<Encoding>,
+) -> Result<Pane, SourceError> {
     let item = source.stat(path, Links::Follow)?;
     if let Some(error) = item.error {
         return Err(error);
@@ -102,7 +117,7 @@ pub fn load(source: &dyn DataSource, path: &Path, spec: &str, formats: &Registry
     let case = if source.capabilities().case_sensitive { Case::Sensitive } else { Case::Insensitive };
     let name = path.file_name().map(|name| name.to_string_lossy()).unwrap_or_default();
     let format = formats.resolve(&name, case).unwrap_or_else(|| formats.fallback(&bytes)).name.clone();
-    let Decoded { encoding, endings, lines } = decode(&bytes, code_page);
+    let Decoded { encoding, endings, lines } = encoding.map_or_else(|| decode(&bytes, code_page), |encoding| decode_as(&bytes, encoding));
     // What decoded with a substitute (U+FFFD) or a second spelling wouldn't save as it was.
     let lossless = encode(&lines, encoding).is_ok_and(|encoded| encoded == bytes);
     // Encoding wins: it is the one reason Save File As can't lift, and save checks it.
@@ -133,8 +148,13 @@ pub fn load(source: &dyn DataSource, path: &Path, spec: &str, formats: &Registry
 /// Reads the file `spec` names on this machine (an OS path, `~/…` or `smb://…` for a mounted
 /// share), in the system code page when it isn't Unicode.
 pub fn open(spec: &str, formats: &Registry) -> Result<Pane, SourceError> {
+    open_as(spec, formats, None)
+}
+
+/// [`open`], decoded in `encoding` when one is given ([`load_as`]).
+pub fn open_as(spec: &str, formats: &Registry, encoding: Option<Encoding>) -> Result<Pane, SourceError> {
     let (source, name) = local(spec)?;
-    load(&source, &name, spec, formats, system_code_page())
+    load_as(&source, &name, spec, formats, system_code_page(), encoding)
 }
 
 /// The local source of the folder `spec` names a file in, and the file's name there.

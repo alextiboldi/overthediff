@@ -1,8 +1,8 @@
-//! The decoder, and the encoder on what it decodes, never panic or hang on damaged bytes, nor
-//! does finding damaged text (AGENTS.md hostile-input sweeps).
+//! The decoder, with and without an override, and the encoder on what it decodes, never panic or
+//! hang on damaged bytes, nor does finding damaged text (AGENTS.md hostile-input sweeps).
 
 use craft_testkit::hostile::{HammerConfig, hammer};
-use otd_text_compare::{Direction, FindOptions, Finder, Line, LineEnding, Pos, Selection, Side, Sides, decode, encode};
+use otd_text_compare::{Direction, Encoding, FindOptions, Finder, Line, LineEnding, Pos, Selection, Side, Sides, decode, decode_as, encode};
 
 #[test]
 fn decoding_never_panics_or_hangs_on_truncated_or_damaged_bytes() {
@@ -17,6 +17,13 @@ fn decoding_never_panics_or_hangs_on_truncated_or_damaged_bytes() {
         hammer(&HammerConfig::new(name, 2_000), &seed, |data| {
             for page in [1252, 932] {
                 let decoded = decode(data, page);
+                let _ = encode(&decoded.lines, decoded.encoding);
+            }
+            // An override decodes whatever it is given (E07-S10-T2).
+            for encoding in
+                [Encoding::Utf8 { bom: false }, Encoding::Utf16Le { bom: false }, Encoding::Utf16Be { bom: false }, Encoding::CodePage(949)]
+            {
+                let decoded = decode_as(data, encoding);
                 let _ = encode(&decoded.lines, decoded.encoding);
             }
         });

@@ -1,6 +1,6 @@
 //! Encoding and line-ending detection (E07-S1-T3): a byte-order mark first, then valid UTF-8, then
 //! UTF-16 without a mark, and otherwise the system code page. [`encode`] is its inverse, for saving
-//! (E07-S1-T6).
+//! (E07-S1-T6). [`decode_as`] skips detection, for an encoding override (E07-S10-T2).
 
 use std::collections::HashMap;
 
@@ -88,6 +88,36 @@ fn detect(bytes: &[u8], code_page: u16) -> (Encoding, String) {
     if let Some(text) = utf8 {
         return (Encoding::Utf8 { bom: false }, text.to_owned());
     }
+    code_page_text(bytes, code_page)
+}
+
+/// Decodes `bytes` in `encoding`, whatever they look like: an encoding override (E07-S10). A
+/// byte-order mark is skipped and recorded when it is `encoding`'s own, and read as text otherwise;
+/// `encoding`'s own `bom` is ignored. A code page falls back as in [`decode`]. Never fails: bytes
+/// that don't decode become U+FFFD.
+pub fn decode_as(bytes: &[u8], encoding: Encoding) -> Decoded {
+    let (encoding, text) = match encoding {
+        Encoding::Utf8 { .. } => match bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]) {
+            Some(rest) => (Encoding::Utf8 { bom: true }, String::from_utf8_lossy(rest).into_owned()),
+            None => (Encoding::Utf8 { bom: false }, String::from_utf8_lossy(bytes).into_owned()),
+        },
+        Encoding::Utf16Le { .. } => match bytes.strip_prefix(&[0xFF, 0xFE]) {
+            Some(rest) => (Encoding::Utf16Le { bom: true }, utf16_lossy(rest, u16::from_le_bytes)),
+            None => (Encoding::Utf16Le { bom: false }, utf16_lossy(bytes, u16::from_le_bytes)),
+        },
+        Encoding::Utf16Be { .. } => match bytes.strip_prefix(&[0xFE, 0xFF]) {
+            Some(rest) => (Encoding::Utf16Be { bom: true }, utf16_lossy(rest, u16::from_be_bytes)),
+            None => (Encoding::Utf16Be { bom: false }, utf16_lossy(bytes, u16::from_be_bytes)),
+        },
+        Encoding::CodePage(page) => code_page_text(bytes, page),
+    };
+    let lines = split(&text);
+    Decoded { encoding, endings: endings(&lines), lines }
+}
+
+/// `bytes` in `code_page`, or in [`WESTERN`] when it is neither a single-byte Windows code page nor
+/// an East Asian multibyte one.
+fn code_page_text(bytes: &[u8], code_page: u16) -> (Encoding, String) {
     if let Some(multibyte) = multibyte_encoding_name(code_page).and_then(|name| encoding_rs::Encoding::for_label(name.as_bytes())) {
         return (Encoding::CodePage(code_page), multibyte.decode_without_bom_handling(bytes).0.into_owned());
     }
