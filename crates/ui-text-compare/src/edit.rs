@@ -18,13 +18,14 @@ use egui::os::OperatingSystem;
 use egui::output::IMEOutput;
 use egui::text_edit::TextEditState;
 use egui::{
-    Event, EventFilter, Galley, IMEPurpose, Id, ImeEvent, Key as EguiKey, Modifiers, Pos2, Rect, Sense, StrokeKind, TextStyle, Ui, UiBuilder,
+    Event, EventFilter, Galley, IMEPurpose, Id, ImeEvent, Key as EguiKey, Modifiers, Pos2, Rect, Sense, Stroke, StrokeKind, TextStyle, Ui, UiBuilder,
     ViewportCommand, WidgetInfo, pos2, vec2,
 };
 use otd_core::command::{Args, Command, CommandError, Key, Kind, Mods, Outcome, Param, Platform, State};
 use otd_core::i18n::t;
 use otd_text_compare::{Pane, Pos, Selection};
 use otd_ui::Shell;
+use otd_ui::colour::{BACKGROUND, TEXT, colour};
 
 use crate::aligned::{self, Caret};
 use crate::{SIDES, TEXT_COMPARE, TextCompareView};
@@ -40,7 +41,7 @@ pub const SELECT_ALL: &str = "Select All";
 pub const INSERT_TEXT: &str = "Insert Text";
 const EDIT: &[&str] = &["Edit"];
 const NOT_EDITABLE: &str = "The chosen pane has no file loaded, or is read-only.";
-const TEXT: &[Param] = &[Param::required("text", Kind::Text)];
+const TEXT_PARAM: &[Param] = &[Param::required("text", Kind::Text)];
 
 /// The Edit menu's commands, with the platforms' shortcuts (Q24). Delete has none: the Delete key
 /// is the focused editor's own. Only the clipboard's need the window.
@@ -84,7 +85,8 @@ pub(crate) fn commands() -> Vec<Command<Shell>> {
     ]
     .into_iter()
     .map(|command| command.menu(EDIT))
-    .chain([Command::typed("text-compare.insert_text", INSERT_TEXT, TEXT, insert_text).state(|shell: &Shell| when(shell, TextCompareView::can_edit))])
+    .chain([Command::typed("text-compare.insert_text", INSERT_TEXT, TEXT_PARAM, insert_text)
+        .state(|shell: &Shell| when(shell, TextCompareView::can_edit))])
     .map(|command| command.views(&[TEXT_COMPARE]))
     .collect()
 }
@@ -306,14 +308,17 @@ impl TextCompareView {
 /// pane's `rect`.
 // ponytail: drawn over the characters after the caret rather than pushing them aside; layout the
 // line with it if users find that confusing.
+// ponytail: painted only; the input method's own window speaks its candidates. Add the
+// composition to the text runs if screen-reader users need it there.
 fn preedit(ui: &Ui, text: &str, caret: Rect, rect: Rect) {
     let painter = ui.painter().with_clip_rect(rect);
-    let galley = painter.layout_no_wrap(text.to_owned(), TextStyle::Monospace.resolve(ui.style()), ui.visuals().text_color());
+    let (text_colour, background) = (colour(ui.ctx(), &TEXT), colour(ui.ctx(), &BACKGROUND));
+    let galley = painter.layout_no_wrap(text.to_owned(), TextStyle::Monospace.resolve(ui.style()), text_colour);
     let at = pos2(caret.left(), caret.center().y - galley.size().y / 2.0);
     let area = Rect::from_min_size(at, galley.size());
-    painter.rect_filled(area, 0.0, ui.visuals().extreme_bg_color);
-    painter.galley(at, galley, ui.visuals().text_color());
-    painter.hline(area.x_range(), area.bottom(), ui.visuals().widgets.active.fg_stroke);
+    painter.rect_filled(area, 0.0, background);
+    painter.galley(at, galley, text_colour);
+    painter.hline(area.x_range(), area.bottom(), Stroke::new(1.0, text_colour));
 }
 
 /// AccessKit's character indices in a text run are `u8`, as egui's text widgets keep them.

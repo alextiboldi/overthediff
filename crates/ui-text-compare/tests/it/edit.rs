@@ -378,7 +378,7 @@ fn an_input_methods_composition_shows_until_it_commits_into_the_focused_pane() {
 }
 
 #[test]
-fn recompare_files_keeps_the_edits_and_empties_the_undo_history_and_the_status_bar_shows_the_cursor() {
+fn recompare_files_empties_the_undo_history_that_swap_sides_keeps_and_the_status_bar_shows_the_cursor() {
     let folder = tempfile::tempdir().unwrap();
     let mut harness = harness(&folder, "a\nbcd\n", "a\nbcd\n");
     tab_to_editor(&mut harness, LEFT);
@@ -390,8 +390,43 @@ fn recompare_files_keeps_the_edits_and_empties_the_undo_history_and_the_status_b
     assert!(cursor.as_deref().is_some_and(|at| at.contains('2') && at.contains('5')), "line 2, column 5, counted from 1: {cursor:?}");
     assert!(view(&harness).can_undo());
 
+    // Swap Sides moves the edited pane, its undo history and all.
+    for _ in 0..2 {
+        assert!(harness.state_mut().run("text-compare.swap_sides"));
+        harness.run();
+    }
+    assert!(view(&harness).can_undo(), "Swap Sides keeps the history");
     assert!(harness.state_mut().run("text-compare.recompare_files"));
     harness.run();
     assert_eq!(left_lines(&harness), ["a", "bcdx"], "the edit stays");
     assert!(!view(&harness).can_undo(), "but can't be undone");
+}
+
+/// The focused editor's published selection, as text: reading it fails if an end names a run that
+/// isn't there.
+fn published(harness: &Harness<'_, Shell>) -> Option<String> {
+    harness.get_by(|node| node.is_focused()).accesskit_node().text_selection().map(|range| range.text())
+}
+
+#[test]
+fn the_published_selection_names_drawn_text_wherever_the_caret_stands() {
+    let folder = tempfile::tempdir().unwrap();
+    let long = "x".repeat(300);
+    let body: String = (1..300).map(|n| format!("line {n}\n")).collect();
+    let mut harness = harness(&folder, &format!("a\n\n{long}\n{body}"), "b\n");
+    tab_to_editor(&mut harness, LEFT);
+    key(&mut harness, Modifiers::NONE, Key::ArrowDown);
+    assert_eq!(published(&harness).as_deref(), Some(""), "on a blank line");
+    key(&mut harness, Modifiers::NONE, Key::ArrowDown);
+    key(&mut harness, Modifiers::NONE, Key::End);
+    key(&mut harness, Modifiers::SHIFT, Key::ArrowLeft);
+    assert_eq!(published(&harness).as_deref(), Some("x"), "past the first 255 characters of a long line");
+    key(&mut harness, Modifiers::COMMAND, Key::End);
+    assert_eq!(published(&harness).as_deref(), Some(""), "after the final line break");
+    key(&mut harness, Modifiers::COMMAND, Key::A);
+    let all = published(&harness).unwrap_or_default();
+    assert!(all.ends_with("line 299\n") && !all.starts_with('a'), "from the first drawn line, with the top scrolled away: {all:?}");
+    key(&mut harness, Modifiers::NONE, Key::Delete);
+    assert!(view(&harness).pane(0).unwrap().lines.is_empty());
+    assert_eq!(published(&harness), None, "an empty pane has no text to select in");
 }

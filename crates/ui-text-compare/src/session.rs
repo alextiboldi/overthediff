@@ -183,6 +183,11 @@ impl TextCompareView {
         for pane in self.panes.iter_mut().flatten().flatten() {
             pane.history.clear();
         }
+        self.compare_as_they_stand();
+    }
+
+    /// Compares the panes as they stand, with each pane's undo history kept.
+    fn compare_as_they_stand(&mut self) {
         // This comparison completes, which lifts a failed or cancelled one's read-only panes.
         self.comparison = None;
         let old = std::mem::replace(&mut self.aligned, Aligned::new(None, None));
@@ -204,7 +209,8 @@ impl TextCompareView {
         self.panes.swap(0, 1);
         self.edits.swap(0, 1);
         self.synced.swap(0, 1);
-        self.recompare_files();
+        // Each pane's undo history goes with it.
+        self.compare_as_they_stand();
     }
 
     /// The status bar's fields: the overall result, the cursor's line and column in the pane that
