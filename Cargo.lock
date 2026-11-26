@@ -2706,6 +2706,7 @@ dependencies = [
  "otd-settings",
  "otd-source",
  "otd-ui",
+ "otd-ui-folder-compare",
  "otd-ui-text-compare",
  "tempfile",
 ]
@@ -2742,6 +2743,7 @@ dependencies = [
  "craft-ipc",
  "craft-testkit",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]
@@ -2817,6 +2819,21 @@ dependencies = [
  "otd-settings",
  "raw-window-handle",
  "serde",
+ "tempfile",
+]
+
+[[package]]
+name = "otd-ui-folder-compare"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "egui",
+ "egui_kittest",
+ "otd-core",
+ "otd-folder-engine",
+ "otd-launch",
+ "otd-source",
+ "otd-ui",
  "tempfile",
 ]
 

@@ -202,6 +202,24 @@ fn a_switch_handler_claims_the_whole_command_line_before_the_bare_paths_handler(
 }
 
 #[test]
+fn two_folders_go_to_the_folders_handler_and_a_folder_with_a_file_to_the_bare_paths_handler() {
+    let dir = tempfile::tempdir().unwrap();
+    for name in ["a", "b"] {
+        std::fs::create_dir(dir.path().join(name)).unwrap();
+    }
+    std::fs::write(dir.path().join("f.txt"), "").unwrap();
+    // Registered after the bare-paths handler, so registration order can't be what picks it.
+    let mut registry = registry();
+    registry.register(handler("folders", Pattern::Folders, Mode::ForwardAndExit));
+    let claimed = |names: &[&str]| {
+        let args: Vec<String> = names.iter().map(|name| dir.path().join(name).to_string_lossy().into_owned()).collect();
+        registry.claim(&args).ok().flatten().map(|handler| handler.id())
+    };
+    assert_eq!(claimed(&["a", "b"]), Some("folders"));
+    assert_eq!(claimed(&["a", "f.txt"]), Some("files"));
+}
+
+#[test]
 fn a_run_here_handler_exits_with_its_own_code_and_sends_nothing_to_the_running_instance() {
     let dir = TestDir::new();
     let instance = dir.start();

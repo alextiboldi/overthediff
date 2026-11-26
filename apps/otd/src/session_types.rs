@@ -4,5 +4,5 @@
 use otd_ui::SessionType;
 
 pub fn session_types() -> Vec<SessionType> {
-    vec![otd_ui_text_compare::SESSION_TYPE]
+    vec![otd_ui_text_compare::SESSION_TYPE, otd_ui_folder_compare::session_type()]
 }

@@ -16,6 +16,7 @@ otd-launch = { path = "../../crates/launch" }
 otd-settings = { path = "../../crates/settings" }
 otd-source = { path = "../../crates/source" }
 otd-ui = { path = "../../crates/ui" }
+otd-ui-folder-compare = { path = "../../crates/ui-folder-compare" }
 otd-ui-text-compare = { path = "../../crates/ui-text-compare" }
 craft-menu = { workspace = true }
 craft-quit = { workspace = true, features = ["egui"] }

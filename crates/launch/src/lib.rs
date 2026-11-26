@@ -61,6 +61,12 @@ pub enum Pattern {
     Switch(&'static str),
     /// Arguments that are not switches. Claims the command line when no switch matched.
     BarePaths,
+    /// One or two arguments that are not switches, each an existing folder, such as two folders to
+    /// compare. Claims the command line before [`Pattern::BarePaths`], whatever the registration
+    /// order, so a feature that opens files and one that opens folders both take bare paths.
+    /// ponytail: a folder is what `Path::is_dir` finds from the launching process's working folder;
+    /// a URL or a path inside an archive goes to the bare-paths handler.
+    Folders,
 }
 
 /// What a launch asks for, whichever handler claims its arguments.
@@ -148,8 +154,9 @@ impl<S: ?Sized> Registry<S> {
     }
 
     /// The handler that claims `args`: the handler of the first argument, in command-line order,
-    /// that names a registered switch (the earlier registered one if two share that name), else the
-    /// bare-paths handler when no argument is a switch. `Ok(None)` for no arguments, and
+    /// that names a registered switch (the earlier registered one if two share that name), else,
+    /// when no argument is a switch, the folders handler for one or two existing folders, or the
+    /// bare-paths handler. `Ok(None)` for no arguments, and
     /// `Err(argument)` for an argument nobody claims.
     pub fn claim<'a>(&self, args: &'a [String]) -> Result<Option<&dyn Handler<S>>, &'a str> {
         if args.is_empty() {
@@ -162,7 +169,9 @@ impl<S: ?Sized> Registry<S> {
         if let Some(unknown) = args.iter().find(|arg| switch_name(arg).is_some()) {
             return Err(unknown);
         }
-        match self.handlers.iter().find(|h| h.pattern() == Pattern::BarePaths) {
+        let pattern = |pattern: Pattern| self.handlers.iter().find(move |h| h.pattern() == pattern);
+        let folders = args.len() <= 2 && args.iter().all(|arg| Path::new(arg).is_dir());
+        match pattern(Pattern::Folders).filter(|_| folders).or_else(|| pattern(Pattern::BarePaths)) {
             Some(handler) => Ok(Some(handler.as_ref())),
             None => Err(args.first().map_or("", String::as_str)),
         }

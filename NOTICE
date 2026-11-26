@@ -36,6 +36,9 @@ The folder engine's CRC content test (otd-folder-engine) computes CRC-32 with cr
 The app's headless quick compare (`-qc`) runs the folder engine's tests on files read through the
 local data source, so the otd executable includes both and the crates above; it adds no others.
 
+The Folder Compare view (otd-ui-folder-compare) shows modified times in the local time zone with
+chrono and its `clock` dependencies, as Text Compare does (below); it adds no other crates.
+
 The launch hand-off (otd-launch) adds craft-ipc (MIT OR Apache-2.0) and its dependencies, among
 them interprocess (0BSD OR Apache-2.0), recvmsg and doctest-file (0BSD), and generic-array and zmij
 (MIT). The rest offer MIT OR Apache-2.0.
