@@ -231,8 +231,11 @@ mod tests {
         let dir = files(&[("a", b"x"), ("locked", b"x")]);
         let locked = dir.path().join("locked");
         std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).expect("lock the test file");
-        // Root reads it anyway; there is nothing to test then.
-        if std::fs::File::open(&locked).is_err() {
+        if std::fs::File::open(&locked).is_ok() {
+            // Straight to stderr, past the test harness's capture, so a passing run still lists it.
+            use std::io::Write as _;
+            let _ = writeln!(std::io::stderr(), "skipped the unreadable-file case: this account reads files whatever their permissions");
+        } else {
             assert_eq!(code("size", "a", "locked", dir.path()), RunHere::Exit(EXIT_ERROR));
         }
         std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o600)).expect("unlock the test file");

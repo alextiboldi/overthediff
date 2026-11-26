@@ -21,5 +21,6 @@ craft-quit = { workspace = true, features = ["egui"] }
 eframe = { workspace = true, features = ["wgpu", "accesskit", "wayland", "x11", "default_fonts"] }
 
 [dev-dependencies]
+craft-testkit = { workspace = true }
 egui_kittest = { workspace = true }
 tempfile = "3"

@@ -2640,6 +2640,7 @@ version = "0.1.0"
 dependencies = [
  "craft-menu",
  "craft-quit",
+ "craft-testkit",
  "eframe",
  "egui_kittest",
  "otd-core",

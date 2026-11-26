@@ -1,38 +1,21 @@
 //! Headless quick compare (E11-S2) through the real `otd` executable: it exits by itself with the
 //! comparison's code, so it never waits on a window.
 
-use std::io::Read as _;
+use std::path::Path;
 use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+
+use craft_testkit::with_deadline;
 
 const PREFIX: &str = if cfg!(windows) { "/" } else { "-" };
 
 /// Runs `otd <prefix>qc=<test> <left> <right>` in `dir` and returns its exit code and standard
 /// error. A run that opened a window would block, so one still running after a minute fails.
-fn qc(test: &str, left: &str, right: &str, dir: &std::path::Path) -> (Option<i32>, String) {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_otd"))
-        .args([&format!("{PREFIX}qc={test}"), left, right])
-        .current_dir(dir)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("start otd");
-    // ponytail: polls try_wait; the deadline only turns a hang into a failure.
-    let deadline = Instant::now() + Duration::from_secs(60);
-    let status = loop {
-        if let Some(status) = child.try_wait().expect("wait for otd") {
-            break status;
-        }
-        if Instant::now() > deadline {
-            let _ = child.kill();
-            panic!("otd {PREFIX}qc={test} didn't exit by itself");
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    };
-    let mut stderr = String::new();
-    child.stderr.take().expect("piped").read_to_string(&mut stderr).expect("read standard error");
-    (status.code(), stderr)
+fn qc(test: &str, left: &str, right: &str, dir: &Path) -> (Option<i32>, String) {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_otd"));
+    command.args([&format!("{PREFIX}qc={test}"), left, right]).current_dir(dir).stdin(Stdio::null());
+    let output = with_deadline(Duration::from_secs(60), "otd -qc exits by itself", move || command.output().expect("run otd"));
+    (output.status.code(), String::from_utf8_lossy(&output.stderr).into_owned())
 }
 
 #[test]
