@@ -24,6 +24,8 @@
 //! `go_to.rs` holds *Search > Go To* and the hidden *Go To Line* (E07-S6-T1).
 //!
 //! `bookmarks.rs` holds the Search menu's bookmarks 0–9 and their gutter marks (E07-S6-T2).
+//!
+//! `layout.rs` holds the View menu's Side-by-Side and Top and Bottom layouts (E07-S9-T3).
 
 mod read_only;
 pub mod session;
@@ -36,6 +38,7 @@ mod bookmarks;
 mod edit;
 mod font_size;
 mod go_to;
+mod layout;
 mod open;
 mod save;
 
@@ -52,6 +55,7 @@ pub use bookmarks::{BOOKMARK, CLEAR_BOOKMARKS, GO_TO_BOOKMARK, TOGGLE_BOOKMARK};
 pub use edit::{COPY, CUT, DELETE, INSERT_TEXT, PASTE, REDO, SELECT_ALL, UNDO};
 pub use font_size::{DECREASE_FONT_SIZE, INCREASE_FONT_SIZE, RESET_FONT_SIZE};
 pub use go_to::{COLUMN, GO_TO, GO_TO_LINE, LINE, NOT_A_NUMBER};
+pub use layout::{Layout, SIDE_BY_SIDE, TOP_AND_BOTTOM};
 pub use open::{OPEN_FILE, OPEN_FILE_ON_FILE_SYSTEM, OpenFiles, commands};
 
 pub use read_only::{COMPARISON_CANCELLED, COMPARISON_FAILED, ENCODING_LOSSY, FILE_READ_ONLY, LOCATION};
@@ -148,6 +152,8 @@ pub struct TextCompareView {
     go_to: Option<go_to::GoToDialog>,
     /// What the last bookmark toggle or clear did, announced (E07-S6-T2).
     bookmark_said: Option<String>,
+    /// Side by side or over and under (`layout.rs`).
+    layout: Layout,
 }
 
 impl Drop for TextCompareView {
@@ -198,6 +204,7 @@ impl TextCompareView {
             font_step: 0,
             go_to: None,
             bookmark_said: None,
+            layout: Layout::default(),
         }
     }
 
@@ -326,9 +333,14 @@ impl View for TextCompareView {
 
     fn ui(&mut self, ui: &mut Ui) {
         self.reload_if_changed();
-        ui.columns(SIDES.len(), |columns| {
-            for (side, column) in columns.iter_mut().enumerate() {
-                column.push_id(side, |ui| {
+        // Each pane's header and body keep their ids in either layout (`layout.rs`), so switching
+        // keeps their scroll offset, caret and focus.
+        let slots = layout::slots(self.layout, ui.available_rect_before_wrap(), ui.spacing().item_spacing.x);
+        let mut headers = [0.0; 2];
+        for (side, header) in headers.iter_mut().enumerate() {
+            let builder = UiBuilder::new().id_salt(("header", side)).max_rect(slots[side]);
+            *header = ui
+                .scope_builder(builder, |ui| {
                     // The side's caption, so the two headers' identical facts read apart; it also
                     // names the path edit.
                     let unsaved = TextCompareView::unsaved(self, side);
@@ -344,26 +356,26 @@ impl View for TextCompareView {
                     if clicked(ui) {
                         self.chosen = side;
                     }
+                })
+                .response
+                .rect
+                .height();
+        }
+        // Each body is named by its side's caption, so a line and its counterpart read apart.
+        let bodies = layout::bodies(self.layout, slots, headers, ui);
+        let mut editing = false;
+        for (side, rect) in bodies.into_iter().enumerate() {
+            if self.pane(side).is_some() {
+                let body = UiBuilder::new().id_salt(side).max_rect(rect).accessibility_role(Role::Group).accessibility_label(t(SIDES[side]));
+                ui.scope_builder(body, |ui| {
+                    font_size::apply(ui, self.font_step);
+                    editing |= self.body(ui, side);
+                    if clicked(ui) {
+                        self.chosen = side;
+                    }
                 });
             }
-        });
-        // The bodies start below both headers, at one height, so their rows line up. Each is named
-        // by its side's caption, so a line and its counterpart read apart.
-        let mut editing = false;
-        ui.columns(SIDES.len(), |columns| {
-            for (side, column) in columns.iter_mut().enumerate() {
-                if self.pane(side).is_some() {
-                    let body = UiBuilder::new().id_salt(side).accessibility_role(Role::Group).accessibility_label(t(SIDES[side]));
-                    column.scope_builder(body, |ui| {
-                        font_size::apply(ui, self.font_step);
-                        editing |= self.body(ui, side);
-                        if clicked(ui) {
-                            self.chosen = side;
-                        }
-                    });
-                }
-            }
-        });
+        }
         self.field_focus = ui.ctx().text_edit_focused() && !editing;
         self.info_ui(ui);
         self.save_as_ui(ui);
