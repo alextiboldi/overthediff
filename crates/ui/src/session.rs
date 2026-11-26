@@ -250,15 +250,23 @@ fn labelled(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui) -> Response) -> 
 /// single-line edits, and Path values path edits whose recent paths are the setting's own. Returns
 /// the editing control's response.
 pub fn edit_value(ui: &mut Ui, setting: &Setting, value: &mut Value) -> Response {
+    let field = format!("{}/{}/{}", setting.session_type, setting.tab, setting.id);
+    edit(ui, &field, setting.id, setting.label, setting.choices, value)
+}
+
+/// [`edit_value`] for a value with the id `id`, the English label `label` and, for a choice, the
+/// English `choices`: a Session Settings setting or a program option. A Path value keeps its
+/// recent paths under `field`.
+pub(crate) fn edit(ui: &mut Ui, field: &str, id: &str, label: &str, choices: &[&str], value: &mut Value) -> Response {
     match value {
-        Value::Bool(on) => ui.checkbox(on, t(setting.label)),
-        Value::Number(number) => labelled(ui, t(setting.label), |ui| ui.add(egui::DragValue::new(number))),
+        Value::Bool(on) => ui.checkbox(on, t(label)),
+        Value::Number(number) => labelled(ui, t(label), |ui| ui.add(egui::DragValue::new(number))),
         Value::Choice(choice) => {
             let mut chosen = None;
-            let response = egui::ComboBox::new(setting.id, t(setting.label))
+            let response = egui::ComboBox::new(id, t(label))
                 .selected_text(t(choice))
                 .show_ui(ui, |ui| {
-                    for option in setting.choices {
+                    for option in choices {
                         if ui.selectable_label(choice == option, t(option)).clicked() {
                             chosen = Some(*option);
                         }
@@ -270,16 +278,13 @@ pub fn edit_value(ui: &mut Ui, setting: &Setting, value: &mut Value) -> Response
             }
             response
         }
-        Value::Text(text) => labelled(ui, t(setting.label), |ui| ui.add(TextEdit::singleline(text))),
-        Value::Path(path) => {
-            let field = format!("{}/{}/{}", setting.session_type, setting.tab, setting.id);
-            labelled(ui, t(setting.label), |ui| PathEdit::new(&field, path, Browse::Both).show(ui))
-        }
-        Value::Colour(rgba) => labelled(ui, t(setting.label), |ui| {
+        Value::Text(text) => labelled(ui, t(label), |ui| ui.add(TextEdit::singleline(text))),
+        Value::Path(path) => labelled(ui, t(label), |ui| PathEdit::new(field, path, Browse::Both).show(ui)),
+        Value::Colour(rgba) => labelled(ui, t(label), |ui| {
             let mut colour = Color32::from_rgba_unmultiplied(rgba[0], rgba[1], rgba[2], rgba[3]);
             let response = ui.color_edit_button_srgba(&mut colour);
             // egui names the button "Color"; the setting's label names it instead.
-            ui.ctx().accesskit_node_builder(response.id, |node| node.set_label(t(setting.label)));
+            ui.ctx().accesskit_node_builder(response.id, |node| node.set_label(t(label)));
             // Only on a change: the round trip through premultiplied alpha can round.
             if response.changed() {
                 *rgba = colour.to_srgba_unmultiplied();

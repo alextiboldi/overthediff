@@ -17,7 +17,7 @@ use otd_core::command::{Chord, Command, Key, Mods, Placement, Platform, Views};
 
 use otd_core::i18n::t;
 
-use crate::{NEW_TAB, Shell};
+use crate::{NEW_TAB, OPTIONS, Shell};
 
 /// The application's name: the macOS application menu's title.
 pub const APP_NAME: &str = "OverTheDiff";
@@ -42,8 +42,8 @@ const MENUS: [(&str, MenuRole); 6] = [
     ("Help", MenuRole::Help),
 ];
 
-/// The shell's own commands: the tab commands of the keymap conventions (Q24 in E01-S1). They act
-/// on the window's tabs, so they need the window.
+/// The shell's own commands: the tab commands of the keymap conventions (Q24 in E01-S1) and
+/// Options. They act on the window, so they need it.
 pub(crate) fn shell_commands() -> Vec<Command<Shell>> {
     const MAC: &[Platform] = &[Platform::Mac];
     let several_tabs = |shell: &Shell| otd_core::command::State::enabled(shell.tabs.len() > 1);
@@ -67,6 +67,8 @@ pub(crate) fn shell_commands() -> Vec<Command<Shell>> {
         // Q24: Ctrl+Q on Linux; Cmd+Q is the macOS application menu's (craft-menu gives the quit
         // item it), and Windows has none: Alt+F4 closes the window, which exits the same way.
         Command::new(EXIT_ID, EXIT, Shell::request_exit).menu(&["Session"]).shortcut_on(&[Platform::Linux], Mods::CMD, Key::Q),
+        // Q24: Cmd+, in the macOS application menu; no default elsewhere.
+        Command::new("otd.options", OPTIONS, Shell::open_options).application_menu(&["Tools"]).shortcut_on(MAC, Mods::CMD, Key::Comma),
     ];
     commands.into_iter().map(Command::needs_window).collect()
 }
@@ -135,10 +137,10 @@ impl Shell {
     }
 
     /// Runs the command `id`, with no arguments, if it applies to the active view type and is
-    /// enabled, and neither the Session Settings dialog nor an unsaved-changes prompt is open (a
-    /// native menu click reaches here past them). Returns whether it ran without an error.
+    /// enabled, and no shell dialog (Session Settings, Options or an unsaved-changes prompt) is open
+    /// (a native menu click reaches here past them). Returns whether it ran without an error.
     pub fn run(&mut self, id: &str) -> bool {
-        if self.dialog.is_some() || self.prompt.is_some() {
+        if self.dialog_open() {
             return false;
         }
         let view = self.view_type();
@@ -167,7 +169,11 @@ impl Shell {
         let mut tops: Vec<&str> = mac.then_some(APP_NAME).into_iter().chain(MENUS.iter().map(|(title, _)| t(title))).collect();
         let mut rows = Vec::new();
         let view = self.view_type();
-        for command in self.commands.iter().filter(|c| c.applies_to(view)) {
+        let mut commands: Vec<_> = self.commands.iter().filter(|c| c.applies_to(view)).collect();
+        // Application-level commands go last in their menu, where Windows and Linux apps put
+        // Tools > Options.
+        commands.sort_by_key(|c| matches!(c.placement, Placement::Application(_)));
+        for command in commands {
             let path: &[&str] = match command.placement {
                 Placement::Hidden => continue,
                 Placement::Application(_) if mac => &[APP_NAME],
@@ -206,9 +212,9 @@ impl Shell {
         ctx.add_plugin(CtrlTab);
         let ctrl_tabs = ctx.data_mut(|data| data.remove_temp::<Vec<Modifiers>>(egui::Id::unique(CTRL_TAB))).unwrap_or_default();
         // A modal dialog (last frame's top modal layer) keeps the window behind it out of reach, and so
-        // does the Session Settings dialog or an unsaved-changes prompt from the frame it opens.
-        // Ctrl+Tab presses are dropped, not kept for after it.
-        if self.dialog.is_some() || self.prompt.is_some() || ctx.memory(|memory| memory.top_modal_layer().is_some()) {
+        // does a shell dialog (Session Settings, Options or an unsaved-changes prompt) from the frame
+        // it opens. Ctrl+Tab presses are dropped, not kept for after it.
+        if self.dialog_open() || ctx.memory(|memory| memory.top_modal_layer().is_some()) {
             return;
         }
         craft_menu::bar::leave_for_shortcut(&ctx);

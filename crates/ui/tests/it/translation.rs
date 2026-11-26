@@ -1,7 +1,7 @@
 //! The shell's text goes through the translation lookup (E01-S1-T13): a caption with a test
 //! translation shows translated, one without shows its English key, and in the pseudo locale,
 //! which marks every looked-up string `⟦…⟧`, every text in the window and in the Session Settings
-//! dialog is one marked string.
+//! and Options dialogs is one marked string.
 
 use std::time::Duration;
 
@@ -11,8 +11,9 @@ use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use otd_core::i18n::{Embedded, I18n, Lang, embedded, set_language, t};
 use otd_ui::command::Command;
 use otd_ui::{
-    CANCEL, CANT_SAVE, CLOSE_TAB, DESCRIPTION, DONT_SAVE, Field, HOME, INPUTS, INSERT, LOAD_TIME, NEW_TAB, NO_SESSION_TYPES, OK, SAVE, SAVE_CHANGES,
-    SCOPE, SESSION_SETTINGS, Session, SessionType, Setting, Shell, Status, THIS_VIEW_ONLY, UNSAVED_LOST, Value, View,
+    APPLY, CANCEL, CANT_SAVE, CHOOSE_A_PAGE, CLOSE_TAB, DESCRIPTION, DONT_SAVE, Field, HOME, INPUTS, INSERT, LOAD_TIME, NEW_TAB, NO_SESSION_TYPES,
+    OK, OPTION_PAGES, OPTIONS, OptionSpec, SAVE, SAVE_CHANGES, SCOPE, SESSION_SETTINGS, Session, SessionType, Setting, Shell, Status, THIS_VIEW_ONLY,
+    UNSAVED_LOST, Value, View,
 };
 
 const TRANSLATED: &str = "Alpha Compare";
@@ -22,6 +23,9 @@ const TAB: &str = "Comparison";
 const LABEL: &str = "Ignore case";
 const CHOICE_LABEL: &str = "Unit";
 const CHOICE: &str = "Lines";
+const PAGE: &str = "Text";
+const SUBPAGE: &str = "Editing";
+const OPTION: &str = "Wrap lines";
 
 /// A test view whose own text, like a real view's, is looked up.
 struct HarnessView(Session);
@@ -84,8 +88,13 @@ fn settings() -> Vec<Setting> {
 fn harness(session_types: Vec<SessionType>) -> Harness<'static, Shell> {
     // egui's default fonts have no `⟦`, the pseudo locale's mark.
     // A command with a toolbar button, so that the toolbar is drawn too.
-    let shell =
-        Shell::new(session_types).with_settings(settings()).unwrap().with_commands(vec![Command::new("test.tool", "Harness tool", |_| {}).toolbar()]);
+    let wrap = OptionSpec { page: &[PAGE, SUBPAGE], id: "wrap", label: OPTION, default: Value::Bool(false), choices: &[] };
+    let shell = Shell::new(session_types)
+        .with_settings(settings())
+        .unwrap()
+        .with_options(vec![wrap], Default::default())
+        .unwrap()
+        .with_commands(vec![Command::new("test.tool", "Harness tool", |_| {}).toolbar()]);
     let mut harness = Harness::builder().allow_missing_glyphs().build_ui_state(|ui, shell: &mut Shell| shell.ui(ui), shell);
     harness.run();
     harness
@@ -164,6 +173,14 @@ fn no_text_in_the_shell_skips_the_lookup() {
     prompted.run();
     assert!(prompted.query_by_role(Role::AlertDialog).is_some(), "the prompt stays open after the failed Save");
     seen.extend(texts(&prompted));
+    // The Options dialog: a page, then the page above it, which has no options of its own.
+    let mut options = harness(session_types());
+    assert!(options.state_mut().run("otd.options"));
+    options.run();
+    seen.extend(texts(&options));
+    options.get_by_role_and_label(Role::TreeItem, &format!("⟦{PAGE}⟧")).click_accesskit();
+    options.run();
+    seen.extend(texts(&options));
 
     let roles = |role| seen.iter().filter(|(r, _)| *r == role).count();
     assert!(roles(Role::Tab) > 0 && roles(Role::Button) > 0 && roles(Role::Label) > 0, "{seen:?}");
@@ -172,7 +189,7 @@ fn no_text_in_the_shell_skips_the_lookup() {
     // A key filled into a looked-up template, such as a field's label, is marked only inside it.
     let looked_up = embedded().looked_up();
     let keys = [HOME, NEW_TAB, CLOSE_TAB, NO_SESSION_TYPES, INSERT, LOAD_TIME, SESSION_SETTINGS, INPUTS, DESCRIPTION, SCOPE, THIS_VIEW_ONLY];
-    let dialog_keys = [OK, CANCEL, SIDE, TAB, LABEL, CHOICE_LABEL, CHOICE];
+    let dialog_keys = [OK, CANCEL, SIDE, TAB, LABEL, CHOICE_LABEL, CHOICE, OPTIONS, OPTION_PAGES, APPLY, CHOOSE_A_PAGE, PAGE, SUBPAGE, OPTION];
     let prompt_keys = [SAVE_CHANGES, UNSAVED_LOST, SAVE, DONT_SAVE, CANT_SAVE];
     let skipped: Vec<_> = keys.into_iter().chain(dialog_keys).chain(prompt_keys).filter(|key| !looked_up.contains(*key)).collect();
     assert!(skipped.is_empty(), "drawn without the lookup: {skipped:?}");
