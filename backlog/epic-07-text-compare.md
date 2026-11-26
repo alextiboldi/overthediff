@@ -66,6 +66,35 @@ As a developer, I can open two text files side by side, see every difference hig
 - [ ] *Swap Sides* exchanges the left and right files and recompares.
 - [ ] *Text Compare Info* shows comparison statistics. The status bar shows the overall result and the load time, as decided in T1.
 
+#### Decisions
+Recorded by E07-S1-T1 and confirmed by the operator on 2026-11-25, as proposed. The catalogue's figures show an overall result, an insert/overwrite indicator and the load time in the status bar, and it says Text Compare Info shows comparison statistics. Which fields and figures Text Compare shows is *unspecified* there (Q25) and is OverTheDiff's own choice. The fields fill E01-S1's status-bar field model (E01-S1 Decisions, Q25).
+
+**Status bar (Q25)**, in the field model's order:
+1. **Overall result**: "Same", "Unimportant differences only" or "Important differences", the text engine's `Outcome`.
+2. **Cursor line and column**, the view's own field.
+3. **Insert/overwrite**: "Insert" or "Overwrite".
+4. **Load time**: how long loading both files and comparing them took.
+
+**Text Compare Info** lists:
+- difference sections;
+- changed lines;
+- inserted lines;
+- deleted lines;
+- total lines on each side.
+
+Both use the view's current classification of differences, as the behavioral contract's last rule says.
+
+The details below are not part of the confirmed proposal. E07-S1-T1 added them so that E07-S1-T8 can build the decision without guessing:
+- **Info figures come from the text engine's `Statistics`.** A row is a line or a gap on each side.
+  - Difference sections are `sections`.
+  - Deleted lines are left lines opposite a gap (`left_orphans`), and inserted lines are right lines opposite a gap (`right_orphans`), reading the left side as the earlier one.
+  - Changed lines are rows with a line on both sides that differ: `important + unimportant - left_orphans - right_orphans`. Orphans are always important, so they are inside `important`.
+  - A side's total is `same` + changed + that side's orphans. It counts the lines in the pane as it stands, edits included.
+- **Cursor.** The field shows the line number and column of the cursor in the pane that last had it. Lines are the file's own line numbers, so gap rows don't count, and columns count characters. Both start at 1. The field is empty until a pane has a cursor.
+- **No partial result.** The overall result shows only once a comparison has finished. While a load or comparison runs, and after one errored or was cancelled, the result field is empty and Info says there is no comparison result instead of showing counts (AGENTS.md rule 15). So a partial or failed comparison never reads as "Same".
+- **When fields change.** A live recompare while the user types updates the result and Info. A change of result is announced through the shell's live region, since focus is in the pane and not on the status bar. Load time is set when loading both files and comparing them finishes, after opening, Reload Files, Recompare Files or Swap Sides. A live recompare doesn't change it.
+- **Insert/overwrite state.** Both panes of a tab share it, and it starts as Insert.
+
 #### Tasks
 - **E07-S1-T1** — Decide the status-bar and Info contents (Q25) · size: S · depends: — · flags: `decision`
   - AC: decision recorded in this story. Proposed default: the status bar shows the overall result ("Same", "Unimportant differences only" or "Important differences"), cursor line and column, insert/overwrite state and load time. Info lists difference sections, changed, inserted and deleted lines, and total lines per side.
