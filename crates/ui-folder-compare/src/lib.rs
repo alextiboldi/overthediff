@@ -49,6 +49,7 @@ use otd_source::{Capabilities, DataSource, Item, ItemKind, LocalSource};
 use otd_ui::colour::{ColourRole, SELECTION, SELECTION_TEXT, colour};
 use otd_ui::{Browse, PathEdit, Session, SessionType, Shell, Status, View, paint_lucide};
 
+mod attributes;
 pub mod expand;
 mod flat;
 mod info;
@@ -83,6 +84,9 @@ pub const RIGHT: &str = "Right";
 pub const NAME: &str = "Name";
 pub const SIZE: &str = "Size";
 pub const MODIFIED: &str = "Modified";
+pub const ATTRIBUTES: &str = "Attributes";
+pub const OWNER: &str = "Owner";
+pub const GROUP: &str = "Group";
 /// A gap's name: the row's item is only on the other side.
 pub const NOT_ON_LEFT: &str = "Not on the left";
 pub const NOT_ON_RIGHT: &str = "Not on the right";
@@ -124,7 +128,13 @@ pub struct Column {
     pub cell: fn(&Item) -> Option<String>,
 }
 
-pub const COLUMNS: &[Column] = &[Column { caption: SIZE, width: 0.2, cell: size }, Column { caption: MODIFIED, width: 0.3, cell: modified }];
+pub const COLUMNS: &[Column] = &[
+    Column { caption: SIZE, width: 0.2, cell: size },
+    Column { caption: MODIFIED, width: 0.3, cell: modified },
+    Column { caption: ATTRIBUTES, width: 0.12, cell: attributes::attributes },
+    Column { caption: OWNER, width: 0.08, cell: attributes::owner },
+    Column { caption: GROUP, width: 0.08, cell: attributes::group },
+];
 
 fn size(item: &Item) -> Option<String> {
     (item.kind == ItemKind::File).then(|| trn(item.size, BYTE, BYTES))
