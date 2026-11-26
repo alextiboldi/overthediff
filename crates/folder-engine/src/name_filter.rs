@@ -11,8 +11,9 @@
 //! *Unspecified*, decided here:
 //! - Each side matches with its own data source's case rule.
 //! - A link is matched as a file: the scan reports links without following them.
-//! - A folder shown only for its contents stays shown while its row has anything visible inside,
-//!   on either side, so the row reads as the path to what is shown on the other side.
+//! - A folder shown only for its contents is hidden on each side by what that side shows inside
+//!   it, so selecting it there never resolves to a folder that holds only filtered items. Its row
+//!   still shows while the other side's folder does.
 //! - It also stays shown while its contents aren't fully known (not listed yet, or unreadable), so
 //!   opening it can still find what the masks include.
 
@@ -47,8 +48,8 @@ impl NameFilter {
         }
     }
 
-    /// Hides, on each side, the folders shown only for their contents whose row has nothing
-    /// visible inside. Works from the deepest folders up, so a chain of such folders goes at once.
+    /// Hides, on each side, the folders shown only for their contents that show nothing inside on
+    /// that side. Works from the deepest folders up, so a chain of such folders goes at once.
     pub fn hide_empty_folders(&self, rows: &mut [Row]) {
         let base = Some(PathBuf::new());
         self.prune(rows, [&base, &base]);
@@ -70,17 +71,25 @@ impl NameFilter {
                 |dir: &Option<PathBuf>, item: &Option<Item>| Some(dir.as_ref()?.join(&item.as_ref().filter(|i| i.kind == ItemKind::Folder)?.name));
             let folders = [folder(dirs[0], &row.left), folder(dirs[1], &row.right)];
             self.prune(&mut row.children, [&folders[0], &folders[1]]);
-            let empty = row.scan == ScanState::Done && !matches!(row.status, Status::Error(_)) && row.children.iter().all(Row::hidden);
-            if !empty {
+            // Contents not fully known yet may hold what the masks include.
+            if row.scan != ScanState::Done || matches!(row.status, Status::Error(_)) {
                 continue;
             }
-            for (side, folder, hidden) in [(TreeSide::Left, &folders[0], &mut row.left_hidden), (TreeSide::Right, &folders[1], &mut row.right_hidden)]
-            {
-                if folder.as_ref().is_some_and(|path| self.side(side).folder(&names(path)) == Folder::IfContainsIncluded) {
-                    *hidden = true;
-                }
-            }
+            let empty = [(TreeSide::Left, 0), (TreeSide::Right, 1)].map(|(side, at)| {
+                !row.children.iter().any(|child| shows(child, side))
+                    && folders[at].as_ref().is_some_and(|path| self.side(side).folder(&names(path)) == Folder::IfContainsIncluded)
+            });
+            row.left_hidden |= empty[0];
+            row.right_hidden |= empty[1];
         }
+    }
+}
+
+/// Whether `row` has an item on `side` that isn't hidden there.
+fn shows(row: &Row, side: TreeSide) -> bool {
+    match side {
+        TreeSide::Left => row.left.is_some() && !row.left_hidden,
+        TreeSide::Right => row.right.is_some() && !row.right_hidden,
     }
 }
 

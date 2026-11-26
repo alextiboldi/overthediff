@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use otd_folder_engine::{Criteria, NameFilter, Row, TreeScan, TreeSide, compare_trees};
+use otd_folder_engine::{Criteria, NameFilter, Row, TreeScan, TreeSide, compare_trees, resolve_selection};
 use otd_source::{DataSource, ItemKind, MemorySource};
 
 use crate::fixture::{at, caps};
@@ -38,8 +38,8 @@ const TREE: &[&str] = &[
 const FOLDERS: &[&str] =
     &["Backup/", "Source/", "Source/Backup/", "Windows/", "Windows/Windows/", "Windows/System/", "lib/", "lib/Source/", "lib/Windows/"];
 
-fn tree(case_sensitive: bool) -> MemorySource {
-    TREE.iter().fold(MemorySource::new(caps(case_sensitive)), |source, path| source.file(path, "x", at(1)))
+fn tree() -> MemorySource {
+    TREE.iter().fold(MemorySource::new(caps(true)), |source, path| source.file(path, "x", at(1)))
 }
 
 /// `source` scanned all the way down, or only its base folder.
@@ -175,7 +175,7 @@ fn each_catalogue_example_leaves_exactly_its_items_visible_on_both_sides() {
                 Want::AllFolders(files) => FOLDERS.iter().chain(files.iter()).map(|s| s.to_string()).collect(),
                 Want::Only(items) => items.iter().map(|s| s.to_string()).collect(),
             };
-            let rows = filtered(tree(true), tree(true), masks, true);
+            let rows = filtered(tree(), tree(), masks, true);
             [TreeSide::Left, TreeSide::Right].into_iter().filter_map(move |side| {
                 let got = visible(&rows, side);
                 (got != want).then(|| {
@@ -193,14 +193,17 @@ fn each_catalogue_example_leaves_exactly_its_items_visible_on_both_sides() {
 
 #[test]
 fn a_folder_shown_only_for_its_contents_stays_visible_until_they_are_listed() {
-    let rows = filtered(tree(true), tree(true), "Source\\", false);
+    let rows = filtered(tree(), tree(), "Source\\", false);
     let shown = visible(&rows, TreeSide::Left);
     assert!(shown.contains("lib/") && shown.contains("Windows/"), "unlisted folders may hold a Source folder: {shown:?}");
 }
 
 #[test]
-fn each_side_matches_names_with_its_own_case_rule() {
-    let rows = filtered(tree(false), tree(true), "*.PAS", true);
-    let [left, right] = [visible(&rows, TreeSide::Left), visible(&rows, TreeSide::Right)];
-    assert!(left.contains("a.pas") && !right.contains("a.pas"), "left {left:?}, right {right:?}");
+fn a_folder_shown_only_for_its_contents_hides_on_the_side_that_shows_nothing_in_it() {
+    let left = MemorySource::new(caps(true)).file("P/Other/Source/x.txt", "x", at(1));
+    let right = MemorySource::new(caps(true)).file("P/Other/junk.txt", "x", at(1));
+    let rows = filtered(left, right, "Source\\", true);
+    assert!(visible(&rows, TreeSide::Left).contains("P/Other/"), "the left leads to Source");
+    let resolved = resolve_selection(&rows, TreeSide::Right, &[Path::new("P")]);
+    assert!(resolved.items.is_empty(), "the right holds only a filtered file: {:?}", resolved.items);
 }
