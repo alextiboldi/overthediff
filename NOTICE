@@ -67,6 +67,15 @@ macOS and Linux which file system a path is on, and sets modified times there, w
 (Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT). On Windows it sets attribute codes with
 windows-sys (MIT OR Apache-2.0).
 
+The zip data source (otd-source) checks an archive before indexing it with craft-zip (MIT OR
+Apache-2.0, storytold/craft-libs) and reads it with zip (MIT, Copyright (c) 2014 Mathijs van de
+Nes) and its dependencies: flate2, crc32fast, indexmap, hashbrown, equivalent, memchr, typed-path,
+zeroize, getrandom, thiserror, libc on Unix, windows-sys on Windows, and nix (MIT) with bitflags on
+macOS and the BSDs (each MIT OR Apache-2.0 unless named); miniz_oxide (MIT OR Zlib OR Apache-2.0),
+adler2 (0BSD OR MIT OR Apache-2.0), simd-adler32 (MIT), foldhash (Zlib) and constant_time_eq
+(CC0-1.0 OR MIT-0 OR Apache-2.0, used under CC0-1.0 OR Apache-2.0). It turns an entry's DOS time
+into local time with chrono, as Text Compare does (below).
+
 The translation lookup (otd-core) adds craft-i18n (MIT OR Apache-2.0, storytold/craft-libs), which
 embeds CLDR number and plural-rule data, and its dependencies: the ICU4X crates (icu_*,
 fixed_decimal, writeable, litemap, tinystr, potential_utf, yoke, zerofrom, zerotrie and zerovec,

@@ -6,6 +6,7 @@
 //! - [`MemorySource`] is the in-memory reference source, and the fixture other crates' tests use.
 //! - [`LocalSource`] is the local provider: local disks and mounted network shares, opened by an
 //!   OS path, `~/…` or `smb://…`; [`resolve`] gives the OS path for one.
+//! - [`ZipSource`] is the zip provider: a zip archive's entries, read-only for now.
 //! - [`suite`] is the contract test suite. Every provider runs it.
 //!
 //! Paths are relative to the source's root, with `/` between names (`docs/readme.txt`); the empty
@@ -15,6 +16,7 @@
 //!
 //! ponytail: error messages are English. They go through the translation lookup once E01-S1 has one.
 
+mod archive;
 mod local;
 mod memory;
 pub mod suite;
@@ -25,6 +27,7 @@ use std::io::Read;
 use std::path::{Component, Path};
 use std::time::{Duration, SystemTime};
 
+pub use archive::ZipSource;
 pub use local::LocalSource;
 pub use memory::MemorySource;
 pub use volume::resolve;

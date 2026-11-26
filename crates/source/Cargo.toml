@@ -15,6 +15,13 @@ workspace = true
 craft-atomic = { workspace = true }
 # The local provider's OS recycle bin or trash.
 trash = "5.4"
+# The zip provider: craft-zip's guard before an archive is indexed, and the `zip` crate it wraps for
+# what craft-zip doesn't expose yet (each entry's stored CRC, time and data). Same version and
+# features as craft-zip's, so there is one copy.
+craft-zip = { workspace = true }
+zip = { version = "9", default-features = false, features = ["deflate-flate2"] }
+# A zip entry's DOS time is local time with no zone.
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
 # Whether a local path is on a network share, which has no recycle bin, which file system it is
 # on, whether it is mounted read-only, and setting a modified time without following links.
