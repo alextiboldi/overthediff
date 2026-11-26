@@ -112,10 +112,9 @@ fn the_dialog_takes_a_line_and_column_by_keyboard_refuses_text_and_esc_gives_foc
     key(&mut harness, Key::Enter);
     assert!(harness.query_by_label(NOT_A_NUMBER).is_some(), "it says the line must be a number");
     assert_eq!(caret(&harness), Pos::default());
+    assert_eq!(focused(&harness), Some((Role::TextInput, LINE.to_owned())), "focus is back in the Line field");
 
-    // A line, Tab, a column, Enter.
-    harness.get_by(|node| node.role() == Role::TextInput && node.label().as_deref() == Some(LINE)).focus();
-    harness.run();
+    // Corrected in place: a line, Tab, a column, Enter.
     for _ in 0.."ten".len() {
         key(&mut harness, Key::Backspace);
     }

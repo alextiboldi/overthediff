@@ -65,8 +65,11 @@ fn go_to_line(shell: &mut Shell, args: &Args) -> Outcome {
 pub(crate) struct GoToDialog {
     line: String,
     column: String,
-    /// It has been drawn once, and has taken focus.
+    /// It has been drawn once.
     drawn: bool,
+    /// The field to give focus to on the next draw: the Line field when it opens, and the field
+    /// that failed when Enter or Go To is refused.
+    focus: Option<&'static str>,
     /// What had focus when it opened, which gets it back when it is cancelled.
     focus_back: Option<Id>,
     /// A field didn't hold a number when the user pressed Go To.
@@ -104,6 +107,7 @@ impl TextCompareView {
         let Some(dialog) = &mut self.go_to else { return };
         if !dialog.drawn {
             dialog.focus_back = ui.memory(|memory| memory.focused());
+            dialog.focus = Some(LINE);
         }
         let title = t(GO_TO);
         let modal = egui::Modal::new(Id::unique("text-compare-go-to")).show(ui.ctx(), |ui| {
@@ -119,15 +123,16 @@ impl TextCompareView {
                 ui.horizontal(|ui| {
                     let label = ui.label(t(caption));
                     let field = ui.add(TextEdit::singleline(text).desired_width(80.0)).labelled_by(label.id);
-                    if !dialog.drawn && caption == LINE {
+                    if dialog.focus == Some(caption) {
                         field.request_focus();
                     }
                     enter |= field.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
                 });
             }
+            dialog.focus = None;
             if dialog.invalid {
                 let message = ui.label(t(NOT_A_NUMBER));
-                // Announced: focus stays in the field.
+                // Announced: focus goes back to the field that failed.
                 ui.ctx().accesskit_node_builder(message.id, |node| node.set_live(Live::Polite));
             }
             let (go, cancel) = ui.horizontal(|ui| (ui.button(t(GO_TO)).clicked(), ui.button(t(CANCEL)).clicked())).inner;
@@ -148,7 +153,10 @@ impl TextCompareView {
                     // The pane takes focus on the next draw, once the dialog is gone.
                     self.go_to_line(line, column);
                 }
-                _ => dialog.invalid = true,
+                (line, _) => {
+                    dialog.invalid = true;
+                    dialog.focus = Some(if line.is_none() { LINE } else { COLUMN });
+                }
             }
         } else if cancel {
             self.refocus = self.go_to.take().and_then(|dialog| dialog.focus_back);
