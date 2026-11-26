@@ -12,14 +12,15 @@
 //!
 //! A section with no source lines at all (only gaps on the source side) holds no source line for
 //! the caret to stand on, so a caret on the line just above the gap takes it, or else one on the
-//! line just below (*inferred*). Lines are copied with their own endings; making a copied last line
+//! line just below (*inferred*). The caret line after the last line break, the only one an empty
+//! pane has, takes the section after the last line, which has no source lines (*inferred*). Lines are copied with their own endings; making a copied last line
 //! (one without a break) fit mid-file is the applying edit's concern (E07-S7-T4).
 
 use std::ops::Range;
 
 use otd_text_engine::{Row, RowKind, Side};
 
-use crate::{Pos, Selection};
+use crate::Selection;
 
 /// What a copy covers: the `source` lines replace the `target` lines. Either range may be empty.
 /// An empty `source` removes the `target` lines, and an empty `target` is the place on the target
@@ -30,25 +31,28 @@ pub struct CopyLines {
     pub target: Range<usize>,
 }
 
-/// *Copy to Other Side* from side `from` with `selection` in its pane, whose text ends at
-/// `source_end` ([`Pane::end`](crate::Pane::end)): the lines the selection touches, or with nothing
-/// selected the caret's section. A selection that ends at the start of a line doesn't take that
-/// line, unless that is the end of the text (an empty last line). `None` when there is nothing to
-/// copy.
-pub fn copy_selection(rows: &[Row], from: Side, selection: Selection, source_end: Pos) -> Option<CopyLines> {
+/// *Copy to Other Side* from side `from` with `selection` in its pane: the lines the selection
+/// touches, or with nothing selected the caret's section. A selection that ends at the start of a
+/// line doesn't take that line. `None` when there is nothing to copy.
+pub fn copy_selection(rows: &[Row], from: Side, selection: Selection) -> Option<CopyLines> {
     if selection.is_empty() {
         return copy_section(rows, from, selection.head.line);
     }
     let (start, end) = selection.range();
-    let last = if end.column == 0 && end.line > start.line && end != source_end { end.line - 1 } else { end.line };
+    let last = if end.column == 0 && end.line > start.line { end.line - 1 } else { end.line };
     copy_lines(rows, from, start.line..last + 1)
 }
 
 /// The difference section that line `line` of side `from` is in, or for a line that is the same
 /// on both sides, a section next to it that has no lines on side `from`: the one below, else the
-/// one above (*inferred*). `None` when there is no such section, or no such line.
+/// one above (*inferred*). Line `line` may be the caret line after the last line break, which takes
+/// the section after the last line. `None` when there is no such section, or no such line.
 pub fn copy_section(rows: &[Row], from: Side, line: usize) -> Option<CopyLines> {
-    let row = row_of(rows, from, line)?;
+    let Some(row) = row_of(rows, from, line) else {
+        let after = rows.iter().rposition(|row| self::line(row, from).is_some()).map_or(0, |i| i + 1);
+        let count = rows.iter().filter(|row| self::line(row, from).is_some()).count();
+        return (line == count && after < rows.len()).then(|| section(rows, from, after));
+    };
     let changed = |row: &usize| rows.get(*row).is_some_and(|r| r.kind != RowKind::Same);
     if changed(&row) {
         return Some(section(rows, from, row));
@@ -100,7 +104,7 @@ mod tests {
     use otd_text_engine::{Line, LineEnding, RowKind, Side, compare};
 
     use super::{CopyLines, copy_section, copy_selection};
-    use crate::{Pos, Selection};
+    use crate::{Encoding, LineEndings, Pane, Pos, Selection, WESTERN, decode};
 
     fn lines(texts: &[&str]) -> Vec<Line> {
         texts.iter().map(|text| Line { text: (*text).to_owned(), ending: LineEnding::Lf }).collect()
@@ -165,8 +169,7 @@ mod tests {
         let (left, right) = (around(&["l1", "l2", "l3", "l4"]), around(&["r1", "r2", "r3", "r4"]));
         // From inside l2 to the start of l4: l2 and l3, not l4, which the selection only touches.
         let selection = Selection { anchor: Pos { line: 4, column: 1 }, head: Pos { line: 6, column: 0 } };
-        let end = Pos { line: left.len() - 1, column: 1 };
-        let copy = copy_selection(&compare(&left, &right).rows, Side::Left, selection, end).expect("lines are selected");
+        let copy = copy_selection(&compare(&left, &right).rows, Side::Left, selection).expect("lines are selected");
         let (new_left, new_right) = apply(&left, &right, Side::Left, &copy);
         let rows = compare(&new_left, &new_right).rows;
         let changed = |line| rows.iter().find(|row| row.left == Some(line)).is_some_and(|row| row.kind != RowKind::Same);
@@ -188,14 +191,47 @@ mod tests {
         assert_eq!(copy_section(&rows, Side::Left, 0), None);
     }
 
+    /// A pane holding `text` as decoded from a file.
+    fn pane(text: &str) -> Pane {
+        Pane {
+            path: String::new(),
+            size: 0,
+            modified: None,
+            format: String::new(),
+            encoding: Encoding::Utf8 { bom: false },
+            endings: LineEndings::Unix,
+            lines: decode(text.as_bytes(), WESTERN).lines,
+            read_only: None,
+            unsaved: false,
+            selection: Selection::default(),
+            history: Default::default(),
+        }
+    }
+
     #[test]
-    fn selecting_all_takes_an_empty_last_line() {
-        let (left, right) = (lines(&["a", "b", ""]), lines(&["a", "b"]));
-        // Select All ends at the end of the text, the start of the empty last line.
-        let end = Pos { line: 2, column: 0 };
-        let selection = Selection { anchor: Pos::default(), head: end };
-        let copy = copy_selection(&compare(&left, &right).rows, Side::Left, selection, end).expect("lines are selected");
-        let (new_left, new_right) = apply(&left, &right, Side::Left, &copy);
-        assert_eq!(new_left, new_right);
+    fn select_all_copies_the_whole_file() {
+        // The last two files end with a break, which decodes to no line after it.
+        for (left, right) in [("a\nb", "a\nc"), ("a\nb\n", "a\nc\n"), ("a\nb\n\n", "a\nb\n")] {
+            let (mut source, target) = (pane(left), pane(right));
+            source.select_all();
+            let copy = copy_selection(&compare(&source.lines, &target.lines).rows, Side::Left, source.selection)
+                .unwrap_or_else(|| panic!("{left:?}: everything is selected"));
+            let (new_left, new_right) = apply(&source.lines, &target.lines, Side::Left, &copy);
+            assert_eq!(new_left, new_right, "{left:?}");
+        }
+    }
+
+    #[test]
+    fn the_caret_after_the_last_line_removes_lines_only_the_target_has_after_it() {
+        for (left, right) in [("a\nb\nc\n", "a\nb\nc\nextra\n"), ("", "a\nb\n")] {
+            let (source, target) = (pane(left), pane(right));
+            let rows = compare(&source.lines, &target.lines).rows;
+            let copy = copy_section(&rows, Side::Left, source.end().line).unwrap_or_else(|| panic!("{left:?}: the caret is below the last line"));
+            let (new_left, new_right) = apply(&source.lines, &target.lines, Side::Left, &copy);
+            assert_eq!(new_left, new_right, "{left:?}");
+        }
+        // With the sides the same, there is nothing after the last line to copy.
+        let same = pane("a\n");
+        assert_eq!(copy_section(&compare(&same.lines, &same.lines).rows, Side::Left, same.end().line), None);
     }
 }
