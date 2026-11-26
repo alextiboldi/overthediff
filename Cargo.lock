@@ -2858,6 +2858,7 @@ dependencies = [
  "otd-launch",
  "otd-settings",
  "otd-text-compare",
+ "otd-text-engine",
  "otd-ui",
  "raw-window-handle",
  "tempfile",
