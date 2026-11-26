@@ -31,7 +31,7 @@
 //! the name cell's accessible description and its tooltip, shown on hover and on keyboard focus
 //! (Esc hides it), so colour is never the only signal.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::mpsc::Receiver;
@@ -47,8 +47,9 @@ use otd_folder_engine::{Alignment, Criteria, DEFAULT_TOLERANCE, Row, ScanEvent, 
 use otd_launch::{Completion, Handler, Pattern, Request};
 use otd_source::{Capabilities, DataSource, Item, ItemKind, LocalSource};
 use otd_ui::colour::{ColourRole, SELECTION, SELECTION_TEXT, colour};
-use otd_ui::{Browse, PathEdit, Session, SessionType, Shell, Status, View, paint_lucide};
+use otd_ui::{Browse, PathEdit, Session, SessionType, Shell, Status, Value, View, paint_lucide};
 
+mod content;
 pub mod expand;
 mod flat;
 mod info;
@@ -56,6 +57,9 @@ pub mod look;
 mod refresh;
 
 use expand::Expansion;
+pub use content::{
+    BINARY_COMPARISON, COMPARE_CONTENTS, COMPARISON, CONTENT_COMPARISON, CRC_COMPARISON, OVERRIDE_QUICK_RESULTS, SKIP_IF_QUICK_SAME, session_settings,
+};
 pub use expand::Shown;
 pub use flat::FLAT_LIST;
 pub use info::{
@@ -157,6 +161,9 @@ pub struct FolderCompare {
     /// The inputs the scans are of. When the session's differ (a path typed or browsed, or the
     /// Inputs tab), the next draw scans again.
     scanned: Option<Vec<String>>,
+    /// The Comparison tab's values the rows were compared with. When the session's differ, the
+    /// next draw compares again (`content.rs`).
+    compared: Option<BTreeMap<String, Value>>,
     scans: [Option<Scan>; 2],
     /// Why a side can't be shown.
     errors: [Option<String>; 2],
@@ -198,6 +205,7 @@ impl FolderCompare {
         Self {
             session: Session::new(ID),
             scanned: None,
+            compared: None,
             scans: [None, None],
             errors: [None, None],
             rows: Vec::new(),
@@ -278,6 +286,7 @@ impl FolderCompare {
 
     fn rescan(&mut self) {
         self.scanned = Some(self.session.specs.clone());
+        self.compared = self.session.rules.get(COMPARISON).cloned();
         self.rows.clear();
         self.expansion = Expansion::default();
         self.selected = Default::default();
@@ -544,6 +553,7 @@ impl View for FolderCompare {
         if !editing && self.scanned.as_ref() != Some(&self.session.specs) {
             self.rescan();
         }
+        self.recompare_if_changed();
         self.update();
         if self.scanning() {
             ui.ctx().request_repaint_after(SCAN_POLL);
