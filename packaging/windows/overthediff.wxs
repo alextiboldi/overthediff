@@ -1,23 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The Windows installer (WiX v5). package.ps1 builds it; see that script for the variables.
      It installs otd.exe, NOTICE, ATTRIBUTION.md and the third-party licence texts (licences\) into
-     Program Files\OverTheDiff and adds a Start menu entry. Uninstalling removes exactly those. The
-     settings folder (%APPDATA%\overthediff-<major>) is the app's, never the installer's, so it stays. -->
+     Program Files\OverTheDiff <major> and adds a Start menu entry, OverTheDiff <major>. Uninstalling
+     removes exactly those. The settings folder (%APPDATA%\overthediff-<major>) is the app's, never
+     the installer's, so it stays.
+     Each major version is a product of its own, with its own name, folder, Start menu entry and
+     UpgradeCode, so two major versions install side by side (E01-S2-T5); a build replaces only
+     builds of its own major version. -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
-  <Package Name="OverTheDiff" Manufacturer="the OverTheDiff contributors" Version="$(var.Version)" UpgradeCode="EC46E2BC-BBAD-468F-BC43-9D75EF7A0423" Scope="perMachine" Compressed="yes" Language="1033">
-    <SummaryInformation Description="OverTheDiff" />
+  <Package Name="OverTheDiff $(var.Major)" Manufacturer="the OverTheDiff contributors" Version="$(var.Version)" UpgradeCode="$(var.UpgradeCode)" Scope="perMachine" Compressed="yes" Language="1033">
+    <SummaryInformation Description="OverTheDiff $(var.Major)" />
     <!-- MSI versions are numeric, so prereleases of one X.Y.Z share a version and replace each other. -->
-    <MajorUpgrade AllowSameVersionUpgrades="yes" DowngradeErrorMessage="A newer version of OverTheDiff is already installed." />
+    <MajorUpgrade AllowSameVersionUpgrades="yes" DowngradeErrorMessage="A newer version of OverTheDiff $(var.Major) is already installed." />
     <MediaTemplate EmbedCab="yes" />
 
     <StandardDirectory Id="ProgramFiles6432Folder">
-      <Directory Id="INSTALLFOLDER" Name="OverTheDiff">
+      <Directory Id="INSTALLFOLDER" Name="OverTheDiff $(var.Major)">
         <Directory Id="LICENCESFOLDER" Name="licences" />
       </Directory>
     </StandardDirectory>
     <StandardDirectory Id="ProgramMenuFolder" />
 
-    <Feature Id="Main" Title="OverTheDiff" Level="1">
+    <Feature Id="Main" Title="OverTheDiff $(var.Major)" Level="1">
       <ComponentGroupRef Id="OverTheDiffFiles" />
     </Feature>
   </Package>
@@ -27,7 +31,7 @@
       <Component Id="App">
         <File Id="OtdExe" Source="$(var.StageDir)\otd.exe" KeyPath="yes">
           <!-- Advertised: the file is its key path, so no per-user registry value is needed. -->
-          <Shortcut Id="StartMenuShortcut" Directory="ProgramMenuFolder" Name="OverTheDiff" Description="Compare and merge files and folders" WorkingDirectory="INSTALLFOLDER" Advertise="yes" />
+          <Shortcut Id="StartMenuShortcut" Directory="ProgramMenuFolder" Name="OverTheDiff $(var.Major)" Description="Compare and merge files and folders" WorkingDirectory="INSTALLFOLDER" Advertise="yes" />
         </File>
       </Component>
       <Component Id="Notice">

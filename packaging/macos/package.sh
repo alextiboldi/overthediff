@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Build OverTheDiff.app and its disk image: $DIST/overthediff-<version>-macos-<arch>.dmg.
+# Build "OverTheDiff <major>.app" and its disk image: $DIST/overthediff-<version>-macos-<arch>.dmg.
+# The bundle's name and identifier carry the major version, so two major versions install side by
+# side in Applications (E01-S2-T5).
 #
 # Usage: packaging/macos/package.sh [--arch universal|aarch64|x86_64] [--skip-build]
 #
@@ -19,7 +21,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --arch) ARCH="${2:?--arch needs a value}"; shift 2 ;;
     --skip-build) SKIP_BUILD=1; shift ;;
-    -h | --help) sed -n '2,11p' "$0"; exit 0 ;;
+    -h | --help) sed -n '2,12p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -33,7 +35,7 @@ esac
 export MACOSX_DEPLOYMENT_TARGET=11.0
 IDENTITY="${MACOS_SIGN_IDENTITY:--}"
 WORK="$CARGO_TARGET_DIR/macos-package"
-APP="$WORK/OverTheDiff.app"
+APP="$WORK/OverTheDiff $MAJOR.app"
 DMG="$DIST/overthediff-$VERSION-macos-$ARCH.dmg"
 
 NOTARIZE=0
@@ -59,7 +61,7 @@ for t in "${TARGETS[@]}"; do slices+=("$CARGO_TARGET_DIR/$t/release/otd"); done
 lipo -create -output "$APP/Contents/MacOS/otd" "${slices[@]}"
 lipo -info "$APP/Contents/MacOS/otd"
 copy_notices "$APP/Contents/Resources"
-sed -e "s/@VERSION@/$VERSION/g" -e "s/@SHORT_VERSION@/${VERSION%%-*}/g" "$HERE/Info.plist.in" >"$APP/Contents/Info.plist"
+sed -e "s/@VERSION@/$VERSION/g" -e "s/@SHORT_VERSION@/${VERSION%%-*}/g" -e "s/@MAJOR@/$MAJOR/g" -e "s/@APP_ID@/$APP_ID/g" "$HERE/Info.plist.in" >"$APP/Contents/Info.plist"
 plutil -lint "$APP/Contents/Info.plist"
 printf 'APPL????' >"$APP/Contents/PkgInfo"
 
@@ -96,14 +98,14 @@ fi
 echo "==> $DMG"
 STAGE="$WORK/dmg"
 mkdir -p "$STAGE"
-ditto "$APP" "$STAGE/OverTheDiff.app"
+ditto "$APP" "$STAGE/$(basename "$APP")"
 ln -s /Applications "$STAGE/Applications"
 rm -f "$DMG"
 # Not `makehybrid -hfs`: it gives text files a Finder type, an extended attribute that breaks the
 # bundle's signature once the app is copied out of the image. `create` can fail with "Resource
 # busy" on a busy runner, so it gets three tries.
 for attempt in 1 2 3; do
-  if hdiutil create -volname OverTheDiff -srcfolder "$STAGE" -fs HFS+ -format UDZO -imagekey zlib-level=9 -ov "$DMG"; then
+  if hdiutil create -volname "OverTheDiff $MAJOR" -srcfolder "$STAGE" -fs HFS+ -format UDZO -imagekey zlib-level=9 -ov "$DMG"; then
     break
   fi
   [[ "$attempt" -lt 3 ]] || exit 1

@@ -1,17 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- package.sh fills in @VERSION@ and @SHORT_VERSION@. LSMinimumSystemVersion matches
+<!-- package.sh fills in @VERSION@, @SHORT_VERSION@, @MAJOR@ and @APP_ID@ (packaging/env.sh): each
+     major version is an app of its own, so two install side by side (E01-S2-T5). LSMinimumSystemVersion matches
      MACOSX_DEPLOYMENT_TARGET in package.sh (E01-S2 Decisions). -->
 <plist version="1.0">
 <dict>
   <key>CFBundleDevelopmentRegion</key>
   <string>en</string>
   <key>CFBundleDisplayName</key>
-  <string>OverTheDiff</string>
+  <string>OverTheDiff @MAJOR@</string>
   <key>CFBundleExecutable</key>
   <string>otd</string>
   <key>CFBundleIdentifier</key>
-  <string>io.github.alextiboldi.overthediff</string>
+  <string>@APP_ID@</string>
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleName</key>

@@ -5,11 +5,13 @@
 # It repackages package.sh's tarball, which flatpak-bundle.sh unpacks into `stage/` beside a copy of
 # this file, so the bundle holds the same binary as the .deb. `otd` needs glibc 2.35 or newer and
 # loads Wayland or X11, xkbcommon and Vulkan or GL at run time; the freedesktop runtime has them all.
-id: io.github.alextiboldi.overthediff
+# flatpak-bundle.sh fills in @APP_ID@ and @MAJOR@: like the .deb, each major version is an app of
+# its own (E01-S2-T5).
+id: '@APP_ID@'
 runtime: org.freedesktop.Platform
 runtime-version: '25.08'
 sdk: org.freedesktop.Sdk
-command: otd
+command: otd-@MAJOR@
 finish-args:
   - --socket=wayland
   - --socket=fallback-x11
@@ -26,9 +28,9 @@ modules:
   - name: overthediff
     buildsystem: simple
     build-commands:
-      - install -Dm755 bin/otd /app/bin/otd
-      - install -Dm644 share/applications/io.github.alextiboldi.overthediff.desktop /app/share/applications/io.github.alextiboldi.overthediff.desktop
-      - mkdir -p /app/share/icons /app/share/doc && cp -R share/icons/hicolor /app/share/icons/ && cp -R share/doc/overthediff /app/share/doc/
+      - install -Dm755 bin/otd-@MAJOR@ /app/bin/otd-@MAJOR@
+      - install -Dm644 share/applications/@APP_ID@.desktop /app/share/applications/@APP_ID@.desktop
+      - mkdir -p /app/share/icons /app/share/doc && cp -R share/icons/hicolor /app/share/icons/ && cp -R share/doc/overthediff-@MAJOR@ /app/share/doc/
     sources:
       - type: dir
         path: stage

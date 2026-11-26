@@ -1,12 +1,12 @@
 [Desktop Entry]
 Type=Application
-Name=OverTheDiff
+Name=OverTheDiff @MAJOR@
 Comment=Compare and merge files and folders
-Exec=otd
-TryExec=otd
-Icon=io.github.alextiboldi.overthediff
+Exec=otd-@MAJOR@
+TryExec=otd-@MAJOR@
+Icon=@APP_ID@
 Terminal=false
 StartupNotify=true
-StartupWMClass=io.github.alextiboldi.overthediff
+StartupWMClass=@APP_ID@
 Categories=Development;
 Keywords=diff;compare;merge;folder;text;
