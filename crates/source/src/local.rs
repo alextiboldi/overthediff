@@ -60,7 +60,7 @@ impl LocalSource {
     }
 }
 
-fn os_error(path: &Path, e: &io::Error) -> SourceError {
+pub(crate) fn os_error(path: &Path, e: &io::Error) -> SourceError {
     let kind = match e.kind() {
         io::ErrorKind::NotFound => ErrorKind::NotFound,
         io::ErrorKind::PermissionDenied => ErrorKind::AccessDenied,

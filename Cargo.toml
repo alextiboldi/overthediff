@@ -38,6 +38,8 @@ craft-quit = { git = "https://github.com/storytold/craft-libs", rev = "2c81ed850
 craft-dialogs = { git = "https://github.com/storytold/craft-libs", rev = "2c81ed850319ef3504ce56d82379b346522af18e" }
 # Legacy single-byte code pages, for text that is neither UTF-8 nor UTF-16 (otd-text-compare).
 craft-codepage = { git = "https://github.com/storytold/craft-libs", rev = "2c81ed850319ef3504ce56d82379b346522af18e" }
+# Zip archives read within limits: the entry-count guard before an archive is indexed (otd-source's zip provider).
+craft-zip = { git = "https://github.com/storytold/craft-libs", rev = "2c81ed850319ef3504ce56d82379b346522af18e" }
 
 [workspace.lints.rust]
 # `deny`, not `forbid`, so a module AGENTS.md names can `allow(unsafe_code)` (rule 13).
