@@ -32,6 +32,8 @@ On macOS it also asks libc whether a volume's names differ by case.
 
 The folder engine's CRC content test (otd-folder-engine) computes CRC-32 with crc32fast
 (MIT OR Apache-2.0), which depends on cfg-if (MIT OR Apache-2.0).
+The app's headless quick compare (`-qc`) runs the folder engine's tests on files read through the
+local data source, so the otd executable includes both and the crates above; it adds no others.
 
 The launch hand-off (otd-launch) adds craft-ipc (MIT OR Apache-2.0) and its dependencies, among
 them interprocess (0BSD OR Apache-2.0), recvmsg and doctest-file (0BSD), and generic-array and zmij

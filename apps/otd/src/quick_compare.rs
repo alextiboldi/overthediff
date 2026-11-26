@@ -5,13 +5,21 @@
 //! *Unspecified*, decided here: the switch name and type match case-sensitively, and any other
 //! switch alongside it is an error.
 
+use std::path::Path;
+
 use otd_core::i18n::{fmt_plain, t};
+use otd_folder_engine::{Aligned, ContentOptions, ContentTest, Criteria, DEFAULT_TOLERANCE, Status};
 use otd_launch::{Completion, Handler, Mode, Pattern, Request, RunHere};
+use otd_source::{DataSource as _, Item, ItemKind, Links, LocalSource};
 
 use crate::Shell;
 
 /// Exit code of a quick compare that couldn't run: 100, Unknown error (E11 behavioral contract).
 const EXIT_ERROR: i32 = 100;
+/// The files are the same by the chosen test: 1, Binary same (E11 behavioral contract).
+const EXIT_SAME: i32 = 1;
+/// The files differ by the chosen test: 11, Binary differences.
+const EXIT_DIFFERENT: i32 = 11;
 
 /// What a quick compare tests.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,6 +29,7 @@ pub enum Test {
     Binary,
 }
 
+#[cfg(test)]
 impl Test {
     fn name(self) -> &'static str {
         match self {
@@ -57,7 +66,7 @@ impl Handler<Shell> for QuickCompare {
     }
 
     fn run_here(&self, request: &Request) -> RunHere {
-        match parse(&request.args).and_then(|(test, files)| run(test, files)) {
+        match parse(&request.args).and_then(|(test, files)| run(test, files, &request.cwd)) {
             Ok(code) => RunHere::Exit(code),
             Err(message) => {
                 eprintln!("otd: {message}");
@@ -103,10 +112,47 @@ fn parse_test(switch: &str, value: Option<&str>) -> Result<Test, String> {
     }
 }
 
-/// The exit code of comparing `files` by `test`.
-// ponytail: E11-S2-T2 runs the comparison; until then a valid command line says so and fails.
-fn run(test: Test, _files: [&str; 2]) -> Result<i32, String> {
-    Err(fmt_plain(t("Quick compare by {type} isn't built yet."), &[("type", test.name())]))
+/// The exit code of comparing `files`, relative to `cwd`, by `test`: 1 when they are the same,
+/// 11 when they differ.
+fn run(test: Test, files: [&str; 2], cwd: &Path) -> Result<i32, String> {
+    let [(left, left_item), (right, right_item)] = [open(files[0], cwd)?, open(files[1], cwd)?];
+    let row = Aligned { name: left_item.name.clone(), left: Some(left_item), right: Some(right_item) };
+    // Size runs only the quick size test; crc and binary only their content test.
+    let criteria = Criteria { size: test == Test::Size, modified: false, tolerance: DEFAULT_TOLERANCE };
+    let content = match test {
+        Test::Size => None,
+        Test::Crc => Some(ContentTest::Crc),
+        Test::Binary => Some(ContentTest::Binary),
+    };
+    let options = ContentOptions { test: content, skip_if_quick_same: false, override_quick_results: true };
+    let here = Path::new("");
+    match otd_folder_engine::compare(&row, &criteria, &options, (&left, here), (&right, here)).status {
+        Status::Same => Ok(EXIT_SAME),
+        Status::Error(error) => Err(error.message),
+        // Two files with no time test are only ever same, different or an error.
+        _ => Ok(EXIT_DIFFERENT),
+    }
+}
+
+/// A source on the folder holding the file `spec` names, and the file as that source reports it.
+/// `spec` is any path the file-system access layer accepts (`~/…`, `smb://…`, a UNC or OS path),
+/// relative to `cwd`. A missing, unreadable or non-file item is an error.
+fn open(spec: &str, cwd: &Path) -> Result<(LocalSource, Item), String> {
+    let not_a_file = || fmt_plain(t("{file} isn't a file."), &[("file", spec)]);
+    let path = cwd.join(otd_source::resolve(spec).map_err(|e| e.message)?);
+    let (Some(folder), Some(name)) = (path.parent(), path.file_name()) else { return Err(not_a_file()) };
+    let source = LocalSource::new(folder);
+    let name = Path::new(name);
+    let item = source.stat(name, Links::Follow).map_err(|e| e.message)?;
+    if let Some(error) = item.error {
+        return Err(error.message);
+    }
+    if item.kind != ItemKind::File {
+        return Err(not_a_file());
+    }
+    // The size test reads no content, so an unreadable file would otherwise pass it.
+    drop(source.open_read(name).map_err(|e| e.message)?);
+    Ok((source, item))
 }
 
 #[cfg(test)]
@@ -151,5 +197,44 @@ mod tests {
     fn an_unknown_type_exits_with_100() {
         let request = Request { handler: Some("qc".into()), args: args(&["-qc=bytes", "a", "b"]), cwd: ".".into(), attachment: None };
         assert_eq!(QuickCompare("qc").run_here(&request), RunHere::Exit(EXIT_ERROR));
+    }
+
+    /// The exit code of `-qc=<test> <left> <right>` run in `dir`, so the names are relative to it.
+    fn code(test: &str, left: &str, right: &str, dir: &Path) -> RunHere {
+        let request = Request { handler: Some("qc".into()), args: args(&[&format!("-qc={test}"), left, right]), cwd: dir.into(), attachment: None };
+        QuickCompare("qc").run_here(&request)
+    }
+
+    fn files(list: &[(&str, &[u8])]) -> tempfile::TempDir {
+        let dir = tempfile::tempdir().expect("temporary folder");
+        for (name, content) in list {
+            std::fs::write(dir.path().join(name), content).expect("write a test file");
+        }
+        dir
+    }
+
+    #[test]
+    fn a_missing_file_or_a_folder_exits_with_100_for_every_test() {
+        let dir = files(&[("a", b"x")]);
+        std::fs::create_dir(dir.path().join("folder")).expect("create a test folder");
+        for test in ["size", "crc", "binary"] {
+            for (left, right) in [("a", "missing"), ("missing", "a"), ("a", "folder"), ("folder", "folder"), ("a", "..")] {
+                assert_eq!(code(test, left, right, dir.path()), RunHere::Exit(EXIT_ERROR), "{test} {left} {right}");
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_unreadable_file_exits_with_100_even_by_size() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let dir = files(&[("a", b"x"), ("locked", b"x")]);
+        let locked = dir.path().join("locked");
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).expect("lock the test file");
+        // Root reads it anyway; there is nothing to test then.
+        if std::fs::File::open(&locked).is_err() {
+            assert_eq!(code("size", "a", "locked", dir.path()), RunHere::Exit(EXIT_ERROR));
+        }
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o600)).expect("unlock the test file");
     }
 }

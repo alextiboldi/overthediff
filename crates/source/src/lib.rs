@@ -27,6 +27,7 @@ use std::time::{Duration, SystemTime};
 
 pub use local::LocalSource;
 pub use memory::MemorySource;
+pub use volume::resolve;
 
 /// What an item is. An expandable container (an archive, say) is a [`ItemKind::File`] whose
 /// [`Item::container`] flag is set.
