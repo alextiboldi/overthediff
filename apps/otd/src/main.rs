@@ -108,6 +108,7 @@ fn run_window(registry: Registry<Shell>, instance: Instance) -> eframe::Result {
                 .with_settings(session_settings::session_settings())?
                 .with_options(options, saved)?
                 .with_commands(commands::commands());
+            shell.load_session_defaults(&mut settings.store);
             // On macOS the menus go in the native menu bar, the application menu included; when
             // AppKit refuses them, the window keeps its own bar.
             #[cfg(target_os = "macos")]

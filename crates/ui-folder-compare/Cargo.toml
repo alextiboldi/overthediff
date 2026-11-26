@@ -21,6 +21,7 @@ chrono = { version = "0.4.45", default-features = false, features = ["clock", "s
 
 [dev-dependencies]
 egui_kittest = { workspace = true }
+otd-settings = { path = "../settings" }
 tempfile = "3"
 # `default_fonts` so that the tests lay out text, as the app does.
 egui = { workspace = true, features = ["default_fonts"] }

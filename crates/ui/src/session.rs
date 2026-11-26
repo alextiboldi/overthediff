@@ -139,12 +139,13 @@ impl Shell {
     }
 
     /// Completes a view's session as an empty session of its type would be: one input per side and
-    /// each contributed setting's default, keeping what it already has.
+    /// each contributed setting's value from its type's defaults, keeping what it already has.
     pub(crate) fn prepare(&self, view: &mut dyn View) {
         let Some(session) = view.session() else { return };
         if let Some(session_type) = self.session_type(&session.type_id) {
             session.specs.resize(session.specs.len().max(session_type.sides.len()), String::new());
         }
+        self.apply_session_defaults(session);
         session.fill_defaults(&self.settings);
     }
 

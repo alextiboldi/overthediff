@@ -43,6 +43,7 @@ mod options;
 pub use options::{APPLY, CHOOSE_A_PAGE, DuplicateOption, NO_OPTIONS, OPTION_PAGES, OPTIONS, OptionSpec, PREVIEW, option};
 
 mod session;
+mod session_defaults;
 pub use session::{
     DESCRIPTION, DuplicateSetting, INPUTS, Kind, OK, SCOPE, SESSION_SETTINGS, Session, SessionError, Setting, THIS_VIEW_ONLY, Value, edit_value,
 };
@@ -158,6 +159,8 @@ pub struct Shell {
     tasks: tasks::Tasks,
     /// The options features contribute to Session Settings tabs.
     settings: Vec<Setting>,
+    /// Each session type's stored defaults, by type id ([`Shell::load_session_defaults`]).
+    session_defaults: std::collections::BTreeMap<String, otd_settings::session_defaults::Rules>,
     /// The open Session Settings dialog.
     dialog: Option<session::Dialog>,
     /// The open unsaved-changes prompt.
@@ -187,6 +190,7 @@ impl Shell {
             in_window_menu: true,
             tasks: tasks::Tasks::default(),
             settings: Vec::new(),
+            session_defaults: Default::default(),
             dialog: None,
             prompt: None,
             exit_confirmed: false,
