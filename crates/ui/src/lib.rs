@@ -436,6 +436,9 @@ const LUCIDE_SLIDERS_HORIZONTAL: [[(f32, f32); 2]; 9] = [
     [(8.0, 12.0), (3.0, 12.0)],
 ];
 
+/// Lucide's `arrow-up-right` (ISC; from Feather, MIT; see ATTRIBUTION.md), Folder Compare's link glyph.
+const LUCIDE_ARROW_UP_RIGHT: [[(f32, f32); 2]; 3] = [[(7.0, 7.0), (17.0, 7.0)], [(17.0, 7.0), (17.0, 17.0)], [(7.0, 17.0), (17.0, 7.0)]];
+
 /// A Lucide icon line by line, by its Lucide name. A command whose icon isn't here shows its
 /// caption alone.
 fn lucide(name: &str) -> Option<&'static [[(f32, f32); 2]]> {
@@ -443,16 +446,29 @@ fn lucide(name: &str) -> Option<&'static [[(f32, f32); 2]]> {
         "x" => Some(&LUCIDE_X),
         "plus" => Some(&LUCIDE_PLUS),
         "sliders-horizontal" => Some(&LUCIDE_SLIDERS_HORIZONTAL),
+        "arrow-up-right" => Some(&LUCIDE_ARROW_UP_RIGHT),
         _ => None,
     }
 }
 
 const ICON: f32 = 16.0;
 
+/// Paints the Lucide icon `name`, `size` points wide, centred on `center`, for a view's own glyphs.
+/// Paints nothing when `otd_ui`'s table doesn't have it.
+pub fn paint_lucide(ui: &Ui, name: &str, center: egui::Pos2, size: f32, color: egui::Color32) {
+    if let Some(icon) = lucide(name) {
+        paint_icon_sized(ui, center, size, icon, color);
+    }
+}
+
 /// Paints a Lucide line icon, `ICON` points wide, centred on `center`.
 fn paint_icon(ui: &Ui, center: egui::Pos2, icon: &[[(f32, f32); 2]], color: egui::Color32) {
-    let scale = ICON / 24.0;
-    let origin = center - Vec2::splat(ICON / 2.0);
+    paint_icon_sized(ui, center, ICON, icon, color);
+}
+
+fn paint_icon_sized(ui: &Ui, center: egui::Pos2, size: f32, icon: &[[(f32, f32); 2]], color: egui::Color32) {
+    let scale = size / 24.0;
+    let origin = center - Vec2::splat(size / 2.0);
     let at = |(x, y): (f32, f32)| origin + Vec2::new(x, y) * scale;
     let stroke = Stroke::new(2.0 * scale, color);
     for &[from, to] in icon {
