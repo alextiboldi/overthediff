@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Windows installer (WiX v5). package.ps1 builds it; see that script for the variables.
+     It installs otd.exe, NOTICE and ATTRIBUTION.md into Program Files\OverTheDiff and adds a
+     Start menu entry. Uninstalling removes exactly those. The settings folder
+     (%APPDATA%\overthediff-<major>) is the app's, never the installer's, so it stays. -->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="OverTheDiff" Manufacturer="the OverTheDiff contributors" Version="$(var.Version)" UpgradeCode="EC46E2BC-BBAD-468F-BC43-9D75EF7A0423" Scope="perMachine" Compressed="yes" Language="1033">
+    <SummaryInformation Description="OverTheDiff" />
+    <!-- MSI versions are numeric, so prereleases of one X.Y.Z share a version and replace each other. -->
+    <MajorUpgrade AllowSameVersionUpgrades="yes" DowngradeErrorMessage="A newer version of OverTheDiff is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <StandardDirectory Id="ProgramFiles6432Folder">
+      <Directory Id="INSTALLFOLDER" Name="OverTheDiff" />
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
+
+    <Feature Id="Main" Title="OverTheDiff" Level="1">
+      <ComponentGroupRef Id="OverTheDiffFiles" />
+    </Feature>
+  </Package>
+
+  <Fragment>
+    <ComponentGroup Id="OverTheDiffFiles" Directory="INSTALLFOLDER">
+      <Component Id="App">
+        <File Id="OtdExe" Source="$(var.StageDir)\otd.exe" KeyPath="yes">
+          <!-- Advertised: the file is its key path, so no per-user registry value is needed. -->
+          <Shortcut Id="StartMenuShortcut" Directory="ProgramMenuFolder" Name="OverTheDiff" Description="Compare and merge files and folders" WorkingDirectory="INSTALLFOLDER" Advertise="yes" />
+        </File>
+      </Component>
+      <Component Id="Notice">
+        <File Id="NoticeFile" Source="$(var.StageDir)\NOTICE" KeyPath="yes" />
+      </Component>
+      <Component Id="Attribution">
+        <File Id="AttributionFile" Source="$(var.StageDir)\ATTRIBUTION.md" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+</Wix>
