@@ -19,7 +19,9 @@ use egui::{Align2, Color32, FontId, Galley, Pos2, Rect, Role, ScrollArea, Sense,
 use otd_core::colour::{ColourRole, Contrast, Rgba};
 use otd_core::i18n::t;
 use otd_text_compare::{Bookmarks, Line, LineEnding, Pos, Selection};
-use otd_text_engine::{CharDifferences, CharRange, Importance, Outcome, Row, RowKind, Side, Statistics, char_differences, classify, compare};
+use otd_text_engine::{
+    BuiltInRules, CharDifferences, CharRange, Importance, Options, Outcome, Row, RowKind, Side, Statistics, char_differences, classify, compare_with,
+};
 use otd_ui::colour::{BACKGROUND, SELECTION, SELECTION_TEXT, TEXT, colour};
 
 use crate::whitespace;
@@ -73,6 +75,8 @@ pub struct Aligned {
     digits: usize,
     /// How many lines each side has.
     lines: [usize; 2],
+    /// The Importance tab's rules and options it was compared with.
+    rules: (BuiltInRules, Options),
     /// The vertical scroll offset both panes share.
     scroll: f32,
     /// Each pane's offset when it was last drawn. A pane that is already at the shared offset is
@@ -89,12 +93,11 @@ impl Aligned {
     /// nothing to compare it with, so nothing reads as different.
     // ponytail: compared on the UI thread when the panes load, like the load itself; a background
     // comparison with progress (`compare_progressive`) comes when large files need one.
-    pub fn new(left: Option<&[Line]>, right: Option<&[Line]>) -> Self {
+    pub fn new(left: Option<&[Line]>, right: Option<&[Line]>, rules: (BuiltInRules, Options)) -> Self {
         let (rows, importance, result) = match (left, right) {
             (Some(left), Some(right)) => {
-                let comparison = compare(left, right);
-                // ponytail: no rules yet, so every difference is important; E07-S4 passes them.
-                let classification = classify(&comparison, left, right, &[]);
+                let comparison = compare_with(left, right, rules.1);
+                let classification = classify(&comparison, left, right, &[&rules.0]);
                 (comparison.rows, classification.rows, Some((classification.outcome, classification.statistics)))
             }
             (one, other) => {
@@ -110,6 +113,7 @@ impl Aligned {
             chars: HashMap::new(),
             digits: longest.to_string().len(),
             lines: [left, right].map(|lines| lines.map_or(0, <[Line]>::len)),
+            rules,
             scroll: 0.0,
             drawn: [None; 2],
             viewport: [0.0; 2],
@@ -121,8 +125,13 @@ impl Aligned {
     // ponytail: a full compare and classify per edit, like `otd_text_engine::Pair`, inside E03-S1's
     // budget for a recompare after a one-line edit; reuse the rows past the edit if that is missed.
     pub fn recompare(&mut self, left: Option<&[Line]>, right: Option<&[Line]>) {
-        let Self { scroll, drawn, viewport, reveal, .. } = *self;
-        *self = Self { scroll, drawn, viewport, reveal, ..Self::new(left, right) };
+        let Self { scroll, drawn, viewport, reveal, rules, .. } = *self;
+        *self = Self { scroll, drawn, viewport, reveal, ..Self::new(left, right, rules) };
+    }
+
+    /// The Importance tab's rules and options it was compared with.
+    pub(crate) fn importance_rules(&self) -> (BuiltInRules, Options) {
+        self.rules
     }
 
     /// The row that shows line `line` of side `side`. The place after a final line break is the

@@ -9,6 +9,7 @@ mod file_format;
 mod font_size;
 mod go_to;
 mod header;
+mod importance;
 mod layout;
 mod load;
 mod open;

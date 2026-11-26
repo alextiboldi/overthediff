@@ -187,10 +187,10 @@ impl TextCompareView {
     }
 
     /// Compares the panes as they stand, with each pane's undo history kept.
-    fn compare_as_they_stand(&mut self) {
+    pub(crate) fn compare_as_they_stand(&mut self) {
         // This comparison completes, which lifts a failed or cancelled one's read-only panes.
         self.comparison = None;
-        let old = std::mem::replace(&mut self.aligned, Aligned::new(None, None));
+        let old = std::mem::replace(&mut self.aligned, Aligned::new(None, None, Default::default()));
         self.compare(Instant::now());
         // The panes stay where the user scrolled them; only reading new files starts at the top.
         self.aligned.keep_scroll(&old);

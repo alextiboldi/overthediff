@@ -40,6 +40,8 @@
 //!
 //! [`encoding`] adds each side's encoding override to the Session Settings dialog's Format tab
 //! (E07-S10-T2).
+//!
+//! [`importance`] adds the Importance tab's checkboxes, which the comparison follows (E07-S4-T4).
 
 mod read_only;
 pub mod session;
@@ -55,6 +57,7 @@ pub mod encoding;
 pub mod file_format;
 mod font_size;
 mod go_to;
+pub mod importance;
 mod layout;
 mod load;
 mod open;
@@ -214,7 +217,7 @@ impl TextCompareView {
             browse: None,
             done: None,
             comparison: None,
-            aligned: Aligned::new(None, None),
+            aligned: Aligned::new(None, None, Default::default()),
             insert: true,
             load_time: None,
             info: None,
@@ -326,13 +329,16 @@ impl TextCompareView {
         }
         if changed {
             self.compare(started);
+        } else {
+            self.recompare_if_rules_changed();
         }
     }
 
     /// Compares the panes as they stand. The load time, counted from `started`, is set when both
     /// panes are loaded, and cleared when there was nothing to compare.
     fn compare(&mut self, started: Instant) {
-        self.aligned = Aligned::new(self.pane(0).map(|pane| pane.lines.as_slice()), self.pane(1).map(|pane| pane.lines.as_slice()));
+        let rules = self.importance();
+        self.aligned = Aligned::new(self.pane(0).map(|pane| pane.lines.as_slice()), self.pane(1).map(|pane| pane.lines.as_slice()), rules);
         self.load_time = self.aligned.result().map(|_| started.elapsed());
     }
 }
