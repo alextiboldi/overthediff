@@ -20,7 +20,7 @@
 use otd_core::i18n::{fmt, t};
 use otd_folder_engine::{Cues, Row, ScanState, Status, TreeSide};
 use otd_source::{ErrorKind, Item, ItemKind, SourceError};
-use otd_ui::colour::{BACKGROUND, ColourRole, Contrast, Rgba, SELECTION};
+use otd_ui::colour::{BACKGROUND, ColourRole, Contrast, Rgba, SELECTION, WINDOW};
 
 const fn role(id: &'static str, light: Rgba, dark: Rgba) -> ColourRole {
     ColourRole { id, light, dark }
@@ -37,12 +37,23 @@ pub const DIFFERENT: ColourRole = role("folder.status.different", Rgba::rgb(0xB7
 /// The red X on a folder that couldn't be opened or an item that couldn't be read.
 pub const ERROR_GLYPH: ColourRole = role("folder.glyph.error", Rgba::rgb(0xB7, 0x1C, 0x1C), Rgba::rgb(0xFF, 0x6E, 0x6E));
 
+/// Teal: hidden by a filter on this side, shown because its partner isn't. Drawn once filters
+/// (E08-S2) are in use; the Legend shows it already.
+pub const FILTERED: ColourRole = role("folder.status.filtered", Rgba::rgb(0x00, 0x69, 0x5C), Rgba::rgb(0x4D, 0xB6, 0xAC));
+/// Yellow: a folder not scanned yet. Drawn once scanning can be turned off (E08-S11); the Legend
+/// shows it already.
+pub const UNSCANNED: ColourRole = role("folder.status.unscanned", Rgba::rgb(0x80, 0x66, 0x00), Rgba::rgb(0xFF, 0xD5, 0x4F));
+
+/// The Lucide glyphs after a name: a link's arrow and the red X of an item that can't be read.
+pub const LINK_ICON: &str = "arrow-up-right";
+pub const ERROR_ICON: &str = "x";
+
 /// Folder Compare's colour roles, for the app's list.
-pub const COLOUR_ROLES: [ColourRole; 5] = [SAME, UNKNOWN, ORPHAN, DIFFERENT, ERROR_GLYPH];
+pub const COLOUR_ROLES: [ColourRole; 7] = [SAME, UNKNOWN, ORPHAN, DIFFERENT, ERROR_GLYPH, FILTERED, UNSCANNED];
 
 /// Names are drawn on the view's background (text, so 4.5:1, which also covers the spot and glyph
-/// there); spots and glyphs also on a selected row's background.
-pub const CONTRAST: [Contrast; 10] = [
+/// there); spots and glyphs also on a selected row's background, and in the Legend on a dialog's.
+pub const CONTRAST: [Contrast; 21] = [
     Contrast::text(&SAME, &BACKGROUND),
     Contrast::text(&UNKNOWN, &BACKGROUND),
     Contrast::text(&ORPHAN, &BACKGROUND),
@@ -53,6 +64,17 @@ pub const CONTRAST: [Contrast; 10] = [
     Contrast::control(&ORPHAN, &SELECTION),
     Contrast::control(&DIFFERENT, &SELECTION),
     Contrast::control(&ERROR_GLYPH, &SELECTION),
+    Contrast::text(&FILTERED, &BACKGROUND),
+    Contrast::control(&FILTERED, &SELECTION),
+    Contrast::control(&UNSCANNED, &BACKGROUND),
+    Contrast::control(&UNSCANNED, &SELECTION),
+    Contrast::control(&SAME, &WINDOW),
+    Contrast::control(&UNKNOWN, &WINDOW),
+    Contrast::control(&ORPHAN, &WINDOW),
+    Contrast::control(&DIFFERENT, &WINDOW),
+    Contrast::control(&ERROR_GLYPH, &WINDOW),
+    Contrast::control(&FILTERED, &WINDOW),
+    Contrast::control(&UNSCANNED, &WINDOW),
 ];
 
 // English keys, drawn only through `t`.

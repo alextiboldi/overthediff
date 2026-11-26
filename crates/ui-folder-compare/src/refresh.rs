@@ -37,6 +37,7 @@ pub fn commands() -> Vec<Command<Shell>> {
             .menu(&["Session"]),
     ]
     .into_iter()
+    .chain(crate::info::commands())
     .map(|command| command.views(VIEWS))
     .collect()
 }
@@ -92,9 +93,13 @@ impl FolderCompare {
 
 impl Scan {
     fn relist(&mut self, folder: &Path, below: bool) {
-        if self.scan.refresh(folder, below) > 0 {
-            // Scanning again: the view polls until the listings are in.
+        let queued = self.scan.refresh(folder, below);
+        if queued > 0 {
+            // Scanning again: the view polls until the listings are in. No event says the folders
+            // went back to pending, so the counts move here, as the scan's own do.
             self.idle = false;
+            self.done = self.done.saturating_sub(queued);
+            self.pending += queued;
         }
     }
 }
