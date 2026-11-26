@@ -508,7 +508,7 @@ fn key_press(pane: &mut Pane, key: EguiKey, modifiers: Modifiers, input: Input) 
         // Alt+Shift+Up and Down are Previous and Next Edit's (`edited.rs`): while one is disabled
         // its chord reaches the pane, which leaves the caret alone rather than move it as a plain
         // arrow would.
-        EguiKey::ArrowUp | EguiKey::ArrowDown if modifiers.alt => return None,
+        EguiKey::ArrowUp | EguiKey::ArrowDown if modifiers.alt && modifiers.shift => return None,
         EguiKey::ArrowUp => Pos { line: head.line.saturating_sub(1), ..head },
         EguiKey::ArrowDown => Pos { line: head.line + 1, ..head },
         EguiKey::PageUp => Pos { line: head.line.saturating_sub(page), ..head },

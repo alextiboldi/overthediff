@@ -100,3 +100,35 @@ fn past_the_last_edit_next_edit_is_disabled_and_its_chord_leaves_the_caret_alone
     assert_eq!(pane.selection.head.line, 2, "the chord doesn't move the caret");
     assert!(pane.selection.is_empty(), "or select");
 }
+
+#[test]
+fn previous_edit_from_below_visits_the_later_edit_then_the_earlier_one() {
+    let folder = tempfile::tempdir().unwrap();
+    let text: String = (1..=10).map(|n| format!("line {n}\n")).collect();
+    let mut harness = harness(&folder, &text);
+    focus_left(&mut harness);
+
+    // Edit lines 3 and 6, then go down to line 9.
+    for down in [2, 3] {
+        for _ in 0..down {
+            key(&mut harness, Modifiers::NONE, Key::ArrowDown);
+        }
+        key(&mut harness, Modifiers::NONE, Key::Home);
+        harness.event(Event::Text("x".to_owned()));
+        harness.run();
+    }
+    for _ in 0..3 {
+        key(&mut harness, Modifiers::NONE, Key::ArrowDown);
+    }
+    assert_eq!(caret_line(&harness), 8, "the caret starts below both edits");
+
+    let previous = Modifiers::ALT | Modifiers::SHIFT;
+    key(&mut harness, previous, Key::ArrowUp);
+    assert_eq!(caret_line(&harness), 5, "the first Previous Edit lands on line 6");
+    key(&mut harness, previous, Key::ArrowUp);
+    assert_eq!(caret_line(&harness), 2, "the second on line 3");
+    assert!(
+        harness.query_by(|node| node.is_focused()).is_some_and(|node| node.accesskit_node().label().as_deref() == Some(LEFT)),
+        "focus stays in the pane"
+    );
+}
