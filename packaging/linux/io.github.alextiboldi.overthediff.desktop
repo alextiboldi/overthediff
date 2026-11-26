@@ -8,5 +8,5 @@ Icon=io.github.alextiboldi.overthediff
 Terminal=false
 StartupNotify=true
 StartupWMClass=otd
-Categories=Development;Utility;
+Categories=Development;
 Keywords=diff;compare;merge;folder;text;

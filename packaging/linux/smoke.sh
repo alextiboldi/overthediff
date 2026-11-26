@@ -10,6 +10,8 @@
 # runs with its settings kept in memory, so it writes nothing to the user's profile.
 set -euo pipefail
 DEB="${1:?usage: packaging/linux/smoke.sh <package.deb>}"
+# With no display, run the whole test again on a virtual X server.
+if [[ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]]; then exec xvfb-run -a "$0" "$@"; fi
 APP_ID=io.github.alextiboldi.overthediff
 ENTRY="/usr/share/applications/$APP_ID.desktop"
 SUDO=
@@ -27,7 +29,8 @@ exe="$(sed -n 's/^Exec=\([^ ]*\).*/\1/p' "$ENTRY")"
 command -v "$exe" >/dev/null || fail "the entry starts $exe, which is not on PATH"
 icon="$(sed -n 's/^Icon=//p' "$ENTRY")"
 compgen -G "/usr/share/icons/hicolor/*/apps/$icon.*" >/dev/null || fail "no hicolor icon named $icon"
-[[ -f /usr/share/doc/overthediff/NOTICE ]] || fail "no NOTICE in /usr/share/doc/overthediff"
+# Read from the package: minimal images (Docker's Ubuntu) tell dpkg to skip /usr/share/doc.
+dpkg-deb -c "$DEB" | grep '/usr/share/doc/overthediff/NOTICE$' >/dev/null || fail "the package has no NOTICE"
 
 echo "==> start it from the desktop entry"
 version="$(dpkg-query -W -f '${Version}' overthediff)"
@@ -37,26 +40,16 @@ if [[ -z "${XDG_RUNTIME_DIR:-}" ]]; then
   XDG_RUNTIME_DIR="$(mktemp -d)"
   export XDG_RUNTIME_DIR
 fi
-launch() {
-  gio launch "$ENTRY"
-  # The window's title is the product name; poll for it, then close the app.
-  for _ in $(seq 60); do
-    if xwininfo -root -tree | grep -q '"OverTheDiff"'; then
-      pkill -x "$exe" || true
-      return 0
-    fi
-    pgrep -x "$exe" >/dev/null || { echo "smoke: $exe exited without a window" >&2; return 1; }
-    sleep 1
-  done
-  pkill -x "$exe" || true
-  echo "smoke: no OverTheDiff window within 60 seconds" >&2
-  return 1
-}
-if [[ -n "${DISPLAY:-}" ]]; then
-  launch
-else
-  export -f launch
-  export ENTRY exe
-  xvfb-run -a bash -c launch
-fi
-echo "==> smoke test passed"
+gio launch "$ENTRY"
+# The window's title is the product name: wait for it, then close the app.
+for _ in $(seq 60); do
+  sleep 1
+  if xwininfo -root -tree | grep '"OverTheDiff"' >/dev/null; then
+    pkill -x "$exe" || true
+    echo "==> smoke test passed"
+    exit 0
+  fi
+  pgrep -x "$exe" >/dev/null || fail "$exe exited without opening a window"
+done
+pkill -x "$exe" || true
+fail "no OverTheDiff window within 60 seconds"
