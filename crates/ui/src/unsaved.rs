@@ -22,21 +22,24 @@ pub const NOT_SAVED: &str = "The changes weren't saved.";
 
 /// An open prompt: the tabs it still has to ask about, the one it is asking about first.
 pub(crate) struct Prompt {
-    /// Exit asks about every unsaved tab before the window closes; Close Tab about one.
+    /// Exit asks about every unsaved tab before the window closes; Close Tab and Clear Session
+    /// about one.
     exit: bool,
+    /// Clear Session: the answered view is replaced with this empty one instead of closed.
+    replace: Option<fn() -> Box<dyn View>>,
     queue: Vec<usize>,
     /// Why the last Save didn't save, shown in the dialog.
     error: Option<String>,
     /// Focus moves into the dialog on its next draw.
     focus: bool,
-    /// What had focus when a Close Tab prompt opened, to give it back on Cancel. Exit gives it to
-    /// the selected tab, since it may have selected another.
+    /// What had focus when a Close Tab prompt opened, to give it back on Cancel. Exit and Clear
+    /// Session give it to the selected tab.
     return_to: Option<Id>,
 }
 
 impl Prompt {
     fn new(exit: bool, queue: Vec<usize>) -> Self {
-        Self { exit, queue, error: None, focus: true, return_to: None }
+        Self { exit, replace: None, queue, error: None, focus: true, return_to: None }
     }
 }
 
@@ -62,6 +65,19 @@ impl Shell {
             self.prompt = Some(Prompt::new(false, vec![index]));
         } else {
             self.close(index);
+        }
+    }
+
+    /// Replaces the view at `index` with `new` (Clear Session), first asking whether to save it
+    /// when it has unsaved changes. Does nothing while a prompt is open.
+    pub(crate) fn request_replace(&mut self, index: usize, new: fn() -> Box<dyn View>) {
+        if self.prompt.is_some() {
+            return;
+        }
+        if unsaved(&self.tabs[index]) {
+            self.prompt = Some(Prompt { replace: Some(new), ..Prompt::new(false, vec![index]) });
+        } else {
+            self.replace(index, new);
         }
     }
 
@@ -106,7 +122,8 @@ impl Shell {
         let Some(prompt) = &mut self.prompt else { return };
         let index = prompt.queue[0];
         let focus = std::mem::take(&mut prompt.focus);
-        if focus && !prompt.exit && prompt.return_to.is_none() {
+        // Clear Session runs from the menu, whose row is gone by Cancel: focus goes to the selected tab.
+        if focus && !prompt.exit && prompt.replace.is_none() && prompt.return_to.is_none() {
             prompt.return_to = ctx.memory(|memory| memory.focused());
         }
         let Some(answer) = dialog(ctx, &title(&self.tabs[index]), prompt.error.as_deref(), focus) else { return };
@@ -131,12 +148,15 @@ impl Shell {
         }
     }
 
-    /// The prompted view is saved or its changes are given up: close its tab, or ask about the next
-    /// view, or exit.
+    /// The prompted view is saved or its changes are given up: close its tab or clear it, or ask
+    /// about the next view, or exit.
     fn answered(&mut self, ctx: &Context) {
         let Some(mut prompt) = self.prompt.take() else { return };
         if !prompt.exit {
-            self.close(prompt.queue[0]);
+            match prompt.replace {
+                Some(new) => self.replace(prompt.queue[0], new),
+                None => self.close(prompt.queue[0]),
+            }
             return;
         }
         prompt.queue.remove(0);

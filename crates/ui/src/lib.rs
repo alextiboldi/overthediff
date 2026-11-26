@@ -29,7 +29,7 @@ pub use unsaved::{CANT_SAVE, DONT_SAVE, NOT_SAVED, SAVE, SAVE_CHANGES, UNSAVED_L
 use std::any::Any;
 use std::time::Duration;
 
-pub use commands::{APP_NAME, CLOSE_CURRENT_TAB, EXIT, NEXT_TAB, PREVIOUS_TAB, keymap};
+pub use commands::{APP_NAME, CLEAR_SESSION, CLOSE_CURRENT_TAB, EXIT, NEW_SESSION, NEXT_TAB, OPEN_SESSION, PREVIOUS_TAB, keymap};
 pub use otd_core::command;
 
 use egui::accesskit::{Live, Role};
@@ -173,12 +173,13 @@ pub struct Shell {
 impl Shell {
     /// A shell with one Home tab.
     pub fn new(session_types: Vec<SessionType>) -> Self {
+        let commands = commands::shell_commands(&session_types);
         let mut shell = Self {
             session_types,
             tabs: Vec::new(),
             active: 0,
             focus_active: false,
-            commands: commands::shell_commands(),
+            commands,
             dispatcher: Default::default(),
             in_window_menu: true,
             tasks: tasks::Tasks::default(),
@@ -416,6 +417,18 @@ fn field(ui: &mut Ui, field: &Field) -> Response {
 /// `<path>` lines as segments on the icons' 24-unit grid, drawn with their stroke width of 2.
 const LUCIDE_X: [[(f32, f32); 2]; 2] = [[(18.0, 6.0), (6.0, 18.0)], [(6.0, 6.0), (18.0, 18.0)]];
 const LUCIDE_PLUS: [[(f32, f32); 2]; 2] = [[(5.0, 12.0), (19.0, 12.0)], [(12.0, 5.0), (12.0, 19.0)]];
+/// Lucide's `sliders-horizontal` (ISC; see ATTRIBUTION.md), for the Session Settings button.
+const LUCIDE_SLIDERS_HORIZONTAL: [[(f32, f32); 2]; 9] = [
+    [(10.0, 5.0), (3.0, 5.0)],
+    [(12.0, 19.0), (3.0, 19.0)],
+    [(14.0, 3.0), (14.0, 7.0)],
+    [(16.0, 17.0), (16.0, 21.0)],
+    [(21.0, 12.0), (12.0, 12.0)],
+    [(21.0, 19.0), (16.0, 19.0)],
+    [(21.0, 5.0), (14.0, 5.0)],
+    [(8.0, 10.0), (8.0, 14.0)],
+    [(8.0, 12.0), (3.0, 12.0)],
+];
 
 /// A Lucide icon line by line, by its Lucide name. A command whose icon isn't here shows its
 /// caption alone.
@@ -423,6 +436,7 @@ fn lucide(name: &str) -> Option<&'static [[(f32, f32); 2]]> {
     match name {
         "x" => Some(&LUCIDE_X),
         "plus" => Some(&LUCIDE_PLUS),
+        "sliders-horizontal" => Some(&LUCIDE_SLIDERS_HORIZONTAL),
         _ => None,
     }
 }

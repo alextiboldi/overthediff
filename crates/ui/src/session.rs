@@ -102,15 +102,23 @@ impl Shell {
         }
     }
 
-    /// Clear Session: replaces the active view with an empty session of the same type.
+    /// Clear Session: replaces the active view with an empty session of the same type. A view with
+    /// unsaved changes asks Save / Don't Save / Cancel first, and Cancel keeps it. Does nothing
+    /// while that prompt is open.
     pub fn clear_session(&mut self) -> Result<(), SessionError> {
         let type_id = self.active_session().ok_or(SessionError::NoSession)?.type_id.clone();
-        let mut view = (self.session_type(&type_id).ok_or(SessionError::UnknownType)?.new)();
+        let new = self.session_type(&type_id).ok_or(SessionError::UnknownType)?.new;
+        self.request_replace(self.active, new);
+        Ok(())
+    }
+
+    /// Replaces the view at `index` with `new`, without asking.
+    pub(crate) fn replace(&mut self, index: usize, new: fn() -> Box<dyn View>) {
+        let mut view = new();
         self.prepare(view.as_mut());
         self.dialog = None;
-        self.tabs[self.active] = Some(view);
-        self.select(self.active);
-        Ok(())
+        self.tabs[index] = Some(view);
+        self.select(index);
     }
 
     /// Session Settings (and the Rules toolbar button): opens the dialog on the active view's session.

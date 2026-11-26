@@ -5,6 +5,7 @@ mod commands;
 mod options;
 mod path_edit;
 mod session;
+mod session_commands;
 mod shell;
 mod tasks;
 mod translation;
