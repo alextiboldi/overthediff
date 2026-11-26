@@ -24,7 +24,8 @@
 //! that side's item, Ctrl+click (Cmd+click on macOS) adds or removes one, and Shift+click selects
 //! the range from the last item clicked, on that side only. By keyboard, Up and Down move focus and
 //! select as a click does, Shift+Up and Shift+Down select the range, Ctrl+Up and Ctrl+Down (Cmd on
-//! macOS) move focus only, and Ctrl+Space adds or removes the focused item.
+//! macOS) move focus only, and Ctrl+Space adds or removes the focused item. Shift+Left and
+//! Shift+Right (E08-S7-T3) limit a selection on both sides to the left or the right side.
 //!
 //! Each side of a row is drawn in its status colour, with a colour spot left of the name and a
 //! link's arrow or an unreadable item's red X after it; [`look`] decides them. Its status text is
@@ -272,6 +273,10 @@ impl FolderCompare {
                 }
                 return;
             }
+            Pick::Limit => {
+                self.selected[1 - side].clear();
+                return;
+            }
         }
         self.anchor[side] = Some(path);
     }
@@ -493,6 +498,8 @@ enum Pick {
     Toggle,
     /// Select from the anchor to here.
     Range,
+    /// Keep this side's selection and clear the other's (Shift+Left, Shift+Right).
+    Limit,
 }
 
 impl Pick {
@@ -679,6 +686,8 @@ fn paint_chevron(ui: &Ui, painter: &egui::Painter, center: Pos2, open: bool, col
 /// lies that way. Up and Down select as a click does (with Shift, the range from the anchor), and
 /// with Ctrl (Cmd on macOS) only move; Left and Right only move; Ctrl+Space adds or removes the
 /// focused item, as Ctrl+click does (the Control key on every platform: Cmd+Space is the system's).
+/// Shift+Left and Shift+Right keep only that side's selection and move focus to that side, as Left
+/// and Right do (the move is *unspecified*, decided here: focus follows what stays selected).
 fn arrow(ui: &mut Ui, response: &Response, row: usize, side: usize, rows: usize) -> Option<((usize, usize), Option<Pick>)> {
     // Esc too, so it hides the status tooltip instead of taking focus from the cell.
     let filter = EventFilter { horizontal_arrows: true, vertical_arrows: true, escape: true, ..EventFilter::default() };
@@ -697,6 +706,10 @@ fn arrow(ui: &mut Ui, response: &Response, row: usize, side: usize, rows: usize)
         Some((up, Some(pick)))
     } else if pressed(Modifiers::NONE, Key::ArrowDown) {
         Some((down, Some(pick)))
+    } else if pressed(Modifiers::SHIFT, Key::ArrowLeft) {
+        Some(((row, 0), Some(Pick::Limit)))
+    } else if pressed(Modifiers::SHIFT, Key::ArrowRight) {
+        Some(((row, 1), Some(Pick::Limit)))
     } else if pressed(Modifiers::NONE, Key::ArrowLeft) {
         Some(((row, 0), None))
     } else if pressed(Modifiers::NONE, Key::ArrowRight) {
