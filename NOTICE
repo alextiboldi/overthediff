@@ -184,7 +184,8 @@ Linux, in /usr/share/doc/overthediff/):
 
 Icons
 
-The tab strip (crates/ui) draws Lucide's "x" and "plus" icons from their path coordinates. Both
+The tab strip (crates/ui) draws Lucide's "x" and "plus" icons from their path coordinates, and
+Folder Compare (crates/ui-folder-compare) draws "x" and "arrow-up-right" the same way. All three
 are among the Lucide icons derived from the Feather project. The toolbar (crates/ui) draws Lucide's
 "sliders-horizontal" icon the same way; it is Lucide's own, under the ISC License alone.
 

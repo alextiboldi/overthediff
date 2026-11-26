@@ -9,8 +9,9 @@ use egui::accesskit::{Live, Role};
 use egui::{Key, Modifiers};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
-use otd_core::i18n::fmt;
+use otd_core::i18n::{fmt, t};
 use otd_ui::Shell;
+use otd_ui_folder_compare::look::{IS_DIFFERENT, IS_NEWER, IS_OLDER, IS_ORPHAN, IS_SAME, IS_UNKNOWN};
 use otd_ui_folder_compare::{FolderCompare, NOT_ON_LEFT, NOT_ON_RIGHT, ON_LEFT, ON_RIGHT, session_type};
 
 /// `left` and `right` under `root`: a file and a folder on both sides, and an orphan on each.
@@ -299,4 +300,94 @@ fn a_screen_readers_activate_selects_as_a_click_does() {
     harness.get_by_label(&right[3]).click_accesskit();
     harness.run();
     assert_eq!(selected(&harness), [right[3].as_str()], "an AccessKit Click on a cell that isn't current selects its item");
+}
+
+/// Writes `content` to `path` and sets its modified time, in seconds after the epoch.
+fn write_at(path: &Path, content: &str, seconds: u64) {
+    fs::write(path, content).unwrap();
+    let file = fs::File::options().write(true).open(path).unwrap();
+    file.set_modified(std::time::SystemTime::UNIX_EPOCH + Duration::from_secs(seconds)).unwrap();
+}
+
+/// What the name cell `label` says about its status, beyond its name.
+fn description(harness: &Harness<'_, Shell>, label: &str) -> String {
+    let cell = harness.query_by(|node| node.role() == Role::Cell && node.label().as_deref() == Some(label));
+    cell.unwrap_or_else(|| panic!("no cell {label:?}")).accesskit_node().description().unwrap_or_default()
+}
+
+#[test]
+fn every_name_cell_says_its_status_in_words_and_a_folder_not_listed_yet_says_so() {
+    let root = tempfile::tempdir().unwrap();
+    fixture(root.path());
+    let (left, right) = (root.path().join("left"), root.path().join("right"));
+    for (side, newer, size) in [(&left, 1_000_000, "x"), (&right, 2_000_000, "longer")] {
+        write_at(&side.join("newer-right.txt"), "x", newer);
+        // Times within the tolerance, so only the size differs.
+        write_at(&side.join("size.txt"), size, 3_000_000);
+    }
+    #[cfg(unix)]
+    let locked = {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::os::unix::fs::symlink("same.txt", left.join("shortcut")).unwrap();
+        fs::create_dir(left.join("locked")).unwrap();
+        fs::set_permissions(left.join("locked"), fs::Permissions::from_mode(0o000)).unwrap();
+        // An account that may list it anyway (root) can't test this.
+        let refused = fs::read_dir(left.join("locked")).is_err();
+        let harness = harness(FolderCompare::of_folders(&["left".into(), "right".into()], root.path()));
+        // Back before anything can fail, so the temporary folder can be removed.
+        fs::set_permissions(left.join("locked"), fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(description(&harness, &on(ON_LEFT, "shortcut")).ends_with(t(otd_ui_folder_compare::look::LINK)), "a link says so");
+        refused.then(|| description(&harness, &on(ON_LEFT, "locked")))
+    };
+    #[cfg(unix)]
+    if let Some(locked) = locked {
+        assert!(
+            locked.starts_with(&fmt(t(otd_ui_folder_compare::look::CANT_READ), &[("error", "")])),
+            "a folder that can't be opened says why: {locked:?}"
+        );
+    }
+    let harness = harness(FolderCompare::of_folders(&["left".into(), "right".into()], root.path()));
+    let expected = [
+        (on(ON_LEFT, "same.txt"), IS_SAME),
+        (on(ON_LEFT, "newer-right.txt"), IS_OLDER),
+        (on(ON_RIGHT, "newer-right.txt"), IS_NEWER),
+        (on(ON_RIGHT, "size.txt"), IS_DIFFERENT),
+        (on(ON_LEFT, "only-left.txt"), IS_ORPHAN),
+        // Background scanning is off and nothing opened it, so its contents are unknown.
+        (on(ON_LEFT, "both"), IS_UNKNOWN),
+    ];
+    for (cell, status) in expected {
+        assert_eq!(description(&harness, &cell), t(status), "{cell}");
+    }
+}
+
+/// Whether `text` is drawn as a label, as a tooltip is.
+fn shown(harness: &Harness<'_, Shell>, text: &str) -> bool {
+    harness
+        .query_all_by_role(Role::Label)
+        .filter_map(|label| label.accesskit_node().value().or(label.accesskit_node().label()))
+        .any(|label| label == text)
+}
+
+#[test]
+fn a_name_cell_reached_by_keyboard_shows_its_status_in_words_until_esc_hides_it_without_moving_focus() {
+    let root = tempfile::tempdir().unwrap();
+    fixture(root.path());
+    let mut harness = harness(FolderCompare::of_folders(&["left".into(), "right".into()], root.path()));
+    for _ in 0..40 {
+        if focused(&harness).is_some_and(|(role, _)| role == Role::Cell) {
+            break;
+        }
+        press(&mut harness, Key::Tab);
+    }
+    let cell = focused(&harness).expect("Tab reaches a name cell");
+    let status = description(&harness, &cell.1);
+    assert!(shown(&harness, &status), "the focused cell's status {status:?} is shown as text");
+    press(&mut harness, Key::Escape);
+    assert!(!shown(&harness, &status), "Esc hides it");
+    assert_eq!(focused(&harness), Some(cell.clone()), "and focus stays on the cell");
+    press(&mut harness, Key::ArrowDown);
+    press(&mut harness, Key::ArrowUp);
+    assert_eq!(focused(&harness), Some(cell));
+    assert!(shown(&harness, &status), "it shows again once focus comes back");
 }

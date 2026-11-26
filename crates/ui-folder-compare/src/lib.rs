@@ -22,6 +22,11 @@
 //! the range from the last item clicked, on that side only. By keyboard, Up and Down move focus and
 //! select as a click does, Shift+Up and Shift+Down select the range, Ctrl+Up and Ctrl+Down (Cmd on
 //! macOS) move focus only, and Ctrl+Space adds or removes the focused item.
+//!
+//! Each side of a row is drawn in its status colour, with a colour spot left of the name and a
+//! link's arrow or an unreadable item's red X after it; [`look`] decides them. Its status text is
+//! the name cell's accessible description and its tooltip, shown on hover and on keyboard focus
+//! (Esc hides it), so colour is never the only signal.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -34,14 +39,16 @@ use egui::{
     Color32, EventFilter, Key, Modifiers, PointerButton, Rect, Response, Sense, StrokeKind, TextStyle, TextWrapMode, Ui, Vec2, WidgetInfo, WidgetText,
 };
 use otd_core::i18n::{fmt, t, trn};
-use otd_folder_engine::{Criteria, DEFAULT_TOLERANCE, Row, ScanEvent, TreeScan, case_sensitive, compare_trees};
+use otd_folder_engine::{Criteria, DEFAULT_TOLERANCE, Row, ScanEvent, TreeScan, TreeSide, case_sensitive, compare_trees};
 use otd_launch::{Completion, Handler, Pattern, Request};
 use otd_source::{Capabilities, DataSource, Item, ItemKind, LocalSource};
 use otd_ui::colour::{SELECTION, SELECTION_TEXT, colour};
-use otd_ui::{Browse, PathEdit, Session, SessionType, Shell, View};
+use otd_ui::{Browse, PathEdit, Session, SessionType, Shell, View, paint_lucide};
 
+pub mod look;
 mod refresh;
 
+pub use look::{COLOUR_ROLES, CONTRAST, Look, look};
 pub use refresh::{FULL_REFRESH, REFRESH, REFRESH_SELECTION, SWAP_SIDES, commands};
 
 /// The session type's id, which is also the view type its commands name.
@@ -130,6 +137,8 @@ pub struct FolderCompare {
     /// Each side's last plain or Ctrl click (or key), where a Shift range starts. With none, a range
     /// starts at the focused cell when it is on that side.
     anchor: [Option<PathBuf>; 2],
+    /// Esc hid the focused cell's status tooltip; it shows again when focus moves to a cell.
+    quiet: bool,
     /// Reports the close to a launcher waiting for this view.
     done: Option<Completion>,
 }
@@ -153,6 +162,7 @@ impl FolderCompare {
             refocus: false,
             selected: Default::default(),
             anchor: [None, None],
+            quiet: false,
             done: None,
         }
     }
@@ -336,20 +346,39 @@ impl FolderCompare {
                         for (side, item) in [&row.left, &row.right].into_iter().enumerate() {
                             let current = self.current == (index, side);
                             let selected = item.is_some().then(|| self.selected[side].contains(&row_path(row)));
-                            let response = name_cell(ui, item.as_ref(), side, current, selected, Vec2::new(name_width, height));
+                            // ponytail: `look` walks a folder's listed subtree (`Row::cues`) every frame; work the
+                            // looks out in `update` when the rows change if expanded trees (T3, E08-S11) make it slow.
+                            let look = look(row, [TreeSide::Left, TreeSide::Right][side]);
+                            let size = Vec2::new(name_width, height);
+                            let response = name_cell(ui, item.as_ref(), look.as_ref(), side, current, selected, size);
                             if current && std::mem::take(&mut self.refocus) {
                                 response.request_focus();
                                 response.scroll_to_me(None);
                             }
                             if response.has_focus() {
+                                if response.gained_focus() {
+                                    self.quiet = false;
+                                }
                                 moved = moved.or_else(|| arrow(ui, &response, index, side, self.rows.len()));
+                                self.quiet |= ui.input_mut(|input| input.consume_key(Modifiers::NONE, Key::Escape));
+                                // The status in words on keyboard focus too, while the cell is in view. It covers
+                                // the row below, so Esc hides it without moving focus (WCAG 1.4.13).
+                                if let Some(look) = &look
+                                    && !self.quiet
+                                    && !response.hovered()
+                                    && ui.is_rect_visible(response.rect)
+                                {
+                                    response.show_tooltip_text(look.description());
+                                }
                             }
+                            // The whole side of the row takes its status colour.
+                            let status = look.as_ref().map_or(ui.visuals().text_color(), |look| colour(ui.ctx(), look.colour()));
                             // A click on any of the side's cells.
                             let mut clicked = activated(&response);
                             for column in COLUMNS {
                                 // A blank cell is still allocated, so it takes the item spacing a filled one does.
                                 let text = item.as_ref().and_then(column.cell).unwrap_or_default();
-                                let response = cell(ui, &text, Vec2::new(pane * column.width, height), Sense::CLICK, selected == Some(true));
+                                let response = cell(ui, &text, Vec2::new(pane * column.width, height), Sense::CLICK, selected == Some(true), status);
                                 clicked |= activated(&response);
                             }
                             if clicked {
@@ -450,39 +479,47 @@ impl View for FolderCompare {
 }
 
 fn header(ui: &mut Ui, caption: &str, width: f32, height: f32) {
-    let response = cell(ui, t(caption), Vec2::new(width, height), Sense::hover(), false);
+    let response = cell(ui, t(caption), Vec2::new(width, height), Sense::hover(), false, ui.visuals().text_color());
     ui.ctx().accesskit_node_builder(response.id, |node| node.set_role(Role::ColumnHeader));
 }
 
-/// A cell showing `text`, cut short to fit, named `text` for screen readers.
-fn cell(ui: &mut Ui, text: &str, size: Vec2, sense: Sense, selected: bool) -> Response {
+/// A cell showing `text` in `colour`, cut short to fit, named `text` for screen readers.
+fn cell(ui: &mut Ui, text: &str, size: Vec2, sense: Sense, selected: bool, colour: Color32) -> Response {
     let (rect, response) = ui.allocate_exact_size(size, sense);
     response.widget_info(|| WidgetInfo::labeled(Role::Cell, true, text));
-    let colour = paint_selection(ui, rect, selected);
+    let colour = paint_selection(ui, rect, selected, colour);
     paint_text(ui, rect, text, colour);
     response
 }
 
-/// Fills a selected cell, gaps between cells included, and gives the colour its text takes.
-fn paint_selection(ui: &Ui, rect: Rect, selected: bool) -> Color32 {
+/// Fills a selected cell, gaps between cells included, and gives the colour its text takes:
+/// `unselected` when it isn't selected.
+fn paint_selection(ui: &Ui, rect: Rect, selected: bool, unselected: Color32) -> Color32 {
     if !selected {
-        return ui.visuals().text_color();
+        return unselected;
     }
     ui.painter().rect_filled(rect.expand2(ui.spacing().item_spacing / 2.0), 0.0, colour(ui.ctx(), &SELECTION));
     colour(ui.ctx(), &SELECTION_TEXT)
 }
 
-fn paint_text(ui: &Ui, rect: Rect, text: &str, colour: Color32) {
+/// Paints `text` cut short to fit `rect`, and returns how wide it came out.
+fn paint_text(ui: &Ui, rect: Rect, text: &str, colour: Color32) -> f32 {
     let galley = WidgetText::from(text).into_galley(ui, Some(TextWrapMode::Truncate), rect.width(), TextStyle::Body);
     let at = egui::pos2(rect.left(), rect.center().y - galley.size().y / 2.0);
+    let width = galley.size().x;
     ui.painter().galley(at, galley, colour);
+    width
 }
 
-/// A row's name on one side, or the gap where the other side's item has no partner. Only the
-/// current cell takes focus, so Tab stops once in the row area; every cell takes clicks.
-/// `selected` is `None` for a gap, which has nothing to select.
-fn name_cell(ui: &mut Ui, item: Option<&Item>, side: usize, current: bool, selected: Option<bool>, size: Vec2) -> Response {
-    let (rect, response) = ui.allocate_exact_size(size, if current { Sense::click() } else { Sense::CLICK });
+/// The colour spot's side, and a glyph's.
+const SPOT: f32 = 10.0;
+const GLYPH: f32 = 12.0;
+
+/// A row's name on one side, in its status colour after its colour spot, or the gap where the
+/// other side's item has no partner. Only the current cell takes focus, so Tab stops once in the
+/// row area; every cell takes clicks. `selected` is `None` for a gap, which has nothing to select.
+fn name_cell(ui: &mut Ui, item: Option<&Item>, look: Option<&Look>, side: usize, current: bool, selected: Option<bool>, size: Vec2) -> Response {
+    let (rect, mut response) = ui.allocate_exact_size(size, if current { Sense::click() } else { Sense::CLICK });
     let name = match item {
         Some(item) => fmt(t([ON_LEFT, ON_RIGHT][side]), &[("name", &item.name)]),
         None => t([NOT_ON_LEFT, NOT_ON_RIGHT][side]).to_owned(),
@@ -491,14 +528,38 @@ fn name_cell(ui: &mut Ui, item: Option<&Item>, side: usize, current: bool, selec
     if let Some(selected) = selected {
         ui.ctx().accesskit_node_builder(response.id, |node| node.set_selected(selected));
     }
-    let colour = paint_selection(ui, rect, selected == Some(true));
-    if let Some(item) = item {
-        paint_text(ui, rect, &item.name, colour);
+    let status = look.map_or(ui.visuals().text_color(), |look| colour(ui.ctx(), look.colour()));
+    let text_colour = paint_selection(ui, rect, selected == Some(true), status);
+    if let (Some(item), Some(look)) = (item, look) {
+        paint_spot(ui, rect, look);
+        let glyphs = [(look.link, "arrow-up-right", look.colour()), (look.error.is_some(), "x", &look::ERROR_GLYPH)];
+        let glyphs: Vec<_> = glyphs.into_iter().filter(|(on, ..)| *on).collect();
+        let text =
+            Rect::from_min_max(rect.min + Vec2::new(SPOT + ui.spacing().icon_spacing, 0.0), rect.max - Vec2::new(GLYPH * glyphs.len() as f32, 0.0));
+        let width = paint_text(ui, text, &item.name, text_colour);
+        for (at, (_, icon, role)) in glyphs.into_iter().enumerate() {
+            let center = egui::pos2(text.left() + width + GLYPH * (at as f32 + 0.5), rect.center().y);
+            paint_lucide(ui, icon, center, GLYPH, colour(ui.ctx(), role));
+        }
+        // The tooltip is also the cell's accessible description.
+        response = response.on_hover_text(look.description());
     }
     if response.has_focus() {
         ui.painter().rect_stroke(rect, 0.0, ui.visuals().selection.stroke, StrokeKind::Inside);
     }
     response
+}
+
+/// The colour spot at the left of a name cell: one colour, or a folder's several side by side.
+fn paint_spot(ui: &Ui, cell: Rect, look: &Look) {
+    let spot = Rect::from_center_size(egui::pos2(cell.left() + SPOT / 2.0, cell.center().y), Vec2::splat(SPOT));
+    let colours = look.spot();
+    let part = SPOT / colours.len().max(1) as f32;
+    for (at, role) in colours.into_iter().enumerate() {
+        let left = spot.left() + part * at as f32;
+        let rect = Rect::from_min_max(egui::pos2(left, spot.top()), egui::pos2(left + part, spot.bottom()));
+        ui.painter().rect_filled(rect, 0.0, colour(ui.ctx(), role));
+    }
 }
 
 /// The cell a key pressed in the focused name cell moves to, and what it does to that side's
@@ -507,7 +568,8 @@ fn name_cell(ui: &mut Ui, item: Option<&Item>, side: usize, current: bool, selec
 /// with Ctrl (Cmd on macOS) only move; Left and Right only move; Ctrl+Space adds or removes the
 /// focused item, as Ctrl+click does (the Control key on every platform: Cmd+Space is the system's).
 fn arrow(ui: &mut Ui, response: &Response, row: usize, side: usize, rows: usize) -> Option<((usize, usize), Option<Pick>)> {
-    let filter = EventFilter { horizontal_arrows: true, vertical_arrows: true, ..EventFilter::default() };
+    // Esc too, so it hides the status tooltip instead of taking focus from the cell.
+    let filter = EventFilter { horizontal_arrows: true, vertical_arrows: true, escape: true, ..EventFilter::default() };
     ui.memory_mut(|memory| memory.set_focus_lock_filter(response.id, filter));
     let pressed = |modifiers, key| ui.input_mut(|input| input.consume_key(modifiers, key));
     let up = (row.saturating_sub(1), side);
