@@ -75,8 +75,9 @@ As a developer, I can open two folders side by side and see at a glance which it
 - The value lives in code as `otd_folder_engine::DEFAULT_TOLERANCE` (`crates/folder-engine/src/status.rs`).
 
 #### Tasks
-- **E08-S1-T1** — Decide the default timestamp tolerance · size: S · depends: — · flags: `decision`
+- **E08-S1-T1** — Decide the default timestamp tolerance · size: S · depends: — · flags: `decision` · status: done
   - AC: decision recorded in this story. Proposed default: 2 seconds, which absorbs the 2-second timestamp resolution of FAT volumes and zip archives. Quick tests use it until the user changes it.
+  - Implemented: 2-second default recorded in this story's Decisions and in `00-index.md`, confirmed by the operator on 2026-11-25; the value lives as `otd_folder_engine::DEFAULT_TOLERANCE` in `crates/folder-engine/src/status.rs`. No new test: the exactly-at-tolerance boundary is already covered by E03-S2-T4's tests in `crates/folder-engine/tests/it/status.rs`. `cargo xtask ci` passed on macOS, and the pull request's CI passed on Linux and macOS (no platform-dependent code, so no full-matrix run). https://github.com/alextiboldi/overthediff/pull/65
 - **E08-S1-T2** — Two-pane view with aligned rows, path edits and the entry points (Home, New Session, CLI with two folders) · size: M · depends: — · flags: `naming-check`, `craft-libs`, `accessibility`
   - AC: `otd A B` with two folders opens the view with A and B in the path edits. Rows of a fixture tree align by name, and orphans show gaps.
 - **E08-S1-T3** — Tree expansion commands · size: S · depends: E08-S1-T2
