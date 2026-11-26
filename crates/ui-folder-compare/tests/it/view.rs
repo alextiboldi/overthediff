@@ -182,27 +182,27 @@ fn every_row_has_a_cell_under_each_column_header_and_the_path_edits_are_outside_
 }
 
 /// The names of the selected cells, in row order. (The tab strip's tab is selected too.)
-fn selected(harness: &Harness<'_, Shell>) -> Vec<String> {
+pub(crate) fn selected(harness: &Harness<'_, Shell>) -> Vec<String> {
     harness
         .query_all_by(|node| node.role() == Role::Cell && node.is_selected() == Some(true))
         .filter_map(|cell| cell.accesskit_node().label())
         .collect()
 }
 
-fn click(harness: &mut Harness<'_, Shell>, name: &str, modifiers: Modifiers) {
+pub(crate) fn click(harness: &mut Harness<'_, Shell>, name: &str, modifiers: Modifiers) {
     harness.get_by_label(name).click_modifiers(modifiers);
     harness.run();
 }
 
 /// Each row's name cell on `side`: an item's name or a gap's.
-fn names(rows: &[Vec<String>], side: &str) -> Vec<String> {
+pub(crate) fn names(rows: &[Vec<String>], side: &str) -> Vec<String> {
     let (template, gap) = if side == "left" { (ON_LEFT, NOT_ON_LEFT) } else { (ON_RIGHT, NOT_ON_RIGHT) };
     let suffix = on(template, "");
     rows.iter().map(|row| row.iter().find(|c| c.ends_with(&suffix) || *c == gap).cloned().unwrap_or_default()).collect()
 }
 
 /// The items, not gaps, among `cells`.
-fn items(cells: &[String]) -> Vec<String> {
+pub(crate) fn items(cells: &[String]) -> Vec<String> {
     cells.iter().filter(|c| **c != NOT_ON_LEFT && **c != NOT_ON_RIGHT).cloned().collect()
 }
 

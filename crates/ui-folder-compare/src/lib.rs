@@ -24,7 +24,8 @@
 //! that side's item, Ctrl+click (Cmd+click on macOS) adds or removes one, and Shift+click selects
 //! the range from the last item clicked, on that side only. By keyboard, Up and Down move focus and
 //! select as a click does, Shift+Up and Shift+Down select the range, Ctrl+Up and Ctrl+Down (Cmd on
-//! macOS) move focus only, and Ctrl+Space adds or removes the focused item.
+//! macOS) move focus only, and Ctrl+Space adds or removes the focused item. Pressing on a row's
+//! cells and dragging selects a range, on one side or, across the middle, on both ([`swipe`]).
 //!
 //! Each side of a row is drawn in its status colour, with a colour spot left of the name and a
 //! link's arrow or an unreadable item's red X after it; [`look`] decides them. Its status text is
@@ -54,6 +55,7 @@ mod flat;
 mod info;
 pub mod look;
 mod refresh;
+mod swipe;
 
 use expand::Expansion;
 pub use expand::Shown;
@@ -401,6 +403,8 @@ impl FolderCompare {
         let mut focused = false;
         let mut moved = None;
         let mut picked = None;
+        // A swipe's cells: the one pressed and being dragged, and the one under the pointer.
+        let (mut swipe_from, mut swipe_to) = (None, None);
         egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
             for (index, shown_row) in shown.iter().enumerate() {
                 let row = shown_row.row;
@@ -448,13 +452,23 @@ impl FolderCompare {
                             }
                             // The whole side of the row takes its status colour.
                             let status = look.as_ref().map_or(ui.visuals().text_color(), |look| colour(ui.ctx(), look.colour()));
-                            // A click on any of the side's cells.
+                            // A click on any of the side's cells, and a swipe from or over them.
                             let mut clicked = activated(&response);
+                            let mut swiped = |response: &Response| {
+                                if response.dragged_by(PointerButton::Primary) {
+                                    swipe_from = Some((index, side));
+                                }
+                                if response.contains_pointer() {
+                                    swipe_to = Some((index, side));
+                                }
+                            };
+                            swiped(&response);
                             for column in COLUMNS {
                                 // A blank cell is still allocated, so it takes the item spacing a filled one does.
                                 let text = item.as_ref().and_then(column.cell).unwrap_or_default();
-                                let response = cell(ui, &text, Vec2::new(pane * column.width, height), Sense::CLICK, selected == Some(true), status);
+                                let response = cell(ui, &text, Vec2::new(pane * column.width, height), CELL_SENSE, selected == Some(true), status);
                                 clicked |= activated(&response);
+                                swiped(&response);
                             }
                             if clicked {
                                 picked = Some(((index, side), Some(Pick::of_click(ui.input(|input| input.modifiers)))));
@@ -465,6 +479,13 @@ impl FolderCompare {
             }
         });
         self.grid_focus = focused;
+        let swept = swipe_from.zip(swipe_to);
+        // Focus follows a swipe's end, as it follows a click.
+        if let Some((_, to)) = swept
+            && (&shown[to.0].key, to.1) != (&self.current.0, self.current.1)
+        {
+            picked = picked.or(Some((to, None)));
+        }
         if let Some(((index, side), pick)) = picked.or(moved) {
             let key = shown[index].key.clone();
             // Before the move: a range with no anchor yet starts at the cell focused until now.
@@ -475,8 +496,14 @@ impl FolderCompare {
             self.refocus = true;
             ui.ctx().request_repaint();
         }
+        if let Some((from, to)) = swept {
+            self.swipe(from, to);
+        }
     }
 }
+
+/// What a row's cells sense, focus aside: clicks, and drags for a swipe.
+const CELL_SENSE: Sense = Sense::CLICK.union(Sense::DRAG);
 
 /// A pointer click, or a screen reader's activate (AccessKit `Click`). Not `clicked()`, which also
 /// counts Space and Enter on the focused cell: those stay free for E08-S10.
@@ -608,7 +635,7 @@ fn name_cell(
     let (_, rect) = ui.allocate_space(size);
     // An id of the row's own (the caller's `push_id`) rather than an automatic one, which counts
     // the rows above: focus stays with the cell as rows open and close above it.
-    let mut response = ui.interact(rect, ui.scope_id().with(("name", side)), if current { Sense::click() } else { Sense::CLICK });
+    let mut response = ui.interact(rect, ui.scope_id().with(("name", side)), if current { CELL_SENSE.union(Sense::FOCUSABLE) } else { CELL_SENSE });
     let name = match item {
         Some((item, _)) => fmt(t([ON_LEFT, ON_RIGHT][side]), &[("name", &item.name)]),
         None => t([NOT_ON_LEFT, NOT_ON_RIGHT][side]).to_owned(),
