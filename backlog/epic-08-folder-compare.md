@@ -232,8 +232,9 @@ As a QA engineer, I can check that files really have the same content, not just 
 
 - [ ] Clicking a row's cell in the center column selects both sides of that row.
 #### Tasks
-- **E08-S5-T1** — Content options on the Comparison tab: Compare contents (CRC or Binary), Skip if quick tests indicate files are the same, Override quick test results · size: S · depends: —
+- **E08-S5-T1** — Content options on the Comparison tab: Compare contents (CRC or Binary), Skip if quick tests indicate files are the same, Override quick test results · size: S · depends: — · status: done
   - AC: the options are kept in the session settings, and changing them recompares.
+  - Implemented: four session settings on the Folder Compare session's Comparison tab (Compare contents, Content comparison CRC or Binary, Skip if quick tests indicate files are the same, Override quick test results) in `crates/ui-folder-compare/src/content.rs`, registered through `apps/otd/src/session_settings.rs`; `FolderCompare::content_options` hands them to the folder engine as `ContentOptions`, and changing them recompares. Until E08-S5-T2 runs the tests, the status bar and Info say content tests don't run yet while Compare contents is on. Tests in `crates/ui-folder-compare/tests/it/content.rs`. `cargo xtask ci` passed on macOS, and pull-request CI passed on Linux and macOS (no platform-dependent code, so no full-matrix run). https://github.com/alextiboldi/overthediff/pull/139
 - **E08-S5-T2** — Run content tests on load and fold the results into row status, applying the skip and override rules · size: M · depends: E08-S5-T1 · flags: `licence-check`
   - AC: a pair with equal content but different timestamps shows black with Override on and red with it off. With Skip on, quick-same pairs get no content result.
 - **E08-S5-T3** — Center column with content results · size: S · depends: E08-S5-T2
