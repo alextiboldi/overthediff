@@ -260,7 +260,9 @@ pub fn edit_value(ui: &mut Ui, setting: &Setting, value: &mut Value) -> Response
 pub(crate) fn edit(ui: &mut Ui, field: &str, id: &str, label: &str, choices: &[&str], value: &mut Value) -> Response {
     match value {
         Value::Bool(on) => ui.checkbox(on, t(label)),
-        Value::Number(number) => labelled(ui, t(label), |ui| ui.add(egui::DragValue::new(number))),
+        // A finite range: the store reads back only finite numbers, and egui's default range lets a
+        // typed `inf` or `nan` through.
+        Value::Number(number) => labelled(ui, t(label), |ui| ui.add(egui::DragValue::new(number).range(f64::MIN..=f64::MAX))),
         Value::Choice(choice) => {
             let mut chosen = None;
             let response = egui::ComboBox::new(id, t(label))

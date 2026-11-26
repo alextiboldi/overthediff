@@ -249,6 +249,21 @@ fn an_applied_option_persists_across_a_restart() {
 }
 
 #[test]
+fn a_typed_non_finite_number_applies_as_a_finite_one() {
+    for typed in ["inf", "nan"] {
+        let mut harness = dialog(shell(Default::default()));
+        tab_to(&mut harness, Role::SpinButton, TAB_WIDTH);
+        press(&mut harness, Modifiers::COMMAND, Key::A);
+        harness.event(egui::Event::Text(typed.to_owned()));
+        harness.run();
+        click(&mut harness, APPLY);
+        let values = harness.state_mut().take_applied_options().unwrap();
+        let Some(Value::Number(n)) = values.get("test.tab_width") else { panic!("{typed}: no number applied") };
+        assert!(n.is_finite(), "{typed}: applied {n}, which the store would not read back");
+    }
+}
+
+#[test]
 fn the_dialog_keeps_its_size_from_frame_to_frame_so_a_click_lands() {
     let mut harness = dialog(shell(Default::default()));
     let ok = |harness: &Harness<'_, Shell>| harness.get_by_role_and_label(Role::Button, OK).accesskit_node().bounding_box();
