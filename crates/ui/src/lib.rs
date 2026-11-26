@@ -12,6 +12,7 @@
 //! A feature takes a typed or browsed path with a [`PathEdit`], which keeps the field's recent paths.
 //! Features contribute program options to the Options dialog's pages ([`OptionSpec`], [`Shell::with_options`]).
 //! The Appearance page's theme choice ([`theme`]) sets the active colour palette every frame.
+//! The shell holds the app's file formats, which the File Formats manager edits ([`formats`]).
 
 mod tasks;
 
@@ -24,6 +25,7 @@ pub mod path_edit;
 pub use path_edit::{Browse, PathEdit, PathEdits};
 
 mod commands;
+pub mod formats;
 mod unsaved;
 
 pub use unsaved::{CANT_SAVE, DONT_SAVE, NOT_SAVED, SAVE, SAVE_CHANGES, UNSAVED_LOST, save_first_later};
@@ -171,6 +173,8 @@ pub struct Shell {
     refocus: Option<egui::Id>,
     /// The program options features contribute, their values and the Options dialog.
     options: options::Options,
+    /// The app's file formats and the File Formats manager.
+    formats: formats::Formats,
 }
 
 impl Shell {
@@ -193,16 +197,17 @@ impl Shell {
             exit_requested: false,
             refocus: None,
             options: options::Options::default(),
+            formats: formats::Formats::default(),
         };
         shell.push(None);
         shell.focus_active = false;
         shell
     }
 
-    /// Whether one of the shell's dialogs (Session Settings, Options or an unsaved-changes prompt) is
-    /// open, which keeps the window behind it out of reach.
+    /// Whether one of the shell's dialogs (Session Settings, Options, File Formats or an
+    /// unsaved-changes prompt) is open, which keeps the window behind it out of reach.
     fn dialog_open(&self) -> bool {
-        self.dialog.is_some() || self.options.dialog.is_some() || self.prompt.is_some()
+        self.dialog.is_some() || self.options.dialog.is_some() || self.formats.dialog.is_some() || self.prompt.is_some()
     }
 
     /// The active view type: [`HOME_VIEW`] on Home.
@@ -305,6 +310,7 @@ impl Shell {
         });
         self.dialog_ui(ui.ctx());
         self.options_ui(ui.ctx());
+        self.formats_ui(ui.ctx());
         self.tasks.ui(ui.ctx());
         if std::mem::take(&mut self.exit_requested) && self.exit() {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);

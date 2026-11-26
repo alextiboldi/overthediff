@@ -14,8 +14,11 @@
 //!   ([`is_binary`]) the first enabled Hex format when Hex is registered, and anything else the
 //!   built-in catch-all Text format.
 //!
-//! Not here: editing and reordering formats (E10-S1), and kind-specific properties, which the
-//! owning feature keeps by format name.
+//! - [`Registry::move_format`] and [`Registry::set_enabled`] are the File Formats manager's
+//!   reordering and enabling (E10-S1); resolution follows them at once.
+//!
+//! Not here: adding, editing and deleting formats from the manager (E10-S1-T3), and kind-specific
+//! properties, which the owning feature keeps by format name.
 
 mod content;
 
@@ -158,6 +161,16 @@ impl Registry {
     /// Enables or disables the format called `name`. False when there is none.
     pub fn set_enabled(&mut self, name: &str, enabled: bool) -> bool {
         self.formats.iter_mut().find(|f| f.name == name).map(|f| f.enabled = enabled).is_some()
+    }
+
+    /// Moves the format called `name` one place up, towards the top, or down, past its neighbour.
+    /// Returns its position afterwards, 0 at the top; one already at that end stays. `None` when
+    /// there is none.
+    pub fn move_format(&mut self, name: &str, up: bool) -> Option<usize> {
+        let at = self.formats.iter().position(|f| f.name == name)?;
+        let to = if up { at.saturating_sub(1) } else { (at + 1).min(self.formats.len() - 1) };
+        self.formats.swap(at, to);
+        Some(to)
     }
 
     /// The first enabled format, from the top, whose mask matches `file_name` with the data

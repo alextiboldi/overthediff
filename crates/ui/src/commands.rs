@@ -111,7 +111,7 @@ pub(crate) fn shell_commands(session_types: &[SessionType]) -> Vec<Command<Shell
         // Q24: Cmd+, in the macOS application menu; no default elsewhere.
         Command::new("otd.options", OPTIONS, Shell::open_options).application_menu(&["Tools"]).shortcut_on(MAC, Mods::CMD, Key::Comma),
     ]);
-    commands.map(Command::needs_window).collect()
+    commands.map(Command::needs_window).chain(crate::formats::commands()).collect()
 }
 
 /// The default keymap of `commands` on `platform`. A command's shortcuts work in each of its
@@ -178,7 +178,7 @@ impl Shell {
     }
 
     /// Runs the command `id`, with no arguments, if it applies to the active view type and is
-    /// enabled, and no shell dialog (Session Settings, Options or an unsaved-changes prompt) is open
+    /// enabled, and no shell dialog (Session Settings, Options, File Formats or an unsaved-changes prompt) is open
     /// (a native menu click reaches here past them). Returns whether it ran without an error.
     pub fn run(&mut self, id: &str) -> bool {
         if self.dialog_open() {
@@ -257,7 +257,7 @@ impl Shell {
         ctx.add_plugin(CtrlTab);
         let ctrl_tabs = ctx.data_mut(|data| data.remove_temp::<Vec<Modifiers>>(egui::Id::unique(CTRL_TAB))).unwrap_or_default();
         // A modal dialog (last frame's top modal layer) keeps the window behind it out of reach, and so
-        // does a shell dialog (Session Settings, Options or an unsaved-changes prompt) from the frame
+        // does a shell dialog (Session Settings, Options, File Formats or an unsaved-changes prompt) from the frame
         // it opens. Ctrl+Tab presses are dropped, not kept for after it.
         if self.dialog_open() || ctx.memory(|memory| memory.top_modal_layer().is_some()) {
             return;
