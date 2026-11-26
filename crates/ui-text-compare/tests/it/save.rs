@@ -169,6 +169,27 @@ fn a_script_saves_the_side_it_names_even_when_the_chosen_pane_cant_be_saved() {
 }
 
 #[test]
+fn with_no_side_the_save_commands_write_the_loaded_pane_when_the_chosen_one_has_no_file() {
+    let folder = tempfile::tempdir().unwrap();
+    let right = folder.path().join("right.txt");
+    std::fs::write(&right, b"two\n").unwrap();
+    let mut tab = TextCompareView::new();
+    if let Some(session) = tab.session() {
+        // The left path, chosen, fails to load.
+        session.specs = vec![folder.path().join("missing.txt").display().to_string(), right.display().to_string()];
+    }
+    let mut shell = Shell::new(vec![SESSION_TYPE]).with_commands(commands());
+    shell.open(Box::new(tab));
+    let mut harness = window_harness(shell);
+    assert!(view(&harness).pane(0).is_none() && view(&harness).chosen() == 0);
+    let copy = folder.path().join("copy.txt");
+    let path = [("path", Value::Path(copy.display().to_string()))];
+    command::run(&commands(), &mut harness.state_mut().shell, "text-compare.save_file_as", &path, true).expect("the right pane saves as");
+    assert_eq!(std::fs::read(&copy).unwrap(), b"two\n");
+    command::run(&commands(), &mut harness.state_mut().shell, "text-compare.save_file", &[], true).expect("and saves");
+}
+
+#[test]
 fn a_failed_save_says_why_in_the_pane_and_leaves_it_unsaved() {
     let folder = tempfile::tempdir().unwrap();
     // Windows-1252 text, which has no byte for ł.

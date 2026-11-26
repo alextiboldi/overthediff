@@ -119,7 +119,7 @@ impl TextCompareView {
 
     /// *Save File*: writes the pane of `side` (the chosen pane when `None`) back to its file.
     pub fn save_file(&mut self, side: Option<usize>) -> Result<(), String> {
-        let side = side.unwrap_or(self.chosen).min(SIDES.len() - 1);
+        let side = self.target(side);
         let spec = self.pane(side).map(|pane| pane.path.clone()).ok_or_else(|| t(NO_FILE).to_owned())?;
         if let Some(why) = self.pane(side).and_then(|pane| pane.read_only) {
             return self.refuse(side, read_only::reason(why));
@@ -130,7 +130,7 @@ impl TextCompareView {
     /// *Save File As*: writes the pane of `side` (the chosen pane when `None`) to `path`, or with no
     /// path asks for one with the OS save picker on the next draw.
     pub fn save_file_as(&mut self, side: Option<usize>, path: Option<&str>) -> Result<(), String> {
-        let side = side.unwrap_or(self.chosen).min(SIDES.len() - 1);
+        let side = self.target(side);
         self.chosen = side;
         if self.pane(side).is_none() {
             return Err(t(NO_FILE).to_owned());
@@ -145,6 +145,17 @@ impl TextCompareView {
                 Ok(())
             }
         }
+    }
+
+    /// The pane a save writes: `side`, or with none the chosen pane, or the loaded one when the
+    /// chosen pane has no file. The commands are enabled while either pane can save, so an
+    /// enabled command always has a pane to write or to say why it can't.
+    fn target(&self, side: Option<usize>) -> usize {
+        let side = side.unwrap_or_else(|| {
+            let chosen = self.chosen.min(SIDES.len() - 1);
+            if self.pane(chosen).is_some() { chosen } else { (0..SIDES.len()).find(|&s| self.pane(s).is_some()).unwrap_or(chosen) }
+        });
+        side.min(SIDES.len() - 1)
     }
 
     /// Refuses to save side `side`'s pane for `reason` (an English key), saying so in the pane.
