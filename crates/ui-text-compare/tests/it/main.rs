@@ -2,6 +2,7 @@
 
 mod aligned;
 mod edit;
+mod font_size;
 mod header;
 mod open;
 mod read_only;
