@@ -60,8 +60,9 @@ As a developer who compares the same folders every week, I can save a comparison
 
 - [ ] Acceptance includes a settings tab contributed by a test harness. Every registered setting round-trips through save and reopen, whichever real settings exist yet.
 #### Tasks
-- **E06-S1-T1** — Store named sessions in the settings store · size: M · depends: —
+- **E06-S1-T1** — Store named sessions in the settings store · size: M · depends: — · status: done
   - AC: a saved Folder Compare session and a saved Text Compare session reload after a restart with identical type, specs, description and settings. A corrupt session file is skipped with a warning, and the other sessions still load (*inferred*).
+  - Implemented: `otd_settings::sessions` (`crates/settings/src/sessions.rs`) saves each named session as its own TOML file in the settings folder's `sessions` folder (name, type, specs, description and settings by tab), written crash-safely with `craft-atomic`; file names encode the name so no two names share a file on a case-insensitive file system and none reaches outside the folder; `load` reads settings against the registered ones for the session's type, and skips a corrupt file with a warning, moving it aside so a later save can't replace it, while the other sessions still load. Tests in `crates/settings/tests/it/sessions.rs` and the hostile-input sweep (`tests/it/hostile.rs`). Checks: `cargo xtask ci` (fmt, clippy, tests, ui-free) on macOS, pull-request CI on Linux and macOS, and the full matrix with Windows on the branch. https://github.com/alextiboldi/overthediff/pull/130
 - **E06-S1-T2** — Save Session and Save Session As, with overwrite confirmation · size: S · depends: E06-S1-T1
   - AC: Save Session on an unnamed session prompts for a name. Saving under an existing name asks before overwriting.
 - **E06-S1-T3** — Home sessions tree with New, Saved and Auto-saved branches · size: M · depends: E06-S1-T1
