@@ -9,7 +9,8 @@
 //! given on the command line (E07-S1-T2).
 //!
 //! Below the headers, [`aligned`] draws the two files aligned row by row, with their differences
-//! highlighted, scrolling together (E07-S1-T4).
+//! highlighted, scrolling together (E07-S1-T4). Each pane body is also an editor, compared again as
+//! the user types, with the Edit menu's commands (E07-S1-T5, `edit.rs`).
 //!
 //! [`session`] holds the Session menu's Reload Files, Recompare Files, Swap Sides and Text Compare
 //! Info, and the status bar's fields (E07-S1-T8).
@@ -21,6 +22,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use chrono::{DateTime, Local};
 pub mod aligned;
+mod edit;
 mod open;
 
 use aligned::Aligned;
@@ -32,6 +34,7 @@ use otd_launch::Completion;
 use otd_text_compare::{Encoding, LineEndings, Pane, ReadOnly};
 use otd_ui::{Browse, PathEdit, Session, SessionType, View};
 
+pub use edit::{COPY, CUT, DELETE, INSERT_TEXT, PASTE, REDO, SELECT_ALL, UNDO};
 pub use open::{OPEN_FILE, OPEN_FILE_ON_FILE_SYSTEM, OpenFiles, commands};
 
 pub use read_only::{COMPARISON_CANCELLED, COMPARISON_FAILED, LOCATION};
@@ -101,6 +104,22 @@ pub struct TextCompareView {
     info: Option<session::InfoDialog>,
     /// The widget that takes focus on the next draw, back from the closed Info dialog.
     refocus: Option<Id>,
+    /// Text *Copy* or *Cut* put on the clipboard on the next draw, which has the context.
+    clipboard: Option<String>,
+    /// Whether *Paste* asked for the clipboard's text, asked for once the chosen pane has focus.
+    paste: bool,
+    /// The side whose editor takes focus on the next draw, after an Edit menu command.
+    focus: Option<usize>,
+    /// The side whose editor last had focus, whose caret the status bar shows.
+    cursor: Option<usize>,
+    /// Whether a text field other than the editors (a path edit) had focus at the last draw. Edit >
+    /// Delete has no shortcut for the menu to hand that field, so it is disabled then.
+    field_focus: bool,
+    /// The input method's composition, drawn at the caret until it commits. It is never part of
+    /// the pane, so it doesn't enter undo, the comparison or a save.
+    preedit: String,
+    /// The editors' input-method context, new each time one gains focus (`IMEOutput`).
+    ime: u64,
 }
 
 impl Drop for TextCompareView {
@@ -139,6 +158,13 @@ impl TextCompareView {
             load_time: None,
             info: None,
             refocus: None,
+            clipboard: None,
+            paste: false,
+            focus: None,
+            cursor: None,
+            field_focus: false,
+            preedit: String::new(),
+            ime: 0,
         }
     }
 
@@ -268,14 +294,13 @@ impl View for TextCompareView {
         });
         // The bodies start below both headers, at one height, so their rows line up. Each is named
         // by its side's caption, so a line and its counterpart read apart.
-        let panes = [0, 1].map(|side| self.panes.get(side).and_then(|pane| pane.as_ref()?.as_ref().ok()));
-        let lines = panes.map(|pane| pane.map_or(&[][..], |pane| pane.lines.as_slice()));
+        let mut editing = false;
         ui.columns(SIDES.len(), |columns| {
             for (side, column) in columns.iter_mut().enumerate() {
-                if panes[side].is_some() {
+                if self.pane(side).is_some() {
                     let body = UiBuilder::new().id_salt(side).accessibility_role(Role::Group).accessibility_label(t(SIDES[side]));
                     column.scope_builder(body, |ui| {
-                        aligned::show(ui, side, lines, &mut self.aligned);
+                        editing |= self.body(ui, side);
                         if clicked(ui) {
                             self.chosen = side;
                         }
@@ -283,6 +308,7 @@ impl View for TextCompareView {
                 }
             }
         });
+        self.field_focus = ui.ctx().text_edit_focused() && !editing;
         self.info_ui(ui);
     }
 }

@@ -43,6 +43,10 @@ pub const DELETED_LINES: &str = "Deleted lines";
 pub const LEFT_LINES: &str = "Lines on the left";
 pub const RIGHT_LINES: &str = "Lines on the right";
 
+/// The status bar's cursor field: its label, and its value.
+pub const CURSOR: &str = "Cursor";
+const LINE_COLUMN: &str = "Line {line}, column {column}";
+
 const SESSION: &[&str] = &["Session"];
 
 /// The Session menu's commands, which [`crate::commands`] lists. None has a default shortcut: Q24
@@ -174,9 +178,16 @@ impl TextCompareView {
     }
 
     /// Recompare Files: compares the panes as they stand, edits included, without reading the
-    /// files again.
-    // ponytail: the panes have no undo history yet; the editor (E07-S1-T5) empties it here.
+    /// files again, and empties both panes' undo history.
     pub fn recompare_files(&mut self) {
+        for pane in self.panes.iter_mut().flatten().flatten() {
+            pane.history.clear();
+        }
+        self.compare_as_they_stand();
+    }
+
+    /// Compares the panes as they stand, with each pane's undo history kept.
+    fn compare_as_they_stand(&mut self) {
         // This comparison completes, which lifts a failed or cancelled one's read-only panes.
         self.comparison = None;
         let old = std::mem::replace(&mut self.aligned, Aligned::new(None, None));
@@ -198,15 +209,22 @@ impl TextCompareView {
         self.panes.swap(0, 1);
         self.edits.swap(0, 1);
         self.synced.swap(0, 1);
-        self.recompare_files();
+        // Each pane's undo history goes with it.
+        self.compare_as_they_stand();
     }
 
-    /// The status bar's fields: the overall result, insert/overwrite and the load time. The
-    /// cursor's line and column join them once the panes have a cursor (E07-S1-T5).
+    /// The status bar's fields: the overall result, the cursor's line and column in the pane that
+    /// last had it (from 1, the file's own lines, in characters), insert/overwrite and the load
+    /// time.
     pub(crate) fn status_fields(&self) -> Status {
         let result =
             self.result().map(|(outcome, _)| Field { id: "result", label: t(RESULT).to_owned(), value: t(outcome_name(outcome)).to_owned() });
-        Status { result, fields: Vec::new(), insert: Some(self.insert), load_time: self.load_time }
+        let cursor = self.cursor.and_then(|side| self.pane(side)).map(|pane| {
+            let head = pane.selection.head;
+            let value = fmt(t(LINE_COLUMN), &[("line", &(head.line + 1).to_string()), ("column", &(head.column + 1).to_string())]);
+            Field { id: "cursor", label: t(CURSOR).to_owned(), value }
+        });
+        Status { result, fields: cursor.into_iter().collect(), insert: Some(self.insert), load_time: self.load_time }
     }
 
     /// Draws the Info dialog while it is open. It takes focus when it opens; Esc or Close closes it

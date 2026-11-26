@@ -6,14 +6,18 @@
 //!   OS path, `~/…` or `smb://…`) through the local source.
 //! - [`decode`] detects the encoding (a byte-order mark, valid UTF-8, UTF-16 without a mark, or
 //!   the system code page) and splits the lines, keeping each line's ending.
+//! - A [`Pane`] is edited through its [`Selection`]: typing, pasting and deleting replace it, and
+//!   its [`History`] undoes and redoes each edit (E07-S1-T5).
 
 mod decode;
+mod edit;
 
 use std::io::Read;
 use std::path::Path;
 use std::time::SystemTime;
 
 pub use decode::{Decoded, Encoding, LineEndings, WESTERN, decode, system_code_page};
+pub use edit::{History, Pos, Selection};
 use otd_format::{Case, Registry};
 use otd_source::{DataSource, ErrorKind, ItemKind, Links, LocalSource, SourceError};
 pub use otd_text_engine::{Line, LineEnding};
@@ -33,6 +37,10 @@ pub struct Pane {
     pub lines: Vec<Line>,
     /// Why the pane can't be edited, if it can't. [`load`] sets [`ReadOnly::Location`].
     pub read_only: Option<ReadOnly>,
+    /// The caret and the selected text (E07-S1-T5).
+    pub selection: Selection,
+    /// The edits Undo and Redo walk through.
+    pub history: History,
 }
 
 /// Why a pane is read-only. The view shows the reason in the pane.
@@ -76,6 +84,8 @@ pub fn load(source: &dyn DataSource, path: &Path, spec: &str, formats: &Registry
         // ponytail: the source's capability only; a file's own read-only attribute or mode isn't
         // checked, so saving such a file fails when it's tried (E07-S1-T6).
         read_only: source.capabilities().read_only.then_some(ReadOnly::Location),
+        selection: Selection::default(),
+        history: History::default(),
     })
 }
 
