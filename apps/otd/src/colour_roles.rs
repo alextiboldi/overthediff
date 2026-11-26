@@ -3,17 +3,24 @@
 //! each.
 
 use otd_ui::colour::{CHROME, ColourRole, ColourRoles, DuplicateColourRole};
-use otd_ui_text_compare::aligned;
+use otd_ui_text_compare::{aligned, arrows};
 
 pub fn colour_roles() -> Result<ColourRoles, DuplicateColourRole> {
-    let roles: Vec<ColourRole> = [CHROME.as_slice(), aligned::ROLES.as_slice(), otd_ui_folder_compare::COLOUR_ROLES.as_slice()].concat();
+    let roles: Vec<ColourRole> =
+        [CHROME.as_slice(), aligned::ROLES.as_slice(), arrows::ROLES.as_slice(), otd_ui_folder_compare::COLOUR_ROLES.as_slice()].concat();
     ColourRoles::new(roles)
 }
 
 /// Every text and control role with the role it is drawn on. Only the contrast check below reads it.
 #[cfg(test)]
 fn contrast() -> Vec<otd_ui::colour::Contrast> {
-    [otd_ui::colour::CHROME_CONTRAST.as_slice(), aligned::CONTRAST.as_slice(), otd_ui_folder_compare::CONTRAST.as_slice()].concat()
+    [
+        otd_ui::colour::CHROME_CONTRAST.as_slice(),
+        aligned::CONTRAST.as_slice(),
+        arrows::CONTRAST.as_slice(),
+        otd_ui_folder_compare::CONTRAST.as_slice(),
+    ]
+    .concat()
 }
 
 #[cfg(test)]

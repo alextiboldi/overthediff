@@ -316,7 +316,8 @@ impl Shell {
             .map(|c| {
                 let state = (c.state)(self);
                 let shortcut = keymap.bindings(&CommandRef::new(c.id)).first().map(|b| b.trigger.display(platform));
-                (c.id, state.caption.unwrap_or_else(|| t(c.caption).to_owned()), state.icon.or(c.icon), state.enabled, shortcut)
+                let tint = c.icon_colour.map(|role| crate::colour::colour(ui.ctx(), role));
+                (c.id, state.caption.unwrap_or_else(|| t(c.caption).to_owned()), state.icon.or(c.icon), state.enabled, shortcut, tint)
             })
             .collect();
         if buttons.is_empty() {
@@ -326,8 +327,8 @@ impl Shell {
         egui::Panel::top("otd-toolbar").show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.ctx().accesskit_node_builder(ui.unique_id(), |node| node.set_role(Role::Toolbar));
-                for (id, caption, icon, enabled, shortcut) in &buttons {
-                    let response = crate::tool_button(ui, caption, icon.and_then(crate::lucide), *enabled);
+                for (id, caption, icon, enabled, shortcut, tint) in &buttons {
+                    let response = crate::tool_button(ui, caption, icon.and_then(crate::lucide), *enabled, *tint);
                     if let Some(shortcut) = shortcut {
                         ui.ctx().accesskit_node_builder(response.id, |node| node.set_keyboard_shortcut(shortcut.clone()));
                     }

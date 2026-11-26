@@ -202,6 +202,8 @@ are among the Lucide icons derived from the Feather project. The toolbar (crates
 "sliders-horizontal" icon the same way; it is Lucide's own, under the ISC License alone. The
 Folder Compare view (crates/ui-folder-compare) draws Lucide's "chevron-right" and "chevron-down"
 icons the same way for closed and open folders; both are derived from the Feather project.
+Text Compare's toolbar arrows (crates/ui) draw Lucide's "arrow-up" and "arrow-down" icons the
+same way; both are derived from the Feather project.
 
 The app icon (assets/app-icon) draws Lucide's "git-compare-arrows" icon, scaled, in white on a
 blue tile.

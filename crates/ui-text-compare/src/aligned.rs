@@ -23,7 +23,7 @@ use egui::text::{LayoutJob, TextFormat};
 use egui::{Align2, Color32, FontId, Galley, Pos2, Rect, Role, ScrollArea, Sense, Shape, Stroke, TextStyle, Ui, WidgetInfo, pos2, vec2};
 use otd_core::colour::{ColourRole, Contrast, Rgba};
 use otd_core::i18n::{t, trn};
-use otd_text_compare::{Bookmarks, Filter, Line, LineEnding, Pos, Selection};
+use otd_text_compare::{Bookmarks, Differences, Filter, Line, LineEnding, Pos, Selection};
 use otd_text_engine::{
     BuiltInRules, CharDifferences, CharRange, Importance, Options, Outcome, Row, RowKind, Side, Statistics, char_differences_with, classify,
     compare_with,
@@ -169,7 +169,7 @@ impl Aligned {
 
     /// The row that shows line `line` of side `side`. The place after a final line break is the
     /// row after the last line's, which may be a gap or the blank row after every row.
-    fn row_of(&self, side: usize, line: usize) -> Option<usize> {
+    pub(crate) fn row_of(&self, side: usize, line: usize) -> Option<usize> {
         if line == *self.lines.get(side)? {
             return match line.checked_sub(1) {
                 None => Some(0),
@@ -220,6 +220,12 @@ impl Aligned {
             RowKind::LeftOnly => Some(DELETED),
             RowKind::RightOnly => Some(INSERTED),
         }
+    }
+
+    /// What navigation walks (`arrows.rs`): the rows, both panes' `lines`, and as different the
+    /// rows the view classifies as different.
+    pub(crate) fn differences<'a>(&'a self, lines: [&'a [Line]; 2]) -> Differences<'a, impl Fn(usize) -> bool + 'a> {
+        Differences { rows: &self.rows, left: lines[0], right: lines[1], differs: move |row| self.importance(row).is_some() }
     }
 
     /// How many rows pane `side` showed when it was last drawn: a page.

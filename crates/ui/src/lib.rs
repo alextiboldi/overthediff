@@ -460,6 +460,11 @@ const LUCIDE_SLIDERS_HORIZONTAL: [[(f32, f32); 2]; 9] = [
 /// Lucide's `arrow-up-right` (ISC; from Feather, MIT; see ATTRIBUTION.md), Folder Compare's link glyph.
 const LUCIDE_ARROW_UP_RIGHT: [[(f32, f32); 2]; 3] = [[(7.0, 7.0), (17.0, 7.0)], [(17.0, 7.0), (17.0, 17.0)], [(7.0, 17.0), (17.0, 7.0)]];
 
+/// Lucide's `arrow-up` and `arrow-down` (ISC; from Feather, MIT; see ATTRIBUTION.md), Text
+/// Compare's Previous and Next Difference Section toolbar arrows.
+const LUCIDE_ARROW_UP: [[(f32, f32); 2]; 3] = [[(5.0, 12.0), (12.0, 5.0)], [(12.0, 5.0), (19.0, 12.0)], [(12.0, 19.0), (12.0, 5.0)]];
+const LUCIDE_ARROW_DOWN: [[(f32, f32); 2]; 3] = [[(12.0, 5.0), (12.0, 19.0)], [(19.0, 12.0), (12.0, 19.0)], [(12.0, 19.0), (5.0, 12.0)]];
+
 /// A Lucide icon line by line, by its Lucide name. A command whose icon isn't here shows its
 /// caption alone.
 fn lucide(name: &str) -> Option<&'static [[(f32, f32); 2]]> {
@@ -468,6 +473,8 @@ fn lucide(name: &str) -> Option<&'static [[(f32, f32); 2]]> {
         "plus" => Some(&LUCIDE_PLUS),
         "sliders-horizontal" => Some(&LUCIDE_SLIDERS_HORIZONTAL),
         "arrow-up-right" => Some(&LUCIDE_ARROW_UP_RIGHT),
+        "arrow-up" => Some(&LUCIDE_ARROW_UP),
+        "arrow-down" => Some(&LUCIDE_ARROW_DOWN),
         _ => None,
     }
 }
@@ -523,7 +530,8 @@ fn icon_button(ui: &mut Ui, name: &str, icon: &[[(f32, f32); 2]]) -> Response {
 
 /// A toolbar button: the command's icon, when there is one, then its caption, which is also its
 /// name for screen readers. A disabled one is greyed, can't take focus and doesn't click.
-fn tool_button(ui: &mut Ui, caption: &str, icon: Option<&[[(f32, f32); 2]]>, enabled: bool) -> Response {
+/// `tint` colours the icon while the button is enabled.
+fn tool_button(ui: &mut Ui, caption: &str, icon: Option<&[[(f32, f32); 2]]>, enabled: bool, tint: Option<egui::Color32>) -> Response {
     let galley = WidgetText::from(caption).into_galley(ui, Some(TextWrapMode::Extend), f32::INFINITY, TextStyle::Button);
     let padding = ui.spacing().button_padding;
     let icon_width = if icon.is_some() { ICON + ui.spacing().icon_spacing } else { 0.0 };
@@ -535,7 +543,8 @@ fn tool_button(ui: &mut Ui, caption: &str, icon: Option<&[[(f32, f32); 2]]>, ena
     let color = ui.style().interact(&response).fg_stroke.color;
     let left = rect.left() + padding.x;
     if let Some(icon) = icon {
-        paint_icon(ui, egui::pos2(left + ICON / 2.0, rect.center().y), icon, color);
+        let icon_colour = if enabled { tint.unwrap_or(color) } else { color };
+        paint_icon(ui, egui::pos2(left + ICON / 2.0, rect.center().y), icon, icon_colour);
     }
     let text_at = egui::pos2(left + icon_width, rect.center().y - galley.size().y / 2.0);
     ui.painter().galley(text_at, galley, color);

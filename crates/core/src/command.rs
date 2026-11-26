@@ -18,6 +18,7 @@ pub use craft_keymap::{Chord, Key, Mods, Platform};
 /// An argument's or result's value; the same value types as settings.
 pub use crate::session::Value;
 
+use crate::colour::ColourRole;
 use crate::i18n::t;
 
 /// The view type of the Home launcher tab, for [`Views::Only`].
@@ -103,6 +104,9 @@ pub struct Command<C> {
     pub caption: &'static str,
     /// A Lucide icon name, such as `plus`.
     pub icon: Option<&'static str>,
+    /// The colour its toolbar icon draws in while it is enabled; the chrome's text colour when
+    /// `None`. A disabled command's icon is greyed either way.
+    pub icon_colour: Option<&'static ColourRole>,
     pub views: Views,
     pub placement: Placement,
     /// Whether it has a button on the toolbar of its view types, in registration order.
@@ -333,6 +337,7 @@ impl<C> Command<C> {
             id,
             caption,
             icon: None,
+            icon_colour: None,
             views: Views::All,
             placement: Placement::Hidden,
             toolbar: false,
@@ -362,6 +367,12 @@ impl<C> Command<C> {
 
     pub fn icon(mut self, icon: &'static str) -> Command<C> {
         self.icon = Some(icon);
+        self
+    }
+
+    /// See [`Command::icon_colour`](field@Command::icon_colour).
+    pub fn icon_colour(mut self, role: &'static ColourRole) -> Command<C> {
+        self.icon_colour = Some(role);
         self
     }
 

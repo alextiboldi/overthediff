@@ -10,6 +10,9 @@
 //!
 //! `edited.rs` holds *Search > Next Edit* and *Previous Edit* (E07-S2-T3).
 //!
+//! [`arrows`] holds the toolbar's Previous and Next Difference Section arrows, enabled while a
+//! section lies that way (E07-S2-T4).
+//!
 //! Below the headers, [`aligned`] draws the two files aligned row by row, with their differences
 //! highlighted, scrolling together (E07-S1-T4). Each pane body is also an editor, compared again as
 //! the user types, with the Edit menu's commands (E07-S1-T5, `edit.rs`).
@@ -53,6 +56,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use chrono::{DateTime, Local};
 pub mod aligned;
+pub mod arrows;
 mod bookmarks;
 mod edit;
 mod edited;
@@ -77,6 +81,7 @@ use otd_launch::Completion;
 use otd_text_compare::{Encoding, Filter, LineEndings, Pane, ReadOnly};
 use otd_ui::{Browse, PathEdit, Session, SessionType, View};
 
+pub use arrows::{NEXT_SECTION, PREVIOUS_SECTION};
 pub use bookmarks::{BOOKMARK, CLEAR_BOOKMARKS, GO_TO_BOOKMARK, TOGGLE_BOOKMARK};
 pub use edit::{COPY, CUT, DELETE, INSERT_TEXT, PASTE, REDO, SELECT_ALL, UNDO};
 pub use edited::{NEXT_EDIT, PREVIOUS_EDIT};
