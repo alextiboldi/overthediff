@@ -54,6 +54,7 @@ mod flat;
 mod info;
 pub mod look;
 mod refresh;
+mod select_all;
 
 use expand::Expansion;
 pub use expand::Shown;
@@ -64,12 +65,14 @@ pub use info::{
 };
 pub use look::{COLOUR_ROLES, CONTRAST, Look, look};
 pub use refresh::{FULL_REFRESH, REFRESH, REFRESH_SELECTION, SWAP_SIDES};
+pub use select_all::{SELECT_ALL, SELECT_ALL_FILES};
 
 /// Folder Compare's commands, for `apps/otd/src/commands.rs`.
 pub fn commands() -> Vec<otd_core::command::Command<Shell>> {
     let mut commands = refresh::commands();
     commands.extend(expand::commands());
     commands.extend(flat::commands());
+    commands.extend(select_all::commands());
     commands
 }
 
