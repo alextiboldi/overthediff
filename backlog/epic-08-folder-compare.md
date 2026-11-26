@@ -262,8 +262,9 @@ As an IT administrator, I can choose which file details show and sort by any of 
 #### Tasks
 - **E08-S6-T1** — Column chooser (header right-click and View > Columns) · size: S · depends: —
   - AC: hiding Size removes it from both panes, and the choice survives a refresh.
-- **E08-S6-T2** — Sort by any visible column · size: S · depends: —
+- **E08-S6-T2** — Sort by any visible column · size: S · depends: — · status: done
   - AC: sorting by Size orders files within each folder ascending, then descending on a second click, and pairs stay on one row.
+  - Implemented: sorting in `crates/ui-folder-compare/src/sort.rs`: a click on a column header, or *View > Sort By ▸ <column>* (`folder-compare.sort.name`, `.size`, `.modified`, no default shortcuts), sorts every folder's rows by that column, keyed by that side's item (an orphan by its other side's), stably over the engine's name order, so partners stay on one row; the same again reverses it, and `update` sorts again after each comparison, so a refresh keeps the order. Each `COLUMNS` entry carries its ordering. The sorted header shows Lucide `arrow-up` or `arrow-down` and carries AccessKit `sort_direction` and a polite live-region name. Tests in `crates/ui-folder-compare/tests/it/sort.rs`. `cargo xtask ci` passed on macOS, and pull-request CI passed on Linux and macOS (no platform-dependent code, so no full-matrix run). https://github.com/alextiboldi/overthediff/pull/141
 - **E08-S6-T3** — Ext, CRC and folder Size values · size: M · depends: —
   - AC: a folder's Size equals the sum of its files once loaded and is blank before. CRC shows the source-provided value when one exists and computes it otherwise.
 - **E08-S6-T4** — Attributes, Owner and Group values per platform · size: S · depends: — · flags: `licence-check`
