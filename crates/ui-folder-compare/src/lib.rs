@@ -56,11 +56,11 @@ mod info;
 pub mod look;
 mod refresh;
 
-use expand::Expansion;
 pub use content::{
     BINARY_COMPARISON, COMPARE_CONTENTS, COMPARISON, CONTENT_COMPARISON, CONTENT_NOT_RUN, CRC_COMPARISON, OVERRIDE_QUICK_RESULTS, SKIP_IF_QUICK_SAME,
     session_settings,
 };
+use expand::Expansion;
 pub use expand::Shown;
 pub use flat::FLAT_LIST;
 pub use info::{
