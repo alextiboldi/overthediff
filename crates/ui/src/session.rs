@@ -18,7 +18,7 @@ use otd_core::session::check_unique;
 pub use otd_core::session::{DuplicateSetting, Session, Setting, Value};
 pub use otd_format::Kind;
 
-use crate::{SessionType, Shell, View};
+use crate::{CANCEL, SessionType, Shell, View};
 
 // The dialog's own text: English keys, drawn only through `t`, as in lib.rs.
 /// The Session Settings dialog's title, in our own words (docs/feature-names.md).
@@ -29,7 +29,6 @@ pub const DESCRIPTION: &str = "Description";
 pub const SCOPE: &str = "Scope";
 pub const THIS_VIEW_ONLY: &str = "Use for this view only";
 pub const OK: &str = "OK";
-pub const CANCEL: &str = "Cancel";
 const NO_SESSION: &str = "The current tab shows no session.";
 const UNKNOWN_TYPE: &str = "This session's type is not available.";
 

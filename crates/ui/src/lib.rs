@@ -22,8 +22,7 @@ use otd_core::i18n::{fmt, measure, t};
 
 mod session;
 pub use session::{
-    CANCEL, DESCRIPTION, DuplicateSetting, INPUTS, Kind, OK, SCOPE, SESSION_SETTINGS, Session, SessionError, Setting, THIS_VIEW_ONLY, Value,
-    edit_value,
+    DESCRIPTION, DuplicateSetting, INPUTS, Kind, OK, SCOPE, SESSION_SETTINGS, Session, SessionError, Setting, THIS_VIEW_ONLY, Value, edit_value,
 };
 
 // The shell's own text: English keys, drawn only through `t` (E01-S1-T13).
