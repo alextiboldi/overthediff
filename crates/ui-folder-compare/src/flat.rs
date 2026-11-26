@@ -7,7 +7,7 @@
 //! couldn't be listed gets a row of its own, with its error, since its files can't show.
 //!
 //! In a flat row each item's `name` is its path from its side's base, so the name cell shows the
-//! folder, and the base joined with it is the file. A row's key (see [`Shown::key`]) is the left
+//! folder, and the base joined with it is the file (so a row's `Shown::parents` are the bases). A row's key (see [`Shown::key`]) is the left
 //! item's path, or the right's for a right-only row.
 
 use std::collections::BTreeSet;
@@ -46,7 +46,11 @@ pub(crate) fn shown<'a>(rows: &'a [Row], flat: &'a Flat, expansion: &Expansion) 
     if !flat.on {
         return flatten(rows, &|key| expansion.is_open(key));
     }
-    flat.rows.iter().zip(&flat.keys).map(|(row, key)| Shown { row, depth: 0, key: key.clone(), folders: [None, None] }).collect()
+    flat.rows
+        .iter()
+        .zip(&flat.keys)
+        .map(|(row, key)| Shown { row, depth: 0, key: key.clone(), folders: [None, None], parents: [Some(PathBuf::new()), Some(PathBuf::new())] })
+        .collect()
 }
 
 impl FolderCompare {
@@ -211,8 +215,9 @@ mod tests {
     fn scan(dir: &std::path::Path) -> Scan {
         let source = LocalSource::open(dir.to_str().unwrap()).unwrap();
         let capabilities = source.capabilities();
-        let (scan, events) = TreeScan::new(Arc::new(source), "", false);
-        Scan { scan, events, capabilities, idle: false, done: 0, pending: 1 }
+        let source: Arc<dyn DataSource> = Arc::new(source);
+        let (scan, events) = TreeScan::new(Arc::clone(&source), "", false);
+        Scan { scan, events, capabilities, crcs: crate::values::Crcs::new(source), idle: false, done: 0, pending: 1 }
     }
 
     fn status(view: &FolderCompare, name: &str) -> Option<Status> {
