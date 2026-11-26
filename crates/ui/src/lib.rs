@@ -166,7 +166,8 @@ pub struct Shell {
     exit_confirmed: bool,
     /// The Exit command ran; the next draw asks to close the window.
     exit_requested: bool,
-    /// The widget that takes focus on the next draw, back from a cancelled prompt.
+    /// The widget that takes focus on the next draw, back from a cancelled prompt; the selected tab
+    /// when that widget is gone.
     refocus: Option<egui::Id>,
     /// The program options features contribute, their values and the Options dialog.
     options: options::Options,
@@ -310,7 +311,13 @@ impl Shell {
         }
         // After the contents are drawn, so egui doesn't drop it as a widget nobody drew yet.
         if let Some(id) = self.refocus.take() {
-            ui.memory_mut(|memory| memory.request_focus(id));
+            // A widget that is gone, such as the menu row that ran Close Tab, can't take focus back:
+            // the selected tab takes it on the next draw (rule 21).
+            if ui.ctx().read_response(id).is_some() {
+                ui.memory_mut(|memory| memory.request_focus(id));
+            } else {
+                self.focus_active = true;
+            }
         }
         // Last, so it is the topmost modal.
         self.prompt_ui(ui.ctx());

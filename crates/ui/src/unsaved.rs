@@ -35,8 +35,8 @@ pub(crate) struct Prompt {
     error: Option<String>,
     /// Focus moves into the dialog on its next draw.
     focus: bool,
-    /// What had focus when a Close Tab prompt opened, to give it back on Cancel. Exit and Clear
-    /// Session give it to the selected tab.
+    /// What had focus when a Close Tab prompt opened, to give it back on Cancel, or to the selected
+    /// tab when it is gone. Exit and Clear Session give it to the selected tab.
     return_to: Option<Id>,
 }
 
