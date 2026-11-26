@@ -17,17 +17,22 @@
 //! [`compare_progressive`] hands out rows as they are decided and stops when its caller says so;
 //! [`compare`] runs it to the end.
 //!
-//! [`classify`] then marks each difference important or unimportant by a set of [`Rule`]s.
+//! [`classify`] then marks each difference important or unimportant by a set of [`Rule`]s, such as
+//! the [`BuiltInRules`] for whitespace and letter case.
 //!
-//! [`char_differences`] gives the characters that differ inside a changed row. A caller asks for
-//! the rows it needs, so a large comparison doesn't diff every changed line up front.
+//! [`char_differences`] gives the characters that differ inside a changed row, and
+//! [`char_differences_with`] gives each of them its importance by the rules. A caller asks for the
+//! rows it needs, so a large comparison doesn't diff every changed line up front.
 
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::ops::{ControlFlow, Range};
 
+mod builtin;
+pub use builtin::BuiltInRules;
+
 mod chars;
-pub use chars::{CharDifferences, CharRange, Side, char_differences};
+pub use chars::{CharDifferences, CharRange, Side, char_differences, char_differences_with};
 
 mod importance;
 pub use importance::{Classification, Importance, Outcome, Rule, Statistics, classify};

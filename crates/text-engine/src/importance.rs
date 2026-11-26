@@ -3,6 +3,8 @@
 //! (a line against a gap) is always important, whatever its text, and with no rules every
 //! difference is important. A different line ending is important when the comparison compared line
 //! endings ([`Options::line_endings`](crate::Options)), and ignored otherwise.
+//! Rules can also mark parts whose letter case doesn't matter: there, the
+//! two lines are compared with each character in lower case.
 
 use std::ops::Range;
 
@@ -13,6 +15,11 @@ pub trait Rule {
     /// Byte ranges of `text` that are unimportant. They may overlap and come in any order. The
     /// parts of a range that fall outside `text` are ignored, and a reversed range marks nothing.
     fn unimportant(&self, text: &str) -> Vec<Range<usize>>;
+
+    /// Byte ranges of `text` whose letter case doesn't matter, read like [`Rule::unimportant`]'s.
+    fn case_insensitive(&self, _text: &str) -> Vec<Range<usize>> {
+        Vec::new()
+    }
 }
 
 /// How much a difference matters.
@@ -100,15 +107,63 @@ pub fn classify(comparison: &Comparison, left: &[Line], right: &[Line], rules: &
     Classification { rows, outcome, statistics }
 }
 
-/// The bytes of `text` that no rule marks unimportant.
-fn important_part(text: &str, rules: &[&dyn Rule]) -> Vec<u8> {
-    let mut marked = vec![false; text.len()];
-    for range in rules.iter().flat_map(|rule| rule.unimportant(text)) {
+/// The characters of `text` that no rule marks unimportant, each folded to lower case where a
+/// rule says its case doesn't matter.
+fn important_part(text: &str, rules: &[&dyn Rule]) -> Vec<char> {
+    Marked::new(text, rules).important().map(|(_, key)| key).collect()
+}
+
+/// One line's characters, each with what the rules say about it.
+pub(crate) struct Marked {
+    pub chars: Vec<char>,
+    /// Per character: it lies in a span a rule marks unimportant.
+    pub unimportant: Vec<bool>,
+    /// Per character: it lies in a span where a rule says case doesn't matter.
+    folded: Vec<bool>,
+}
+
+impl Marked {
+    pub fn new(text: &str, rules: &[&dyn Rule]) -> Self {
+        Self {
+            chars: text.chars().collect(),
+            unimportant: char_marks(text, rules.iter().flat_map(|rule| rule.unimportant(text))),
+            folded: char_marks(text, rules.iter().flat_map(|rule| rule.case_insensitive(text))),
+        }
+    }
+
+    /// The index of each important character, with the key it is compared by.
+    pub fn important(&self) -> impl Iterator<Item = (usize, char)> + '_ {
+        self.chars
+            .iter()
+            .zip(&self.unimportant)
+            .zip(&self.folded)
+            .enumerate()
+            .filter(|(_, ((_, unimportant), _))| !**unimportant)
+            .map(|(k, ((&c, _), &folded))| (k, if folded { lower(c) } else { c }))
+    }
+}
+
+/// For each character of `text`, whether every byte of it lies in one of `ranges`. The parts of a
+/// range outside `text` are ignored, and a reversed range marks nothing.
+fn char_marks(text: &str, ranges: impl Iterator<Item = Range<usize>>) -> Vec<bool> {
+    let mut bytes = vec![false; text.len()];
+    for range in ranges {
         // ponytail: each range is marked byte by byte, so the cost is the ranges' total length,
         // clamped to the line; sort and merge them first if rules ever return many overlapping ones.
-        for m in marked.get_mut(range.start.min(text.len())..range.end.min(text.len())).unwrap_or_default() {
+        for m in bytes.get_mut(range.start.min(text.len())..range.end.min(text.len())).unwrap_or_default() {
             *m = true;
         }
     }
-    text.bytes().zip(marked).filter(|&(_, m)| !m).map(|(b, _)| b).collect()
+    text.char_indices().map(|(at, c)| bytes.get(at..at + c.len_utf8()).is_some_and(|b| b.iter().all(|&m| m))).collect()
+}
+
+/// `c` in lower case, or `c` itself when its lower case is more than one character.
+// ponytail: a one-character mapping keeps character positions, so `İ` (lower case `i̇`) only
+// matches itself; fold to strings if a language needs those.
+fn lower(c: char) -> char {
+    let mut lower = c.to_lowercase();
+    match (lower.next(), lower.next()) {
+        (Some(l), None) => l,
+        _ => c,
+    }
 }
