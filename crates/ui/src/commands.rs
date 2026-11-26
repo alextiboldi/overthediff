@@ -38,8 +38,10 @@ const SESSION: &[&str] = &["Session"];
 
 /// The top-level menus in bar order, with the role each has in the platform layouts. A command's
 /// menu path starts with one of them; a menu not listed here follows them, in registration order.
-const MENUS: [(&str, MenuRole); 6] = [
+const MENUS: [(&str, MenuRole); 7] = [
     ("Session", MenuRole::File),
+    // A view's own files, such as Text Compare's Open File (E07-S1).
+    ("File", MenuRole::Other),
     ("Edit", MenuRole::Edit),
     ("View", MenuRole::View),
     ("Tools", MenuRole::Other),

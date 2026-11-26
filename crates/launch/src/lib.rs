@@ -107,6 +107,11 @@ pub trait Handler<S: ?Sized> {
     }
     /// This handler's line in the usage message.
     fn usage(&self) -> &'static str;
+    /// In the launching process, first: why `args` are wrong for this handler, if they are. The
+    /// launch then prints the message and the usage and exits with [`EXIT_UNCLAIMED`].
+    fn check(&self, _args: &[String]) -> Result<(), String> {
+        Ok(())
+    }
     /// In the launching process, before the hand-off: content to send with the request, such as
     /// standard input.
     fn attach(&self, _args: &[String]) -> io::Result<Option<Vec<u8>>> {
@@ -233,6 +238,9 @@ pub fn launch<S: ?Sized>(registry: &Registry<S>, args: &[String], requested: Req
         Ok(handler) => handler,
         Err(arg) => return Launch::exit(EXIT_UNCLAIMED, format!("otd: no feature handles the argument {arg:?}.\n{}", registry.usage())),
     };
+    if let Some(Err(message)) = handler.map(|h| h.check(args)) {
+        return Launch::exit(EXIT_UNCLAIMED, format!("otd: {message}\n{}", registry.usage()));
+    }
     let cwd = match std::env::current_dir() {
         Ok(cwd) => cwd,
         Err(err) => return Launch::exit(EXIT_FAILED, format!("otd: can't read the working folder: {err}")),

@@ -13,6 +13,7 @@ workspace = true
 egui = { workspace = true }
 otd-core = { path = "../core" }
 otd-format = { path = "../format" }
+otd-launch = { path = "../launch" }
 otd-text-compare = { path = "../text-compare" }
 otd-ui = { path = "../ui" }
 # The file info header's modified time, in the local time zone (`clock`).
@@ -20,6 +21,9 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 [dev-dependencies]
 egui_kittest = { workspace = true }
+otd-settings = { path = "../settings" }
+# The parent window type `PathEdits::frame` takes, which the tests have none of.
+raw-window-handle = "0.6.2"
 tempfile = "3"
 # `default_fonts` so that the tests lay out text, as the app does.
 egui = { workspace = true, features = ["default_fonts"] }

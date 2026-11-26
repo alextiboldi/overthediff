@@ -6,8 +6,9 @@ use otd_ui::command::Command;
 use crate::Shell;
 
 pub fn commands() -> Vec<Command<Shell>> {
-    // ponytail: no feature command exists yet; the comparison views (E07-S1, E08-S1) add the first.
-    Vec::new()
+    let mut commands = Vec::new();
+    commands.extend(otd_ui_text_compare::commands());
+    commands
 }
 
 #[cfg(test)]

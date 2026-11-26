@@ -180,16 +180,32 @@ pub struct PathEdit<'a> {
     field: &'a str,
     path: &'a mut String,
     browse: Browse,
+    /// Opens the picker on this draw, as its first Browse button would.
+    browse_now: bool,
 }
 
 impl<'a> PathEdit<'a> {
     /// An edit of `path` for the field `field`, offering the `browse` buttons.
     pub fn new(field: &'a str, path: &'a mut String, browse: Browse) -> Self {
-        Self { field, path, browse }
+        Self { field, path, browse, browse_now: false }
+    }
+
+    /// When `now`, opens the edit's picker on this draw as its first Browse button would, for a
+    /// command such as Open File that fills the edit.
+    pub fn browse_now(mut self, now: bool) -> Self {
+        self.browse_now = now;
+        self
     }
 
     pub fn show(self, ui: &mut Ui) -> Response {
-        let Self { field, path, browse } = self;
+        self.show_used(ui).0
+    }
+
+    /// [`Self::show`], and whether the path was used on this draw: typed and then left (Enter or
+    /// Tab), browsed, or picked from the recent paths. A feature that loads the path does so then,
+    /// not on every key.
+    pub fn show_used(self, ui: &mut Ui) -> (Response, bool) {
+        let Self { field, path, browse, mut browse_now } = self;
         let id = ui.make_persistent_id(("otd-path-edit", field));
         let ctx = ui.ctx().clone();
         shared(&ctx, |shared| {
@@ -218,6 +234,7 @@ impl<'a> PathEdit<'a> {
 
         ui.horizontal(|ui| {
             let mut response = ui.add(TextEdit::singleline(path).id(id));
+            let mut used = false;
             // A typed path counts as used when the edit loses focus (Enter does that), not per key.
             let dirty = id.with("dirty");
             if response.changed() {
@@ -225,12 +242,13 @@ impl<'a> PathEdit<'a> {
             }
             if response.lost_focus() && ctx.data_mut(|data| data.remove_temp::<bool>(dirty)).unwrap_or(false) {
                 use_path(&ctx, field, path);
+                used = true;
                 error = None;
             }
             for (offered, kind, caption) in
                 [(Browse::File, PickerKind::Open { multiple: false }, BROWSE_FOR_FILE), (Browse::Folder, PickerKind::Folder, BROWSE_FOR_FOLDER)]
             {
-                if (browse == offered || browse == Browse::Both) && ui.button(t(caption)).clicked() {
+                if (browse == offered || browse == Browse::Both) && (ui.button(t(caption)).clicked() || std::mem::take(&mut browse_now)) {
                     let mut dialog = FileDialog::new(kind).title(t(caption));
                     if let Some(dir) = start_folder(path) {
                         dialog = dialog.directory(dir);
@@ -258,6 +276,7 @@ impl<'a> PathEdit<'a> {
             if let Some(text) = chosen {
                 *path = text;
                 use_path(&ctx, field, path);
+                used = true;
                 error = None;
                 response.mark_changed();
                 response.request_focus();
@@ -273,7 +292,7 @@ impl<'a> PathEdit<'a> {
                     ctx.data_mut(|data| data.remove_temp::<String>(id.with("error")));
                 }
             }
-            response
+            (response, used)
         })
         .inner
     }

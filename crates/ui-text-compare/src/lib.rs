@@ -3,26 +3,38 @@
 //! panes load their files through `otd-text-compare` from the session's inputs, one per side,
 //! whenever those change.
 //!
-//! [`SESSION_TYPE`] is the session type that opens it; the app registers it in
-//! `apps/otd/src/session_types.rs` (E07-S1-T2, after its naming check).
+//! [`SESSION_TYPE`] is the session type that opens it, from Home and *New Session*; the app
+//! registers it in `apps/otd/src/session_types.rs`. Each pane has a path edit, [`commands`] are
+//! *File > Open File* and the hidden *Open File on File System*, and [`OpenFiles`] opens two files
+//! given on the command line (E07-S1-T2).
 //!
 //! ponytail: the text is a plain list of lines until E07-S1-T4 draws the aligned comparison.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chrono::{DateTime, Local};
-use egui::{RichText, ScrollArea, Ui};
+mod open;
+
+use egui::accesskit::Live;
+use egui::{Id, RichText, ScrollArea, Ui};
 use otd_core::i18n::{file_size, fmt, t};
 use otd_format::{Kind, Registry};
+use otd_launch::Completion;
 use otd_text_compare::{Encoding, LineEndings, Pane};
-use otd_ui::{Session, SessionType, View};
+use otd_ui::{Browse, PathEdit, Session, SessionType, View};
+
+pub use open::{OPEN_FILE, OPEN_FILE_ON_FILE_SYSTEM, OpenFiles, commands};
 
 /// The session type's and the view type's id.
 pub const TEXT_COMPARE: &str = "text-compare";
-/// The view's working name (a backlog working name until the naming check).
+/// The view's name: Home's button, *New Session ▸ Text Compare* and the tab's title
+/// (docs/feature-names.md).
 pub const NAME: &str = "Text Compare";
 pub const LEFT: &str = "Left";
 pub const RIGHT: &str = "Right";
+const SIDES: [&str; 2] = [LEFT, RIGHT];
+/// Each pane's path edit field, whose recent paths it keeps.
+pub const FIELDS: [&str; 2] = ["text-compare.left", "text-compare.right"];
 
 // The file info header's labels and values: English keys, drawn through `t`.
 pub const PATH: &str = "Path";
@@ -49,8 +61,29 @@ pub struct TextCompareView {
     formats: Registry,
     /// The specs the panes were loaded from, so a change reloads them.
     loaded: Vec<String>,
-    /// Per side: nothing chosen, the loaded file, or why it couldn't load.
+    /// Per side: nothing chosen, the loaded file, or why it couldn't load. A pane that couldn't
+    /// load has no document, so it stays read-only until a file loads.
     panes: Vec<Option<Result<Pane, String>>>,
+    /// Per side, the path edit's text: typing changes it, and the side's spec takes it when the edit
+    /// loses focus, so a half-typed path isn't loaded.
+    edits: [String; 2],
+    /// Per side, the spec `edits` last took or gave, so a spec changed elsewhere (the Session
+    /// Settings dialog) shows in the edit.
+    synced: [String; 2],
+    /// The chosen pane, which *Open File* loads into: the side last focused or clicked.
+    chosen: usize,
+    /// The side whose file picker opens on the next draw.
+    browse: Option<usize>,
+    /// Reports this view's close to a launcher waiting for it (the command line).
+    done: Option<Completion>,
+}
+
+impl Drop for TextCompareView {
+    fn drop(&mut self) {
+        if let Some(done) = self.done.take() {
+            done.finish(0);
+        }
+    }
 }
 
 impl Default for TextCompareView {
@@ -63,7 +96,64 @@ impl TextCompareView {
     pub fn new() -> Self {
         let mut formats = Registry::default();
         formats.register_kind(Kind::Text);
-        Self { session: Session::new(TEXT_COMPARE), formats, loaded: Vec::new(), panes: Vec::new() }
+        let mut session = Session::new(TEXT_COMPARE);
+        session.specs = vec![String::new(); SIDES.len()];
+        Self {
+            session,
+            formats,
+            loaded: Vec::new(),
+            panes: Vec::new(),
+            edits: Default::default(),
+            synced: Default::default(),
+            chosen: 0,
+            browse: None,
+            done: None,
+        }
+    }
+
+    /// Why the file of side `side` (0 is left) couldn't load, if it couldn't.
+    pub fn error(&self, side: usize) -> Option<&str> {
+        self.panes.get(side)?.as_ref()?.as_ref().err().map(String::as_str)
+    }
+
+    /// The chosen pane (0 is left): the side last focused or clicked.
+    pub fn chosen(&self) -> usize {
+        self.chosen
+    }
+
+    /// *Open File*: loads `path` into the pane of `side` (the chosen pane when `None`), or with no
+    /// path opens that pane's file picker.
+    pub fn open_file(&mut self, side: Option<usize>, path: Option<&str>) {
+        let side = side.unwrap_or(self.chosen).min(SIDES.len() - 1);
+        self.chosen = side;
+        match path {
+            Some(path) => {
+                if let Some(spec) = self.session.specs.get_mut(side) {
+                    path.clone_into(spec);
+                }
+            }
+            None => self.browse = Some(side),
+        }
+    }
+
+    /// Side `side`'s path edit, named by its caption `caption`.
+    fn path_edit(&mut self, ui: &mut Ui, side: usize, caption: Id) {
+        let field = FIELDS[side];
+        let Some(spec) = self.session.specs.get_mut(side) else { return };
+        if self.synced[side] != *spec {
+            self.edits[side].clone_from(spec);
+            self.synced[side].clone_from(spec);
+        }
+        let browse = self.browse.take_if(|s| *s == side).is_some();
+        let (response, used) = PathEdit::new(field, &mut self.edits[side], Browse::File).browse_now(browse).show_used(ui);
+        if response.labelled_by(caption).has_focus() {
+            self.chosen = side;
+        }
+        if used && self.edits[side] != *spec {
+            spec.clone_from(&self.edits[side]);
+            self.synced[side].clone_from(spec);
+            ui.ctx().request_repaint();
+        }
     }
 
     /// The pane of side `side` (0 is left), once loaded.
@@ -97,12 +187,17 @@ impl View for TextCompareView {
 
     fn ui(&mut self, ui: &mut Ui) {
         self.reload_if_changed();
-        ui.columns(2, |columns| {
+        ui.columns(SIDES.len(), |columns| {
             for (side, column) in columns.iter_mut().enumerate() {
                 column.push_id(side, |ui| {
-                    // The side's caption, so the two headers' identical facts read apart.
-                    ui.strong(t(if side == 0 { LEFT } else { RIGHT }));
+                    // The side's caption, so the two headers' identical facts read apart; it also
+                    // names the path edit.
+                    let caption = ui.strong(t(SIDES[side]));
+                    self.path_edit(ui, side, caption.id);
                     pane(ui, self.panes.get(side).and_then(Option::as_ref));
+                    if ui.input(|i| i.pointer.primary_pressed()) && ui.rect_contains_pointer(ui.min_rect()) {
+                        self.chosen = side;
+                    }
                 });
             }
         });
@@ -113,7 +208,9 @@ fn pane(ui: &mut Ui, pane: Option<&Result<Pane, String>>) {
     match pane {
         None => {}
         Some(Err(message)) => {
-            ui.label(message);
+            let label = ui.label(message);
+            // Announced: it comes from the load, away from focus.
+            ui.ctx().accesskit_node_builder(label.id, |node| node.set_live(Live::Polite));
         }
         Some(Ok(pane)) => {
             file_info_header(ui, pane);
