@@ -66,6 +66,7 @@ fn a_long_changed_line_wraps_in_both_panes_and_the_next_line_starts_on_one_row_i
     assert_eq!(long[0].chars().count(), 300);
     let (mut harness, _folder) = harness(&left, &right);
     let unwrapped = [0, 1].map(|pane| find(&harness, "after", pane).top());
+    let unwrapped_width = [0, 1].map(|pane| find(&harness, &long[pane], pane).width());
 
     assert!(harness.state_mut().run("text-compare.word_wrap"), "Word Wrap ran");
     harness.run();
@@ -77,7 +78,7 @@ fn a_long_changed_line_wraps_in_both_panes_and_the_next_line_starts_on_one_row_i
     assert!(rows[0] > rows[1] && rows[1] > 1, "both panes wrap the line, the longer to more rows: {rows:?}");
     for pane in [0, 1] {
         let line = find(&harness, &long[pane], pane);
-        assert!(line.width() < 450.0, "pane {pane}'s line fits the pane's width");
+        assert!(line.width() < unwrapped_width[pane], "pane {pane}'s line is narrower than unwrapped");
         let numbers: Vec<Rect> = harness.query_all_by_label("2").filter(|node| in_pane(node, pane)).map(|node| node.rect()).collect();
         assert_eq!(numbers.len(), 1, "pane {pane}'s line number shows once");
         assert!((numbers[0].top() - line.top()).abs() < 1.0, "on the line's first row");

@@ -558,12 +558,14 @@ fn draw_row(ui: &mut Ui, row: usize, lines: [&[Line]; 2], aligned: &mut Aligned,
     drawn.lines.push((index, galley.clone(), origin, line.ending != LineEnding::None));
     if let Some(last) = galley.rows.last().filter(|_| break_selected) {
         // A selected line break shows as a space's width of selection after the text's last row.
+        // A line's height at least: a blank line's galley has none.
         let last = last.rect().translate(origin.to_vec2());
-        text_painter.rect_filled(Rect::from_min_max(last.right_top(), pos2(last.right() + digit, last.bottom())), 0.0, colours.selection);
+        let bottom = last.bottom().max(last.top() + height);
+        text_painter.rect_filled(Rect::from_min_max(last.right_top(), pos2(last.right() + digit, bottom)), 0.0, colours.selection);
     }
     let caret_rect = (caret.shown && caret.selection.head.line == index).then(|| {
         let at = galley.pos_from_cursor(CCursor::new(caret.selection.head.column)).translate(origin.to_vec2());
-        Rect::from_min_max(at.min, pos2(at.min.x + 2.0, at.max.y))
+        Rect::from_min_max(at.min, pos2(at.min.x + 2.0, at.max.y.max(at.min.y + height)))
     });
     text_painter.galley(origin, galley.clone(), text_colour);
     if caret.whitespace {
