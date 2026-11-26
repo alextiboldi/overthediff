@@ -70,11 +70,9 @@ impl Handler<Shell> for OpenFiles {
 }
 
 /// `spec` with a relative path made relative to `cwd`, the launching process's working folder,
-/// since the instance's differs. `~/…` and `smb://…` are left for the loader.
+/// since the instance's differs. `~`, `~/…` and `smb://…` are left for the loader, which expands
+/// them; any other name starting with `~` (`~notes.txt`) is a relative file name.
 fn absolute(cwd: &Path, spec: &str) -> String {
-    if spec.starts_with('~') || spec.contains("://") || Path::new(spec).is_absolute() {
-        spec.to_owned()
-    } else {
-        cwd.join(spec).display().to_string()
-    }
+    let home = spec.strip_prefix('~').is_some_and(|rest| rest.is_empty() || rest.starts_with('/') || (cfg!(windows) && rest.starts_with('\\')));
+    if home || spec.contains("://") || Path::new(spec).is_absolute() { spec.to_owned() } else { cwd.join(spec).display().to_string() }
 }

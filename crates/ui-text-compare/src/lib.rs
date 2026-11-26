@@ -59,8 +59,9 @@ pub struct TextCompareView {
     // ponytail: Text alone, so every file gets the catch-all format; the app-wide registry with
     // user formats comes with the File Formats manager (E10-S1).
     formats: Registry,
-    /// The specs the panes were loaded from, so a change reloads them.
-    loaded: Vec<String>,
+    /// Per side, the spec its pane was loaded from, so a change reloads that pane; `None` reloads
+    /// it even when the spec is the same, so a file that failed can be tried again.
+    loaded: Vec<Option<String>>,
     /// Per side: nothing chosen, the loaded file, or why it couldn't load. A pane that couldn't
     /// load has no document, so it stays read-only until a file loads.
     panes: Vec<Option<Result<Pane, String>>>,
@@ -130,6 +131,7 @@ impl TextCompareView {
             Some(path) => {
                 if let Some(spec) = self.session.specs.get_mut(side) {
                     path.clone_into(spec);
+                    self.retry(side);
                 }
             }
             None => self.browse = Some(side),
@@ -149,10 +151,18 @@ impl TextCompareView {
         if response.labelled_by(caption).has_focus() {
             self.chosen = side;
         }
-        if used && self.edits[side] != *spec {
+        if used {
             spec.clone_from(&self.edits[side]);
             self.synced[side].clone_from(spec);
+            self.retry(side);
             ui.ctx().request_repaint();
+        }
+    }
+
+    /// Loads side `side` again on the next draw, even if its spec is unchanged.
+    fn retry(&mut self, side: usize) {
+        if let Some(loaded) = self.loaded.get_mut(side) {
+            *loaded = None;
         }
     }
 
@@ -161,14 +171,17 @@ impl TextCompareView {
         self.panes.get(side)?.as_ref()?.as_ref().ok()
     }
 
+    /// Loads each side whose spec changed or that [`Self::retry`] marked, leaving the other alone.
     fn reload_if_changed(&mut self) {
-        if self.loaded == self.session.specs {
-            return;
+        let specs = &self.session.specs;
+        self.loaded.resize(specs.len(), None);
+        self.panes.resize_with(specs.len(), || None);
+        for ((spec, loaded), pane) in specs.iter().zip(&mut self.loaded).zip(&mut self.panes) {
+            if loaded.as_ref() != Some(spec) {
+                *loaded = Some(spec.clone());
+                *pane = (!spec.trim().is_empty()).then(|| otd_text_compare::open(spec, &self.formats).map_err(|e| e.message));
+            }
         }
-        self.loaded.clone_from(&self.session.specs);
-        let formats = &self.formats;
-        self.panes =
-            self.loaded.iter().map(|spec| (!spec.trim().is_empty()).then(|| otd_text_compare::open(spec, formats).map_err(|e| e.message))).collect();
     }
 }
 

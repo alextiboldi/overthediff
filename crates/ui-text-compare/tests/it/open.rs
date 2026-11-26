@@ -118,6 +118,17 @@ fn a_typed_path_loads_into_its_pane_on_enter_and_a_missing_file_shows_its_error_
     assert_eq!(view(&harness).pane(1).map(|pane| pane.path.as_str()), Some(right.as_str()));
     assert!(harness.query_by_label("right text").is_some(), "the right pane shows its file");
     assert!(view(&harness).error(0).is_some(), "the left pane keeps its own error");
+
+    // Once the file exists, using the same path again retries it.
+    std::fs::write(&missing, "now here\n").unwrap();
+    let answer = PathBuf::from(&missing);
+    harness.state_mut().edits.as_mut().unwrap().set_override(Some(Box::new(move |_: &Request| Answer::Paths(vec![answer.clone()]))));
+    tab_to_edit(&mut harness, LEFT);
+    assert!(harness.state_mut().shell.run("text-compare.open_file"));
+    for _ in 0..3 {
+        harness.run();
+    }
+    assert_eq!(view(&harness).pane(0).map(|pane| pane.path.as_str()), Some(missing.as_str()), "the same path, browsed again, loads");
 }
 
 #[test]
@@ -164,10 +175,11 @@ fn config() -> Config {
 #[test]
 fn two_files_on_the_command_line_open_one_text_compare_tab_relative_to_the_launch_folder() {
     let folder = tempfile::tempdir().unwrap();
-    let left = write(folder.path(), "left.txt", "left\n");
+    // A name starting with `~` is a file in the launch folder, not a home folder.
+    let left = write(folder.path(), "~left.txt", "left\n");
     let right = write(folder.path(), "right.txt", "right\n");
     let registry = registry();
-    let args = ["left.txt".to_owned(), "right.txt".to_owned()];
+    let args = ["~left.txt".to_owned(), "right.txt".to_owned()];
     // A new instance of its own, so the test reaches no running app.
     let Launch::Instance(instance) = otd_launch::launch(&registry, &args, Requested::NewInstance, &config()) else { panic!("the launch is refused") };
     let mut incoming = instance.try_next().unwrap();
