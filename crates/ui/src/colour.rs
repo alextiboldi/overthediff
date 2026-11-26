@@ -1,11 +1,15 @@
 //! Drawing with colour roles (E01-S1). The app installs the registered [`ColourRoles`] once; a view
 //! draws with [`colour`], which gives a role's value in the active [`Palette`]. The table and the
 //! palette live in the egui context, so any view or painter reaches them without the shell.
+//!
+//! The window chrome and the selection draw with the [`CHROME`] roles too (E05-S1): [`install`] and
+//! [`set_palette`] rebuild egui's visuals from them, and pin egui to the active palette so the OS
+//! setting alone never swaps them for egui's own.
 
 use std::sync::Arc;
 
-use egui::{Color32, Context, Id};
-pub use otd_core::colour::{ColourRole, ColourRoles, DuplicateColourRole, Palette, Rgba};
+use egui::{Color32, Context, Id, Theme, Visuals};
+pub use otd_core::colour::{ColourRole, ColourRoles, Contrast, ContrastProblem, DuplicateColourRole, LowContrast, Palette, Rgba, contrast_ratio};
 
 const ROLES: &str = "otd-colour-roles";
 const PALETTE: &str = "otd-colour-palette";
@@ -14,10 +18,55 @@ const PALETTE: &str = "otd-colour-palette";
 /// mistake shows on screen.
 pub const UNREGISTERED: Color32 = Color32::from_rgb(0xFF, 0x00, 0xFF);
 
-/// Makes `roles` the registered roles that [`colour`] resolves.
+const fn role(id: &'static str, light: Rgba, dark: Rgba) -> ColourRole {
+    ColourRole { id, light, dark }
+}
+
+const fn grey(level: u8) -> Rgba {
+    Rgba::rgb(level, level, level)
+}
+
+/// Panels: the tab strip, the status bar and behind every view.
+pub const BACKGROUND: ColourRole = role("chrome.background", grey(0xF3), grey(0x1E));
+/// Dialogs, menus and popups.
+pub const WINDOW: ColourRole = role("chrome.window", grey(0xFF), grey(0x26));
+/// Labels and control captions.
+pub const TEXT: ColourRole = role("chrome.text", grey(0x1F), grey(0xE4));
+/// A button or other control at rest.
+pub const CONTROL: ColourRole = role("chrome.control", grey(0xE3), grey(0x3A));
+/// A control under the pointer, pressed or focused.
+pub const CONTROL_ACTIVE: ColourRole = role("chrome.control.active", grey(0xD4), grey(0x4A));
+/// Text fields.
+pub const INPUT: ColourRole = role("chrome.input", grey(0xFF), grey(0x14));
+/// Control, window and separator borders.
+pub const BORDER: ColourRole = role("chrome.border", grey(0x76), grey(0x8C));
+/// Behind selected items and selected text.
+pub const SELECTION: ColourRole = role("selection.background", Rgba::rgb(0xB9, 0xD8, 0xFF), Rgba::rgb(0x1F, 0x4E, 0x7A));
+/// Selected items and selected text, and the focus ring.
+pub const SELECTION_TEXT: ColourRole = role("selection.text", Rgba::rgb(0x00, 0x3A, 0x70), Rgba::rgb(0xE8, 0xF1, 0xFF));
+
+/// The chrome and selection roles, which the app registers with every feature's.
+pub const CHROME: [ColourRole; 9] = [BACKGROUND, WINDOW, TEXT, CONTROL, CONTROL_ACTIVE, INPUT, BORDER, SELECTION, SELECTION_TEXT];
+
+/// What the chrome and selection roles are drawn on, for the contrast check.
+pub const CHROME_CONTRAST: [Contrast; 10] = [
+    Contrast::text(&TEXT, &BACKGROUND),
+    Contrast::text(&TEXT, &WINDOW),
+    Contrast::text(&TEXT, &CONTROL),
+    Contrast::text(&TEXT, &CONTROL_ACTIVE),
+    Contrast::text(&TEXT, &INPUT),
+    Contrast::text(&SELECTION_TEXT, &SELECTION),
+    Contrast::control(&BORDER, &BACKGROUND),
+    Contrast::control(&BORDER, &WINDOW),
+    // The focus ring.
+    Contrast::control(&SELECTION_TEXT, &BACKGROUND),
+    Contrast::control(&SELECTION_TEXT, &WINDOW),
+];
+
+/// Makes `roles` the registered roles that [`colour`] resolves, and restyles the chrome from them.
 pub fn install(ctx: &Context, roles: ColourRoles) {
     ctx.data_mut(|data| data.insert_temp(Id::unique(ROLES), Arc::new(roles)));
-    ctx.request_repaint();
+    apply(ctx);
 }
 
 /// The active palette: light until something sets another.
@@ -28,7 +77,47 @@ pub fn palette(ctx: &Context) -> Palette {
 /// Makes `palette` active. Every view takes its values on the next frame, which this requests.
 pub fn set_palette(ctx: &Context, palette: Palette) {
     ctx.data_mut(|data| data.insert_temp(Id::unique(PALETTE), palette));
+    apply(ctx);
+}
+
+/// Styles the chrome from the [`CHROME`] roles in the active palette, and makes egui use that style
+/// whatever the OS setting.
+fn apply(ctx: &Context) {
+    let palette = palette(ctx);
+    let theme = match palette {
+        Palette::Light => Theme::Light,
+        Palette::Dark => Theme::Dark,
+    };
+    ctx.set_visuals_of(theme, visuals(ctx, theme));
+    ctx.set_theme(theme);
     ctx.request_repaint();
+}
+
+/// egui's visuals for `theme`, with every chrome and selection colour taken from its role.
+fn visuals(ctx: &Context, theme: Theme) -> Visuals {
+    let mut visuals = theme.default_visuals();
+    let [background, window, text, control, active, input, border, selection, selection_text] = CHROME.map(|role| colour(ctx, &role));
+    visuals.panel_fill = background;
+    visuals.window_fill = window;
+    visuals.window_stroke.color = border;
+    visuals.extreme_bg_color = input;
+    visuals.text_cursor.stroke.color = text;
+    visuals.selection.bg_fill = selection;
+    visuals.selection.stroke.color = selection_text;
+    let widgets = &mut visuals.widgets;
+    for (state, fill) in [
+        (&mut widgets.noninteractive, window),
+        (&mut widgets.inactive, control),
+        (&mut widgets.hovered, active),
+        (&mut widgets.active, active),
+        (&mut widgets.open, control),
+    ] {
+        state.bg_fill = fill;
+        state.weak_bg_fill = fill;
+        state.bg_stroke.color = border;
+        state.fg_stroke.color = text;
+    }
+    visuals
 }
 
 /// The registered value of `role` in the active palette, or [`UNREGISTERED`] if no role with its id
