@@ -143,8 +143,9 @@ As a code reviewer, I can jump from one difference to the next so that I can rev
 - [ ] Every navigation command has a default keyboard shortcut.
 
 #### Tasks
-- **E07-S2-T1** — Find the next or previous section and the next or previous in-line difference from the cursor · size: M · depends: —
+- **E07-S2-T1** — Find the next or previous section and the next or previous in-line difference from the cursor · size: M · depends: — · status: done
   - AC: unit cases cover a cursor before, inside and after a section. A line with three separate changes is visited change by change, in order.
+  - Implemented: `crates/text-compare/src/navigate.rs` (`otd-text-compare`, UI-free) adds `Differences`, which walks a comparison's rows with the view's own "row differs" test: `next_section` and `previous_section` find the maximal run of differing rows after or before a row, and `next`, `previous` and `changes` find the in-line changes (each run of differing characters, paired across both sides, so an insertion or deletion is one stop from either pane; an orphan line or an ending-only row is one change) strictly past a `Cursor` (row, side, column). Tests in `crates/text-compare/tests/it/navigate.rs`: `sections_are_found_from_a_cursor_before_inside_and_after_them`, `a_row_the_view_treats_as_same_is_skipped`, `a_line_with_three_changes_is_visited_change_by_change_in_order_from_either_pane`, `an_ending_only_change_and_an_orphan_line_are_one_stop_each` and `a_caret_at_a_change_start_is_before_it_and_at_its_end_after_it`. Checks: `cargo xtask ci` on macOS after rebasing onto main, and pull-request CI on Linux and macOS. https://github.com/alextiboldi/overthediff/pull/110
 - **E07-S2-T2** — Navigation commands and shortcuts that bring the target into view in both panes · size: S · depends: E07-S2-T1
   - AC: Next Difference Section from the top of the file lands on the first section, with both panes showing it.
 - **E07-S2-T3** — Track edited lines, and add Next/Previous Edit · size: S · depends: — · status: done
