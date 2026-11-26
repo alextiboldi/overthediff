@@ -5,9 +5,9 @@
 use otd_ui::Setting;
 
 pub fn session_settings() -> Vec<Setting> {
-    // ponytail: no feature contributes session settings yet; the first session types (E07-S1,
-    // E08-S1) add theirs.
-    Vec::new()
+    let mut settings = Vec::new();
+    settings.extend(otd_ui_text_compare::session_settings(&otd_ui_text_compare::formats()));
+    settings
 }
 
 #[cfg(test)]

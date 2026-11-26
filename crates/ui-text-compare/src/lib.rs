@@ -34,6 +34,9 @@
 //!
 //! `whitespace.rs` holds *View > Show Whitespace*, which marks spaces, tabs and line breaks
 //! (E07-S9-T1).
+//!
+//! [`file_format`] adds each side's file-format picker to the Session Settings dialog's Format tab
+//! (E07-S10-T1).
 
 mod read_only;
 pub mod session;
@@ -45,6 +48,7 @@ pub mod aligned;
 mod bookmarks;
 mod edit;
 mod edited;
+pub mod file_format;
 mod font_size;
 mod go_to;
 mod layout;
@@ -65,6 +69,7 @@ use otd_ui::{Browse, PathEdit, Session, SessionType, View};
 pub use bookmarks::{BOOKMARK, CLEAR_BOOKMARKS, GO_TO_BOOKMARK, TOGGLE_BOOKMARK};
 pub use edit::{COPY, CUT, DELETE, INSERT_TEXT, PASTE, REDO, SELECT_ALL, UNDO};
 pub use edited::{NEXT_EDIT, PREVIOUS_EDIT};
+pub use file_format::{DETECTED, FORMAT_PICKERS, FORMAT_TAB, formats, session_settings};
 pub use font_size::{DECREASE_FONT_SIZE, INCREASE_FONT_SIZE, RESET_FONT_SIZE};
 pub use go_to::{COLUMN, GO_TO, GO_TO_LINE, LINE, NOT_A_NUMBER};
 pub use layout::{Layout, SIDE_BY_SIDE, TOP_AND_BOTTOM};
@@ -106,8 +111,7 @@ fn new_view() -> Box<dyn View> {
 /// Two text files side by side.
 pub struct TextCompareView {
     session: Session,
-    // ponytail: Text alone, so every file gets the catch-all format; the app-wide registry with
-    // user formats comes with the File Formats manager (E10-S1).
+    /// The registry its files' formats resolve in, and the formats each side's picker offers.
     formats: Registry,
     /// Per side, the spec its pane was loaded from, so a change reloads that pane; `None` reloads
     /// it even when the spec is the same, so a file that failed can be tried again.
@@ -191,13 +195,11 @@ impl Default for TextCompareView {
 
 impl TextCompareView {
     pub fn new() -> Self {
-        let mut formats = Registry::default();
-        formats.register_kind(Kind::Text);
         let mut session = Session::new(TEXT_COMPARE);
         session.specs = vec![String::new(); SIDES.len()];
         Self {
             session,
-            formats,
+            formats: formats(),
             loaded: Vec::new(),
             panes: Vec::new(),
             edits: Default::default(),
@@ -410,7 +412,8 @@ impl TextCompareView {
                 })
                 .inner;
             self.path_edit(ui, side, caption.id);
-            pane(ui, self.panes.get(side).and_then(Option::as_ref), self.read_only(side), self.save_errors[side].as_deref());
+            let format = self.format(side);
+            pane(ui, self.panes.get(side).and_then(Option::as_ref), format, self.read_only(side), self.save_errors[side].as_deref());
             if clicked(ui) {
                 self.chosen = side;
             }
@@ -444,7 +447,8 @@ fn clicked(ui: &Ui) -> bool {
     ui.input(|i| i.pointer.primary_pressed()) && ui.rect_contains_pointer(ui.min_rect())
 }
 
-fn pane(ui: &mut Ui, pane: Option<&Result<Pane, String>>, read_only: Option<ReadOnly>, save_error: Option<&str>) {
+/// `format` is the format in use, which the header shows.
+fn pane(ui: &mut Ui, pane: Option<&Result<Pane, String>>, format: Option<&str>, read_only: Option<ReadOnly>, save_error: Option<&str>) {
     match pane {
         None => {}
         Some(Err(message)) => {
@@ -453,7 +457,7 @@ fn pane(ui: &mut Ui, pane: Option<&Result<Pane, String>>, read_only: Option<Read
             ui.ctx().accesskit_node_builder(label.id, |node| node.set_live(Live::Polite));
         }
         Some(Ok(pane)) => {
-            file_info_header(ui, pane);
+            file_info(ui, pane, format.unwrap_or(&pane.format));
             read_only::show(ui, read_only);
             save::error(ui, save_error);
             ui.separator();
@@ -463,12 +467,17 @@ fn pane(ui: &mut Ui, pane: Option<&Result<Pane, String>>, read_only: Option<Read
 
 /// A pane's file info header: one labelled line per fact.
 pub fn file_info_header(ui: &mut Ui, pane: &Pane) {
+    file_info(ui, pane, &pane.format);
+}
+
+/// [`file_info_header`] naming the format `format`.
+fn file_info(ui: &mut Ui, pane: &Pane, format: &str) {
     let modified = pane.modified.and_then(local_time).unwrap_or_else(|| t(UNKNOWN).to_owned());
     let fields = [
         (PATH, pane.path.clone()),
         (SIZE, file_size(pane.size)),
         (MODIFIED, modified),
-        (FORMAT, t(&pane.format).to_owned()),
+        (FORMAT, t(format).to_owned()),
         (ENCODING, encoding_name(pane.encoding)),
         (LINE_ENDINGS, t(endings_name(pane.endings)).to_owned()),
     ];
