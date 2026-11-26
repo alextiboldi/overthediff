@@ -6,9 +6,10 @@
 #
 # Usage: packaging/linux/flatpak-bundle.sh TARBALL
 #
-# The shared release workflow's Flatpak job runs it. Needs flatpak and flatpak-builder; the
+# The shared release workflow's Flatpak job runs it. Needs flatpak, flatpak-builder and the SVG
+# image loader its icon export uses (librsvg2-common), all of which that job installs; the
 # freedesktop runtime and SDK the manifest names are installed per user from Flathub. The bundle
-# is then installed per user and checked inside its sandbox.
+# is not installed or run here: Flatpak has no smoke test in Release 1.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 APP_ID=io.github.alextiboldi.overthediff
@@ -30,7 +31,3 @@ flatpak-builder --user --install-deps-from=flathub --disable-rofiles-fuse --forc
 OUT="$DIST/$(basename "$TARBALL" .tar.gz).flatpak"
 flatpak build-bundle --runtime-repo="$FLATHUB" "$WORK/repo" "$OUT" "$APP_ID" stable
 echo "wrote $OUT"
-
-flatpak install --user -y --noninteractive --reinstall "$OUT"
-flatpak run --command=sh "$APP_ID" -c "test -x /app/bin/otd && test -f /app/share/applications/$APP_ID.desktop && test -f /app/share/icons/hicolor/256x256/apps/$APP_ID.png && test -f /app/share/doc/overthediff/NOTICE"
-echo "==> bundle checked"
