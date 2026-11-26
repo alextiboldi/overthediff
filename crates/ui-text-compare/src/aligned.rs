@@ -234,9 +234,11 @@ impl Aligned {
     }
 
     /// Takes `old`'s shared scroll offset, so a comparison rerun over the same panes keeps their
-    /// place. egui clamps it if the rows got fewer.
+    /// place, and its pane widths, so the first layout wraps as the offset was measured. egui
+    /// clamps the offset if the rows got fewer.
     pub(crate) fn keep_scroll(&mut self, old: &Aligned) {
         self.scroll = old.scroll;
+        self.widths = old.widths;
     }
 
     /// The comparison's overall result and statistics, or `None` with a pane missing.

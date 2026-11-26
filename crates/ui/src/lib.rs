@@ -519,13 +519,16 @@ fn tool_button(ui: &mut Ui, caption: &str, icon: Option<&[[(f32, f32); 2]]>, ena
     let size = Vec2::new(2.0 * padding.x + icon_width + galley.size().x, (2.0 * padding.y + galley.size().y).max(24.0));
     let (rect, response) = ui.allocate_exact_size(size, if enabled { Sense::click() } else { Sense::hover() });
     response.widget_info(|| WidgetInfo { selected: checked, ..WidgetInfo::labeled(Role::Button, enabled, caption) });
-    if checked == Some(true) {
+    let pressed = checked == Some(true);
+    if pressed {
         let visuals = ui.style().interact(&response);
-        let bar = ui.visuals().selection.stroke;
         ui.painter().rect(rect, visuals.corner_radius, visuals.weak_bg_fill, visuals.bg_stroke, egui::StrokeKind::Inside);
-        ui.painter().hline(rect.x_range().shrink(2.0), rect.bottom() - 1.5, Stroke::new(2.0, bar.color));
     }
     paint_button(ui, rect, &response);
+    // After the hover and focus fill, which would hide it, and inside the focus ring.
+    if pressed {
+        ui.painter().hline(rect.x_range().shrink(4.0), rect.bottom() - 3.5, Stroke::new(2.0, ui.visuals().selection.stroke.color));
+    }
     // A hover-only response gets egui's non-interactive, greyed colours.
     let color = ui.style().interact(&response).fg_stroke.color;
     let left = rect.left() + padding.x;

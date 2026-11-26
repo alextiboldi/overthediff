@@ -89,32 +89,61 @@ fn a_long_changed_line_wraps_in_both_panes_and_the_next_line_starts_on_one_row_i
     assert_eq!([0, 1].map(|pane| find(&harness, "after", pane).top()), unwrapped, "turned off, the rows are one line high again");
 }
 
-#[test]
-fn turning_word_wrap_on_keeps_the_line_at_the_top_of_the_panes_there() {
+/// The shell comparing 80 long lines, with "left" and "right" above them, and the top of the
+/// panes' first row.
+fn long_lines() -> (Harness<'static, Shell>, tempfile::TempDir, f32) {
     // Long lines, so wrapping moves every row.
     let long = "word ".repeat(60).trim_end().to_owned();
     let text: String = (1..=80).map(|n| format!("line {n} {long}\n")).collect();
-    let (mut harness, _folder) = harness(&format!("left\n{text}"), &format!("right\n{text}"));
+    let (harness, folder) = harness(&format!("left\n{text}"), &format!("right\n{text}"));
     let top = find(&harness, "left", 0).top();
-    // The line on the panes' top row, in each pane.
-    let top_line = |harness: &Harness<'_, Shell>| {
-        [0, 1].map(|pane| {
-            harness
-                .query_all_by(|node| node.role() == Role::Label && node.value().is_some_and(|text| text.starts_with("line ")))
-                .find(|node| in_pane(node, pane) && node.rect().y_range().contains(top + 1.0))
-                .and_then(|node| node.accesskit_node().value())
-        })
-    };
+    (harness, folder, top)
+}
+
+/// The line on the panes' top row, at `top`, in each pane.
+fn top_line(harness: &Harness<'_, Shell>, top: f32) -> [Option<String>; 2] {
+    [0, 1].map(|pane| {
+        harness
+            .query_all_by(|node| node.role() == Role::Label && node.value().is_some_and(|text| text.starts_with("line ")))
+            .find(|node| in_pane(node, pane) && node.rect().y_range().contains(top + 1.0))
+            .and_then(|node| node.accesskit_node().value())
+    })
+}
+
+/// Scrolls the panes down a few steps and returns the line then on their top row.
+fn scroll_down(harness: &mut Harness<'_, Shell>, top: f32) -> [Option<String>; 2] {
     for _ in 0..5 {
         let run = harness.query_all_by(|node| node.role() == Role::TextRun).find(|node| in_pane(node, 0));
         run.expect("a line is shown").scroll_down();
         harness.run();
     }
-    let before = top_line(&harness);
+    let before = top_line(harness, top);
     assert!(before[0].as_ref().is_some_and(|line| line.starts_with("line ")) && before[0] == before[1], "scrolled down: {before:?}");
+    before
+}
+
+#[test]
+fn turning_word_wrap_on_keeps_the_line_at_the_top_of_the_panes_there() {
+    let (mut harness, _folder, top) = long_lines();
+    let before = scroll_down(&mut harness, top);
 
     assert!(harness.state_mut().run("text-compare.word_wrap"), "Word Wrap ran");
     harness.run();
     harness.run();
-    assert_eq!(top_line(&harness), before, "the same line is still on the top row of both panes");
+    assert_eq!(top_line(&harness, top), before, "the same line is still on the top row of both panes");
+}
+
+#[test]
+fn recompare_and_swap_with_word_wrap_on_keep_the_line_at_the_top_of_the_panes_there() {
+    let (mut harness, _folder, top) = long_lines();
+    assert!(harness.state_mut().run("text-compare.word_wrap"), "Word Wrap ran");
+    harness.run();
+    let before = scroll_down(&mut harness, top);
+
+    for command in ["text-compare.recompare_files", "text-compare.swap_sides"] {
+        assert!(harness.state_mut().run(command), "{command} ran");
+        harness.run();
+        harness.run();
+        assert_eq!(top_line(&harness, top), before, "after {command}, the same line is on the top row of both panes");
+    }
 }
