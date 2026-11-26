@@ -37,6 +37,9 @@
 //!
 //! [`file_format`] adds each side's file-format picker to the Session Settings dialog's Format tab
 //! (E07-S10-T1).
+//!
+//! [`encoding`] adds each side's encoding override to the Session Settings dialog's Format tab
+//! (E07-S10-T2).
 
 mod read_only;
 pub mod session;
@@ -48,6 +51,7 @@ pub mod aligned;
 mod bookmarks;
 mod edit;
 mod edited;
+pub mod encoding;
 pub mod file_format;
 mod font_size;
 mod go_to;
@@ -177,6 +181,8 @@ pub struct TextCompareView {
     pending: Option<(usize, String)>,
     /// Whether *View > Show Whitespace* is on (E07-S9-T1, `whitespace.rs`).
     whitespace: bool,
+    /// Per side, the encoding override its pane was read in, so a changed override reads it again.
+    decoded_as: [Option<Encoding>; 2],
 }
 
 impl Drop for TextCompareView {
@@ -229,6 +235,7 @@ impl TextCompareView {
             headers: [0.0; 2],
             pending: None,
             whitespace: false,
+            decoded_as: Default::default(),
         }
     }
 
@@ -300,16 +307,20 @@ impl TextCompareView {
     /// Loads each side whose spec changed or that [`Self::retry`] marked, leaving the other alone.
     fn reload_if_changed(&mut self) {
         let started = Instant::now();
+        self.retry_changed_overrides();
+        let overrides = [0, 1].map(|side| self.encoding_override(side));
         let specs = &self.session.specs;
         self.loaded.resize(specs.len(), None);
         self.panes.resize_with(specs.len(), || None);
         let mut changed = false;
-        for (((spec, loaded), pane), error) in specs.iter().zip(&mut self.loaded).zip(&mut self.panes).zip(&mut self.save_errors) {
+        let sides = specs.iter().zip(&mut self.loaded).zip(&mut self.panes).zip(&mut self.save_errors).zip(overrides).zip(&mut self.decoded_as);
+        for (((((spec, loaded), pane), error), encoding), decoded_as) in sides {
             if loaded.as_ref() != Some(spec) {
                 *error = None;
                 *loaded = Some(spec.clone());
+                *decoded_as = encoding;
                 self.comparison = None;
-                *pane = (!spec.trim().is_empty()).then(|| otd_text_compare::open(spec, &self.formats).map_err(|e| e.message));
+                *pane = (!spec.trim().is_empty()).then(|| otd_text_compare::open_as(spec, &self.formats, encoding).map_err(|e| e.message));
                 changed = true;
             }
         }

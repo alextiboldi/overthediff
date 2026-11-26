@@ -7,6 +7,7 @@ use otd_ui::Setting;
 pub fn session_settings() -> Vec<Setting> {
     let mut settings = Vec::new();
     settings.extend(otd_ui_text_compare::session_settings(&otd_ui_text_compare::formats()));
+    settings.extend(otd_ui_text_compare::encoding::session_settings());
     settings
 }
 

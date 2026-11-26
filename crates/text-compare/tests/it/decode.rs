@@ -1,6 +1,6 @@
 //! Encoding and line-ending detection.
 
-use otd_text_compare::{Encoding, LineEnding, LineEndings, decode};
+use otd_text_compare::{Encoding, LineEnding, LineEndings, decode, decode_as, encode};
 
 const TEXT: &str = "café\nnaïve\n";
 
@@ -96,4 +96,27 @@ fn a_final_break_ends_the_last_line_without_adding_an_empty_one() {
     let lines = decode(b"a\r\n\r\n", 1252).lines;
     assert_eq!(lines.len(), 2, "a blank line, then nothing");
     assert!(lines.iter().all(|line| line.ending == LineEnding::CrLf));
+}
+
+#[test]
+fn an_override_decodes_windows_1252_text_that_detection_took_for_utf8() {
+    // "CafÃ©" in Windows-1252 is also valid UTF-8, for "Café".
+    let bytes = b"Caf\xC3\xA9\n";
+    assert_eq!(decode(bytes, 1252).encoding, Encoding::Utf8 { bom: false }, "detection is fooled");
+    let forced = decode_as(bytes, Encoding::CodePage(1252));
+    assert_eq!(forced.encoding, Encoding::CodePage(1252));
+    assert_eq!(forced.lines[0].text, "CafÃ©");
+}
+
+#[test]
+fn an_override_keeps_its_own_byte_order_mark_out_of_the_text_so_the_file_saves_back_unchanged() {
+    for (bytes, encoding) in [
+        ([&[0xEF, 0xBB, 0xBF][..], TEXT.as_bytes()].concat(), Encoding::Utf8 { bom: false }),
+        ([&[0xFF, 0xFE][..], &utf16(TEXT, u16::to_le_bytes)].concat(), Encoding::Utf16Le { bom: false }),
+        (utf16(TEXT, u16::to_be_bytes), Encoding::Utf16Be { bom: true }),
+    ] {
+        let forced = decode_as(&bytes, encoding);
+        assert_eq!(forced.lines[0].text, "café", "{encoding:?}");
+        assert_eq!(encode(&forced.lines, forced.encoding).as_deref(), Ok(&bytes[..]), "{encoding:?}");
+    }
 }
