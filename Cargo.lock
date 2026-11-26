@@ -2640,11 +2640,14 @@ version = "0.1.0"
 dependencies = [
  "craft-menu",
  "craft-quit",
+ "craft-testkit",
  "eframe",
  "egui_kittest",
  "otd-core",
+ "otd-folder-engine",
  "otd-launch",
  "otd-settings",
+ "otd-source",
  "otd-ui",
  "tempfile",
 ]

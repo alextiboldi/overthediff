@@ -16,7 +16,7 @@ use crate::{Capabilities, ErrorKind, SourceError};
 /// The OS path for a local path as written: `~` and `~/…` start at the home folder, and
 /// `smb://[user@]server/share/…` at the share's mount point (its UNC path on Windows). Anything
 /// else is already an OS path.
-pub(crate) fn resolve(spec: &str) -> Result<PathBuf, SourceError> {
+pub fn resolve(spec: &str) -> Result<PathBuf, SourceError> {
     if let Some(rest) = spec.strip_prefix('~') {
         let after_separator = rest.strip_prefix('/').or_else(|| rest.strip_prefix('\\').filter(|_| cfg!(windows)));
         let rest = match after_separator {

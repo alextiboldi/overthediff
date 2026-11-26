@@ -97,20 +97,22 @@ As a developer, I can set OverTheDiff as my version-control diff tool so that `g
 As a release engineer, I can check from a build script whether two files match, without opening any window, so that the script can branch on the exit code.
 
 **Acceptance criteria**
-- [ ] `/qc=size`, `/qc=crc` and `/qc=binary` (also spelt `/quickcompare=<type>`) compare two files and exit without showing a window or a taskbar entry.
-- [ ] The exit code is 1 when the files are the same by the chosen test and 11 when they differ. These codes are specified for binary and *inferred* for size and CRC.
-- [ ] A missing or unreadable file, a folder in place of a file, or a wrong number of files gives exit code 100, with a one-line error on standard error (*inferred* for the message).
-- [ ] Any local or network path accepted by the file-system access layer works as an input.
+- [x] `/qc=size`, `/qc=crc` and `/qc=binary` (also spelt `/quickcompare=<type>`) compare two files and exit without showing a window or a taskbar entry.
+- [x] The exit code is 1 when the files are the same by the chosen test and 11 when they differ. These codes are specified for binary and *inferred* for size and CRC.
+- [x] A missing or unreadable file, a folder in place of a file, or a wrong number of files gives exit code 100, with a one-line error on standard error (*inferred* for the message).
+- [ ] Any local or network path accepted by the file-system access layer works as an input. (Local paths pass; a network path needs a check by hand, see E11-S2-T2.)
 
-- [ ] `/qc` runs in the launching process. It isn't forwarded to a running instance, and it works whether or not one is running.
-- [ ] `/qc` is registered with the run-in-launching-process launch mode.
-- [ ] Because `/qc` claims the whole command line, no comparison view opens for the two files.
+- [x] `/qc` runs in the launching process. It isn't forwarded to a running instance, and it works whether or not one is running.
+- [x] `/qc` is registered with the run-in-launching-process launch mode.
+- [x] Because `/qc` claims the whole command line, no comparison view opens for the two files.
 #### Tasks
 - **E11-S2-T1** — Parse `/qc` and `/quickcompare` with the size, crc and binary types · size: S · depends: — · status: done
   - AC: every spelling is accepted with `/` on Windows and with `-` on macOS and Linux. An unknown type gives 100.
   - Implemented: the `QuickCompare` handler in `apps/otd/src/quick_compare.rs`, registered in `apps/otd/src/handlers.rs` under `qc` and `quickcompare` with the run-in-launching-process mode, claims the whole command line and parses `size`, `crc` and `binary` (case-sensitive, *unspecified* and decided here); an unknown type, a missing type, another switch or a file count other than two exits with 100 and a one-line error. `otd_launch::switch` (`crates/launch/src/lib.rs`) now returns a switch's name and value, with `-` everywhere and `/` on Windows. Until E11-S2-T2 runs the comparison, a valid command line says it isn't built yet and exits with 100. Checks: `cargo xtask ci` on macOS, pull-request CI on Linux and macOS, and a manual CI run on Linux, macOS and Windows passed. Pull request: https://github.com/alextiboldi/overthediff/pull/68
-- **E11-S2-T2** — Run the comparison headlessly and map its result to an exit code · size: S · depends: E11-S2-T1 · flags: `licence-check`
+- **E11-S2-T2** — Run the comparison headlessly and map its result to an exit code · size: S · depends: E11-S2-T1 · flags: `licence-check` · status: needs-verification
   - AC: identical files give 1 for all three types. Files of equal size with different bytes give 1 for size and 11 for crc and binary. No window appears in any run.
+  - Implemented: `run` in `apps/otd/src/quick_compare.rs` opens each file through the local data source (`otd_source::resolve`, now public, and `LocalSource`) and runs the folder engine's `compare`: `size` runs only the quick size test, `crc` and `binary` only their content test. Same exits with 1, different with 11; a missing, unreadable or non-regular file (folder, broken link, pipe, socket, device) exits with 100 and a one-line `otd: <message>` on standard error. Relative paths resolve against the request's working folder. The app now depends on `otd-folder-engine` and `otd-source` (workspace crates, no third-party crate added; `NOTICE` says so). Tests: unit tests in `quick_compare.rs` and the integration test `apps/otd/tests/it/quick_compare.rs`, which runs the real `otd` executable under a deadline. Checks: `cargo xtask ci` on macOS, `cargo check --target x86_64-pc-windows-msvc -p otd --tests`, pull-request CI on Linux and macOS, and a manual CI run on Linux, macOS and Windows passed. Pull request: https://github.com/alextiboldi/overthediff/pull/74
+  - Verify by hand: on a machine with a mounted SMB share, run `otd -qc=binary smb://<server>/<share>/<file> <local copy of that file>` and expect exit code 1, then run it again against a different file and expect 11.
 
 ### E11-S3 — Folder comparison switches
 **Priority**: Should · **Layer**: 3 · **Size**: S · **Platforms**: All
