@@ -115,6 +115,28 @@ fn top_and_bottom_panes_still_scroll_together() {
     }
 }
 
+#[test]
+fn top_and_bottom_tab_order_follows_the_screen() {
+    let folder = tempfile::tempdir().unwrap();
+    let mut harness = harness(&folder);
+    run(&mut harness, "text-compare.over_under");
+    // Tab from the first control to the bottom editor: no stop may sit above the one before it, so
+    // the top pane's path and editor both come before the bottom pane's path.
+    let mut previous = f32::NEG_INFINITY;
+    for _ in 0..40 {
+        harness.key_press(Key::Tab);
+        harness.run();
+        let Some(node) = harness.query_by(|node| node.is_focused()) else { continue };
+        let top = node.rect().top();
+        assert!(top >= previous, "{:?} at {top} comes after a control at {previous}", focused(&harness));
+        previous = top;
+        if focused(&harness) == Some((Role::MultilineTextInput, RIGHT.to_owned())) {
+            return;
+        }
+    }
+    panic!("Tab never reached the {RIGHT} editor");
+}
+
 fn view<'a>(harness: &'a Harness<'_, Shell>) -> &'a TextCompareView {
     harness.state().view::<TextCompareView>().expect("a Text Compare tab is active")
 }
