@@ -59,5 +59,7 @@ fn an_empty_mask_format_is_offered_and_once_chosen_the_left_header_names_it() {
     tab_to(&mut harness, Role::Button, OK);
     press(&mut harness, Key::Enter);
 
-    assert_eq!(named(&harness), 1, "the left header names the chosen format, and the right keeps its own");
+    assert_eq!(named(&harness), 1, "one header names the chosen format, and the other keeps its own");
+    let x = |label: &str| harness.get_by_label(label).rect().center().x;
+    assert!(x("Format: Notes") < x("Format: Plain text"), "the header naming it is the left one");
 }
