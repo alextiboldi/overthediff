@@ -54,6 +54,7 @@ mod flat;
 mod info;
 pub mod look;
 mod refresh;
+mod select_by;
 
 use expand::Expansion;
 pub use expand::Shown;
@@ -64,12 +65,16 @@ pub use info::{
 };
 pub use look::{COLOUR_ROLES, CONTRAST, Look, look};
 pub use refresh::{FULL_REFRESH, REFRESH, REFRESH_SELECTION, SWAP_SIDES};
+pub use select_by::{
+    INVERT_SELECTION, SELECT_LEFT_NEWER, SELECT_LEFT_ORPHANS, SELECT_NEWER, SELECT_ORPHANS, SELECT_RIGHT_NEWER, SELECT_RIGHT_ORPHANS, SELECTED_COUNTS,
+};
 
 /// Folder Compare's commands, for `apps/otd/src/commands.rs`.
 pub fn commands() -> Vec<otd_core::command::Command<Shell>> {
     let mut commands = refresh::commands();
     commands.extend(expand::commands());
     commands.extend(flat::commands());
+    commands.extend(select_by::commands());
     commands
 }
 
@@ -182,6 +187,8 @@ pub struct FolderCompare {
     focus_back: Option<egui::Id>,
     /// The current cell had focus on the last draw.
     grid_focus: bool,
+    /// The last selection command's counts per side and their words, announced (`select_by.rs`).
+    selection_notice: Option<([usize; 2], String)>,
     /// Reports the close to a launcher waiting for this view.
     done: Option<Completion>,
 }
@@ -211,6 +218,7 @@ impl FolderCompare {
             dialog: None,
             focus_back: None,
             grid_focus: false,
+            selection_notice: None,
             done: None,
         }
     }
@@ -549,6 +557,7 @@ impl View for FolderCompare {
             ui.ctx().request_repaint_after(SCAN_POLL);
         }
         ui.separator();
+        self.selection_notice_ui(ui);
         self.rows_ui(ui);
         self.dialog_ui(ui);
     }
