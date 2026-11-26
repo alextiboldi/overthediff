@@ -28,6 +28,7 @@
 //! not a map or `Option` fields), which is replaced whole (alextiboldi/overthediff#11).
 
 pub mod options;
+pub mod session_defaults;
 
 use std::collections::BTreeSet;
 use std::ops::{Deref, DerefMut};

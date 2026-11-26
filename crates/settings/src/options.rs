@@ -17,7 +17,10 @@ pub const SECTION: &str = "options";
 /// Each option's saved value, or its default when there is none or it doesn't fit.
 pub fn read(store: &mut Store, options: &[OptionSpec]) -> BTreeMap<String, Value> {
     let saved: toml::Table = store.section(SECTION);
-    options.iter().map(|o| (o.id.to_owned(), saved.get(o.id).and_then(|v| from_toml(o, v)).unwrap_or_else(|| o.default.clone()))).collect()
+    options
+        .iter()
+        .map(|o| (o.id.to_owned(), saved.get(o.id).and_then(|v| from_toml(&o.default, o.choices, v)).unwrap_or_else(|| o.default.clone())))
+        .collect()
 }
 
 /// Saves `values`, shortly after (or on `flush`). Every option's value is written, its default
@@ -28,7 +31,7 @@ pub fn write(store: &mut Store, values: &BTreeMap<String, Value>) {
     store.update(|s| s.set(SECTION, &table).unwrap_or(()));
 }
 
-fn to_toml(value: &Value) -> toml::Value {
+pub(crate) fn to_toml(value: &Value) -> toml::Value {
     match value {
         Value::Bool(b) => toml::Value::Boolean(*b),
         Value::Number(n) => toml::Value::Float(*n),
@@ -37,13 +40,13 @@ fn to_toml(value: &Value) -> toml::Value {
     }
 }
 
-/// `saved` as a value of `option`'s type, if it is one.
-fn from_toml(option: &OptionSpec, saved: &toml::Value) -> Option<Value> {
-    Some(match (&option.default, saved) {
+/// `saved` as a value of `default`'s type, and one of `choices` for a choice, if it is one.
+pub(crate) fn from_toml(default: &Value, choices: &[&str], saved: &toml::Value) -> Option<Value> {
+    Some(match (default, saved) {
         (Value::Bool(_), toml::Value::Boolean(b)) => Value::Bool(*b),
         (Value::Number(_), toml::Value::Float(n)) if n.is_finite() => Value::Number(*n),
         (Value::Number(_), toml::Value::Integer(n)) => Value::Number(*n as f64),
-        (Value::Choice(_), toml::Value::String(s)) if option.choices.contains(&s.as_str()) => Value::Choice(s.clone()),
+        (Value::Choice(_), toml::Value::String(s)) if choices.contains(&s.as_str()) => Value::Choice(s.clone()),
         (Value::Text(_), toml::Value::String(s)) => Value::Text(s.clone()),
         (Value::Path(_), toml::Value::String(s)) => Value::Path(s.clone()),
         (Value::Colour(_), toml::Value::String(s)) => Value::Colour(colour(s)?),
