@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=OverTheDiff
+Comment=Compare and merge files and folders
+Exec=otd
+TryExec=otd
+Icon=io.github.alextiboldi.overthediff
+Terminal=false
+StartupNotify=true
+StartupWMClass=io.github.alextiboldi.overthediff
+Categories=Development;
+Keywords=diff;compare;merge;folder;text;

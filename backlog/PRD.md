@@ -99,7 +99,7 @@ Within a release, stories are built layer by layer. A story never depends on ano
 
 ## Non-functional requirements (proposed by the PO; confirm before Release 1)
 - **Stack** (decided): Rust and egui. OverTheDiff is a Craft app, so the shared rules in `AGENTS.md` apply (E01).
-- **Platforms** (decided, E01-S2-T1): Windows 10 and 11 on x64 and ARM64; macOS, as one universal build for Apple silicon and Intel on the two newest major versions; and Linux desktop on x64, as an AppImage and a `.deb`. Windows gets HiDPI and per-monitor scaling. The executable is `otd` (E01-S2).
+- **Platforms** (decided, E01-S2-T1): Windows 10 and 11 on x64 and ARM64; macOS, as one universal build for Apple silicon and Intel on the two newest major versions; and Linux desktop on x64, as an AppImage and a `.deb` (the AppImage waits on a licence question, #79). Windows gets HiDPI and per-monitor scaling. The executable is `otd` (E01-S2).
 - **Performance**: the text engine budgets set in E03-S1-T6: a 100,000-line pair shows its first rows within 1 s and completes within 10 s, a single-line edit in a 10,000-line pair recompares within 100 ms, and a 100,000-line comparison takes at most 64 MiB beyond its inputs. Folder scans and comparisons run in the background with progress and never freeze the UI (E01-S1, E03-S2).
 - **Data safety**:
   - confirmations before destructive operations;

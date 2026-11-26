@@ -21,6 +21,9 @@ use otd_launch::{Config, EXIT_FAILED, EXIT_UNCLAIMED, Instance, Launch, Registry
 /// What an argument handler acts on in the instance: the main window's tabs.
 pub use otd_ui::Shell;
 
+/// The app's reverse-DNS id: the Linux desktop entry's and icon's name, and the window's app id.
+const APP_ID: &str = "io.github.alextiboldi.overthediff";
+
 fn main() {
     let args = match std::env::args_os().skip(1).map(|arg| arg.into_string()).collect::<Result<Vec<_>, _>>() {
         Ok(args) => args,
@@ -77,9 +80,13 @@ fn spawn_instance() -> std::io::Result<()> {
 }
 
 fn run_window(registry: Registry<Shell>, instance: Instance) -> eframe::Result {
+    // On Wayland the window's app id must name the Linux desktop entry
+    // (packaging/linux/<APP_ID>.desktop), so the launcher matches the window to its entry and icon.
+    // egui-winit also sets it as the X11 window class, which the entry's StartupWMClass names.
+    let options = eframe::NativeOptions { viewport: egui::ViewportBuilder::default().with_app_id(APP_ID), ..Default::default() };
     eframe::run_native(
         "OverTheDiff",
-        eframe::NativeOptions::default(),
+        options,
         Box::new(move |cc| {
             otd_ui::colour::install(&cc.egui_ctx, colour_roles::colour_roles()?);
             // ponytail: always follows the OS until the Appearance option (E05-S1-T2) chooses
@@ -177,6 +184,8 @@ impl eframe::App for App {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use super::drop_process_serial_number;
 
     #[test]
@@ -184,5 +193,22 @@ mod tests {
         let args = |list: &[&str]| list.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         assert_eq!(drop_process_serial_number(args(&["-psn_0_12345", "a.txt"])), args(&["a.txt"]));
         assert_eq!(drop_process_serial_number(args(&["--", "-psn_x.txt"])), args(&["--", "-psn_x.txt"]));
+    }
+
+    /// The launcher shows the Linux desktop entry, starts it and matches its window only when the
+    /// entry is named after the app id and names this executable and an icon that ships.
+    #[test]
+    fn the_linux_desktop_entry_names_this_executable_and_a_shipped_icon() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let entry = std::fs::read_to_string(root.join(format!("packaging/linux/{}.desktop", super::APP_ID))).expect("the desktop entry");
+        let key = |name: &str| entry.lines().find_map(|line| line.strip_prefix(name)?.strip_prefix('=')).unwrap_or_default();
+        let bin = env!("CARGO_BIN_NAME");
+        assert_eq!(key("Exec").split(' ').next(), Some(bin));
+        assert_eq!(key("TryExec"), bin);
+        assert_eq!(key("StartupWMClass"), super::APP_ID, "egui-winit sets the X11 window class to the app id");
+        assert_eq!(key("Icon"), super::APP_ID);
+        let icons = root.join("assets/app-icon/hicolor");
+        assert!(icons.join(format!("256x256/apps/{}.png", super::APP_ID)).is_file());
+        assert!(icons.join(format!("scalable/apps/{}.svg", super::APP_ID)).is_file());
     }
 }

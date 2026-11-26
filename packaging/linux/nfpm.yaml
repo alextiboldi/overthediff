@@ -1,0 +1,48 @@
+# The .deb (nfpm: https://nfpm.goreleaser.com). package.sh stages the file tree, puts its path in
+# place of ${STAGE} (nfpm expands environment variables in fields, not in `src`) and exports
+# VERSION and NFPM_ARCH.
+name: overthediff
+arch: ${NFPM_ARCH}
+platform: linux
+version: ${VERSION}
+# semver: 0.2.0-rc.1 becomes 0.2.0~rc.1, so a pre-release sorts before its release.
+version_schema: semver
+release: 1
+section: devel
+priority: optional
+maintainer: the OverTheDiff contributors
+homepage: https://github.com/alextiboldi/overthediff
+description: |-
+  Compare and merge files and folders.
+  OverTheDiff compares text files and folder trees side by side, then copies,
+  synchronises and merges what differs. Start it from the application
+  launcher, or run `otd`.
+
+# `otd` links only glibc and libgcc_s. The window system (Wayland or X11, xkbcommon) and the GPU
+# (Vulkan, or GL through EGL) are loaded at run time, so they are listed here, not in the ELF.
+overrides:
+  deb:
+    depends:
+      - libc6 (>= 2.35)
+      - libgcc-s1
+      - libxkbcommon0
+      - libvulkan1 | libegl1
+    recommends:
+      - libwayland-client0
+      - libx11-6
+      - libx11-xcb1
+      - libxcursor1
+      - libxi6
+      - libxrandr2
+      - libxkbcommon-x11-0
+      - mesa-vulkan-drivers
+      - xdg-desktop-portal
+
+contents:
+  - src: ${STAGE}/usr/
+    dst: /usr/
+    type: tree
+
+scripts:
+  postinstall: packaging/linux/postinst.sh
+  postremove: packaging/linux/postinst.sh

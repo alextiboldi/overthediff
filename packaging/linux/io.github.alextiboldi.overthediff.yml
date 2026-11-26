@@ -1,0 +1,34 @@
+# Flatpak manifest for the single-file bundle (overthediff-<version>-linux-<arch>.flatpak) that the
+# shared release workflow's Flatpak job builds with packaging/linux/flatpak-bundle.sh. Flatpak is
+# built but not a supported Release 1 package (E01-S2 Decisions).
+#
+# It repackages package.sh's tarball, which flatpak-bundle.sh unpacks into `stage/` beside a copy of
+# this file, so the bundle holds the same binary as the .deb. `otd` needs glibc 2.35 or newer and
+# loads Wayland or X11, xkbcommon and Vulkan or GL at run time; the freedesktop runtime has them all.
+id: io.github.alextiboldi.overthediff
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+command: otd
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  # X11 shared memory; without it the X11 fallback is slow or fails.
+  - --share=ipc
+  - --device=dri
+  # A comparison tool opens whatever paths the user types or passes on the command line, not only
+  # ones a file picker hands it, so it gets the host's files (unreviewed: no story decides this).
+  - --filesystem=host
+build-options:
+  # The binary comes stripped from the tarball.
+  no-debuginfo: true
+modules:
+  - name: overthediff
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 bin/otd /app/bin/otd
+      - install -Dm644 share/applications/io.github.alextiboldi.overthediff.desktop /app/share/applications/io.github.alextiboldi.overthediff.desktop
+      - mkdir -p /app/share/icons /app/share/doc && cp -R share/icons/hicolor /app/share/icons/ && cp -R share/doc/overthediff /app/share/doc/
+    sources:
+      - type: dir
+        path: stage
