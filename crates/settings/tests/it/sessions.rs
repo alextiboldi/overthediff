@@ -1,5 +1,5 @@
 //! Named sessions in the settings folder: they reload after a restart as they were saved, and a
-//! damaged session file is skipped with a warning while the others load.
+//! damaged session file is skipped with a warning, and moved aside, while the others load.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -99,4 +99,15 @@ fn a_damaged_session_file_is_skipped_with_a_warning_and_the_others_load() {
     assert_eq!(loaded["good"].description, "kept");
     assert_eq!(warnings.len(), 1, "{warnings:?}");
     assert!(warnings[0].contains(&bad.display().to_string()), "the warning names the skipped file: {}", warnings[0]);
+
+    // The damaged file was moved aside, so saving under its name keeps what the user wrote in it.
+    sessions::save(&store, "bad", &session(TEXT, &[], "new", &[])).unwrap();
+    let damaged_kept = std::fs::read_dir(&folder).unwrap().any(|e| std::fs::read_to_string(e.unwrap().path()).unwrap() == "name = \"bad\"\ntype = [");
+    assert!(damaged_kept, "the damaged file's contents are still in the sessions folder");
+    let moved = warnings[0].split(" moved to ").nth(1).map(|rest| rest.trim_end_matches('.').to_owned());
+    assert!(moved.is_some_and(|p| Path::new(&p).exists()), "the warning names where the file went: {}", warnings[0]);
+    // And the moved file is not read again as a session.
+    let (loaded, warnings) = sessions::load(&open(dir.path()), &settings());
+    assert_eq!(warnings, Vec::<String>::new());
+    assert_eq!(loaded.keys().collect::<Vec<_>>(), ["bad", "good"]);
 }
