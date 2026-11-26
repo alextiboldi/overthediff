@@ -67,7 +67,8 @@ pub struct SessionType {
     pub name: &'static str,
     /// The file-format kinds it opens. [`Shell::session_type_for`] looks a kind up.
     pub kinds: &'static [Kind],
-    /// Each side's caption, such as Left and Right: one input per side on the Inputs tab.
+    /// Each side's caption in English, such as Left and Right, which the shell looks up: one input
+    /// per side on the Inputs tab.
     pub sides: &'static [&'static str],
     /// An empty session of this type. Its [`View::session`] has this type's id; the shell gives it
     /// one input per side and each contributed setting's default.

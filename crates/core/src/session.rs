@@ -26,14 +26,17 @@ pub enum Value {
 pub struct Setting {
     /// The id of the session type whose dialog shows it.
     pub session_type: &'static str,
-    /// The tab's name. Settings naming the same tab share it.
+    /// The tab's name, in English: the dialog looks it up, and the session keeps the setting's
+    /// value under it. Settings naming the same tab share it.
     pub tab: &'static str,
     /// A stable id, unique within its tab of its session type ([`check_unique`]).
     pub id: &'static str,
+    /// The option's caption, in English: the dialog looks it up.
     pub label: &'static str,
     /// The value an empty session starts with; its variant is the value type.
     pub default: Value,
-    /// The choices of a [`Value::Choice`] setting, in order. Empty for other value types.
+    /// The choices of a [`Value::Choice`] setting, in order, in English: the dialog shows each
+    /// looked up, and the session keeps the English. Empty for other value types.
     pub choices: &'static [&'static str],
 }
 

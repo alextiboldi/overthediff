@@ -13,13 +13,14 @@ use std::fmt;
 use egui::accesskit::Role;
 use egui::{Color32, Context, Id, Key, Modifiers, Response, TextEdit, Ui};
 
+use otd_core::i18n::t;
 use otd_core::session::check_unique;
 pub use otd_core::session::{DuplicateSetting, Session, Setting, Value};
 pub use otd_format::Kind;
 
 use crate::{SessionType, Shell, View};
 
-// ponytail: English literals until E01-S1-T13's translation lookup, as in lib.rs.
+// The dialog's own text: English keys, drawn only through `t`, as in lib.rs.
 /// The Session Settings dialog's title, in our own words (docs/feature-names.md).
 pub const SESSION_SETTINGS: &str = "Comparison Settings";
 /// The tab the backlog calls Specs: the session's inputs and its description.
@@ -44,8 +45,8 @@ pub enum SessionError {
 impl fmt::Display for SessionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            Self::NoSession => NO_SESSION,
-            Self::UnknownType => UNKNOWN_TYPE,
+            Self::NoSession => t(NO_SESSION),
+            Self::UnknownType => t(UNKNOWN_TYPE),
         })
     }
 }
@@ -151,8 +152,8 @@ impl Shell {
         let id = Id::unique("otd-session-settings");
         let modal = egui::Modal::new(id).show(ctx, |ui| {
             // The modal's area is its Dialog node; it takes the area's id.
-            ui.ctx().accesskit_node_builder(id, |node| node.set_label(SESSION_SETTINGS));
-            ui.heading(SESSION_SETTINGS);
+            ui.ctx().accesskit_node_builder(id, |node| node.set_label(t(SESSION_SETTINGS)));
+            ui.heading(t(SESSION_SETTINGS));
             dialog.tab_list(ui);
             ui.separator();
             dialog.single_line.clear();
@@ -172,12 +173,12 @@ impl Shell {
                 }
             }
             ui.separator();
-            egui::ComboBox::new("otd-session-scope", SCOPE).selected_text(THIS_VIEW_ONLY).show_ui(ui, |ui| {
-                let _ = ui.selectable_label(true, THIS_VIEW_ONLY);
+            egui::ComboBox::new("otd-session-scope", t(SCOPE)).selected_text(t(THIS_VIEW_ONLY)).show_ui(ui, |ui| {
+                let _ = ui.selectable_label(true, t(THIS_VIEW_ONLY));
             });
             ui.horizontal(|ui| {
-                ok |= ui.button(OK).clicked();
-                cancel |= ui.button(CANCEL).clicked();
+                ok |= ui.button(t(OK)).clicked();
+                cancel |= ui.button(t(CANCEL)).clicked();
             });
         });
         // Esc closes it as Cancel does, unless it closes a popup first. A click outside it doesn't:
@@ -203,13 +204,13 @@ impl Dialog {
         ui.horizontal(|ui| {
             ui.ctx().accesskit_node_builder(ui.unique_id(), |node| {
                 node.set_role(Role::TabList);
-                node.set_label(SESSION_SETTINGS);
+                node.set_label(t(SESSION_SETTINGS));
             });
             let names = std::iter::once(INPUTS).chain(self.pages.iter().copied());
             let count = self.pages.len() + 1;
             for (index, name) in names.enumerate() {
                 let selected = index == self.page;
-                let response = ui.selectable_label(selected, name);
+                let response = ui.selectable_label(selected, t(name));
                 ui.ctx().accesskit_node_builder(response.id, |node| {
                     node.set_role(Role::Tab);
                     node.clear_toggled();
@@ -232,9 +233,9 @@ impl Dialog {
 /// The Specs tab: one input per side, then the Description.
 fn specs(ui: &mut Ui, sides: &[&str], session: &mut Session, single_line: &mut Vec<Id>) {
     for (index, (side, spec)) in sides.iter().zip(&mut session.specs).enumerate() {
-        ui.push_id(index, |ui| single_line.push(labelled(ui, side, |ui| ui.add(TextEdit::singleline(spec))).id));
+        ui.push_id(index, |ui| single_line.push(labelled(ui, t(side), |ui| ui.add(TextEdit::singleline(spec))).id));
     }
-    labelled(ui, DESCRIPTION, |ui| ui.add(TextEdit::multiline(&mut session.description)));
+    labelled(ui, t(DESCRIPTION), |ui| ui.add(TextEdit::multiline(&mut session.description)));
 }
 
 /// A caption, then the control `add` draws, named by the caption.
@@ -251,15 +252,15 @@ fn labelled(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui) -> Response) -> 
 // ponytail: a Path value is a text edit until E01-S1-T9's path edit control.
 pub fn edit_value(ui: &mut Ui, setting: &Setting, value: &mut Value) -> Response {
     match value {
-        Value::Bool(on) => ui.checkbox(on, setting.label),
-        Value::Number(number) => labelled(ui, setting.label, |ui| ui.add(egui::DragValue::new(number))),
+        Value::Bool(on) => ui.checkbox(on, t(setting.label)),
+        Value::Number(number) => labelled(ui, t(setting.label), |ui| ui.add(egui::DragValue::new(number))),
         Value::Choice(choice) => {
             let mut chosen = None;
-            let response = egui::ComboBox::new(setting.id, setting.label)
-                .selected_text(choice.as_str())
+            let response = egui::ComboBox::new(setting.id, t(setting.label))
+                .selected_text(t(choice))
                 .show_ui(ui, |ui| {
                     for option in setting.choices {
-                        if ui.selectable_label(choice == option, *option).clicked() {
+                        if ui.selectable_label(choice == option, t(option)).clicked() {
                             chosen = Some(*option);
                         }
                     }
@@ -270,12 +271,12 @@ pub fn edit_value(ui: &mut Ui, setting: &Setting, value: &mut Value) -> Response
             }
             response
         }
-        Value::Text(text) | Value::Path(text) => labelled(ui, setting.label, |ui| ui.add(TextEdit::singleline(text))),
-        Value::Colour(rgba) => labelled(ui, setting.label, |ui| {
+        Value::Text(text) | Value::Path(text) => labelled(ui, t(setting.label), |ui| ui.add(TextEdit::singleline(text))),
+        Value::Colour(rgba) => labelled(ui, t(setting.label), |ui| {
             let mut colour = Color32::from_rgba_unmultiplied(rgba[0], rgba[1], rgba[2], rgba[3]);
             let response = ui.color_edit_button_srgba(&mut colour);
             // egui names the button "Color"; the setting's label names it instead.
-            ui.ctx().accesskit_node_builder(response.id, |node| node.set_label(setting.label));
+            ui.ctx().accesskit_node_builder(response.id, |node| node.set_label(t(setting.label)));
             // Only on a change: the round trip through premultiplied alpha can round.
             if response.changed() {
                 *rgba = colour.to_srgba_unmultiplied();
