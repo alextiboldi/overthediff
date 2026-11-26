@@ -106,3 +106,46 @@ fn an_os_in_dark_mode_leaves_the_chrome_in_the_light_palette() {
         assert!(!fills.contains(&colour32(role.dark)), "{}: {fills:?}", role.id);
     }
 }
+
+/// A text field and a checkbox, neither hovered nor focused.
+#[derive(Default)]
+struct Controls {
+    text: String,
+    checked: bool,
+}
+
+impl View for Controls {
+    fn title(&self) -> String {
+        "Controls".to_owned()
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui) {
+        let label = ui.label("Name");
+        ui.text_edit_singleline(&mut self.text).labelled_by(label.id);
+        ui.checkbox(&mut self.checked, "Check");
+    }
+}
+
+#[test]
+fn a_text_field_and_a_checkbox_at_rest_are_outlined_with_the_border_role() {
+    let mut harness = Harness::builder().build_ui_state(|ui, shell: &mut Shell| shell.ui(ui), Shell::new(Vec::new()));
+    colour::install(&harness.ctx, ColourRoles::new(CHROME).expect("distinct ids"));
+    harness.state_mut().open(Box::new(Controls::default()));
+    for palette in [Palette::Light, Palette::Dark] {
+        colour::set_palette(&harness.ctx, palette);
+        harness.run();
+        let border = colour32(colour::BORDER.value(palette));
+        let outlined: Vec<Color32> = harness
+            .output()
+            .shapes
+            .iter()
+            .filter_map(|clipped| match &clipped.shape {
+                egui::Shape::Rect(rect) if rect.stroke.width > 0.0 && rect.stroke.color == border => Some(rect.fill),
+                _ => None,
+            })
+            .collect();
+        for role in [colour::INPUT, colour::CONTROL] {
+            assert!(outlined.contains(&colour32(role.value(palette))), "{} in {palette:?}: {outlined:?}", role.id);
+        }
+    }
+}

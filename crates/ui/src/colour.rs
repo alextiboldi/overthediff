@@ -8,7 +8,7 @@
 
 use std::sync::Arc;
 
-use egui::{Color32, Context, Id, Theme, Visuals};
+use egui::{Color32, Context, Id, Stroke, Theme, Visuals};
 pub use otd_core::colour::{ColourRole, ColourRoles, Contrast, ContrastProblem, DuplicateColourRole, LowContrast, Palette, Rgba, contrast_ratio};
 
 const ROLES: &str = "otd-colour-roles";
@@ -56,6 +56,7 @@ pub const CHROME_CONTRAST: [Contrast; 10] = [
     Contrast::text(&TEXT, &CONTROL_ACTIVE),
     Contrast::text(&TEXT, &INPUT),
     Contrast::text(&SELECTION_TEXT, &SELECTION),
+    // Every control's edge, in every state, on the panel or window it sits on.
     Contrast::control(&BORDER, &BACKGROUND),
     Contrast::control(&BORDER, &WINDOW),
     // The focus ring.
@@ -118,7 +119,9 @@ fn visuals(ctx: &Context, theme: Theme) -> Visuals {
     ] {
         state.bg_fill = fill;
         state.weak_bg_fill = fill;
-        state.bg_stroke.color = border;
+        // egui draws no edge on a control at rest; every state gets one, so a text field or a
+        // checkbox box shows its boundary against the window or panel it sits on.
+        state.bg_stroke = Stroke::new(state.bg_stroke.width.max(1.0), border);
         state.fg_stroke.color = text;
     }
     visuals
