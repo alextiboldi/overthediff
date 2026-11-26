@@ -3,8 +3,6 @@
 //! Unix (LF) break. The glyphs are painted over the laid-out line, so the text, its columns, the
 //! caret and the line's accessible name stay as they are.
 
-use std::ops::Range;
-
 use egui::text::CCursor;
 use egui::{Align2, Color32, FontId, Galley, Painter, Pos2, pos2};
 use otd_core::command::{Args, Command, CommandError, Mark, Outcome, State};
@@ -58,21 +56,20 @@ pub(crate) fn end_glyph(ending: LineEnding) -> Option<&'static str> {
     }
 }
 
-/// Paints the whitespace glyphs of a line laid out as `galley` at `origin`, ended by `ending`: in
-/// `colour`, or in `selected_colour` over the `selected` characters (char indices) and over the
-/// line break when it is selected too.
+/// Paints the whitespace glyphs of a line laid out as `galley` at `origin`, ended by `ending`: each
+/// character's in `colour` of its byte offset, and the line break's in `break_colour`.
 pub(crate) fn paint(
     painter: &Painter,
     (galley, origin, ending): (&Galley, Pos2, LineEnding),
-    (selected, break_selected): (Range<usize>, bool),
-    [colour, selected_colour]: [Color32; 2],
+    colour: impl Fn(usize) -> Color32,
+    break_colour: Color32,
     font: &FontId,
 ) {
     let x = |index: usize| galley.pos_from_cursor(CCursor::new(index));
-    for (index, c) in galley.text().chars().enumerate() {
+    for (index, (at, c)) in galley.text().char_indices().enumerate() {
         let Some(mark) = glyph(c) else { continue };
         let (start, end) = (x(index), x(index + 1));
-        let colour = if selected.contains(&index) { selected_colour } else { colour };
+        let colour = colour(at);
         // A space's dot in the middle of its cell; a tab's arrow at its start, since a tab is wide.
         let (at, align) = if c == ' ' && start.min.y == end.min.y {
             (pos2((start.min.x + end.min.x) / 2.0, start.center().y), Align2::CENTER_CENTER)
@@ -83,7 +80,6 @@ pub(crate) fn paint(
     }
     if let Some(mark) = end_glyph(ending) {
         let end = x(galley.text().chars().count());
-        let colour = if break_selected { selected_colour } else { colour };
-        painter.text(origin + pos2(end.min.x, end.center().y).to_vec2(), Align2::LEFT_CENTER, mark, font.clone(), colour);
+        painter.text(origin + pos2(end.min.x, end.center().y).to_vec2(), Align2::LEFT_CENTER, mark, font.clone(), break_colour);
     }
 }
