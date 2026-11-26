@@ -351,8 +351,9 @@ As a developer, I can show whitespace, wrap long lines, stack the panes and resi
 - [ ] Display font size increase, decrease and reset (hidden by default) change the editor text size in both panes.
 
 #### Tasks
-- **E07-S9-T1** — Visible Whitespace glyphs for space, tab, CRLF, CR and LF · size: S · depends: —
+- **E07-S9-T1** — Visible Whitespace glyphs for space, tab, CRLF, CR and LF · size: S · depends: — · status: done
   - AC: a file containing all three line-ending styles shows three different end-of-line glyphs.
+  - Implemented: `crates/ui-text-compare/src/whitespace.rs` registers the View menu's check item *Show Whitespace* (`text-compare.show_whitespace`, Lucide icon `pilcrow`, no default shortcut, Q24) through the command registry. While it is on, both panes paint `·` over each space, `→` over each tab, and a different end-of-line glyph for Windows (CR LF, `↵`), Mac (CR, `←`) and Unix (LF, `↓`) breaks, over the laid-out line, so the text, columns, caret and accessible names don't change; `aligned.rs` and `edit.rs` pass the switch to the painter. The naming check in `docs/feature-names.md` replaces the working name Visible Whitespace with Show Whitespace. `crates/ui-text-compare/tests/it/whitespace.rs` checks that a file with all three line-ending styles shows three different end-of-line glyphs, plus the space and tab glyphs, only while the item is on. Checks: `cargo xtask ci` on macOS after rebasing onto main, and pull-request CI on Linux and macOS. https://github.com/alextiboldi/overthediff/pull/111
 - **E07-S9-T2** — Word Wrap with aligned continuation rows · size: M · depends: —
   - AC: a 300-character changed line wraps in both panes, and the line after it starts on the same row in both panes.
 - **E07-S9-T3** — Side-by-Side and Over-Under layouts · size: M · depends: — · flags: `naming-check` · status: done

@@ -42,6 +42,7 @@ pub fn commands() -> Vec<Command<Shell>> {
         .chain(crate::bookmarks::commands())
         .chain(crate::layout::commands())
         .chain(crate::edited::commands())
+        .chain(crate::whitespace::commands())
         .collect()
 }
 
