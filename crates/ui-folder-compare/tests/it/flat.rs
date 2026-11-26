@@ -10,7 +10,7 @@ use egui_kittest::Harness;
 use otd_ui::Shell;
 use otd_ui_folder_compare::{FolderCompare, ON_LEFT, ON_RIGHT};
 
-use crate::view::{focused, harness, on, press, rows, settle};
+use crate::view::{focused, harness, on, press, row_names, rows, settle};
 
 const FLAT_LIST: &str = "folder-compare.flat_list";
 
@@ -60,12 +60,12 @@ fn turning_the_flat_list_off_brings_back_the_tree_as_it_was_with_focus_still_in_
     // neither the base rows only nor every folder open.
     assert!(harness.state_mut().run("folder-compare.open_folder"), "open_folder ran");
     settle(&mut harness);
-    let before = rows(&harness);
+    let before = row_names(&harness);
     toggle(&mut harness);
-    assert_ne!(rows(&harness), before, "the flat list shows other rows");
+    assert_ne!(row_names(&harness), before, "the flat list shows other rows");
     assert!(focused(&harness).is_some_and(|(role, _)| role == Role::Cell), "focus stays in the rows");
     toggle(&mut harness);
-    assert_eq!(rows(&harness), before);
+    assert_eq!(row_names(&harness), before);
     assert!(focused(&harness).is_some_and(|(role, _)| role == Role::Cell), "focus stays in the rows");
 }
 

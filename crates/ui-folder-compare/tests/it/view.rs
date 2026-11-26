@@ -55,6 +55,13 @@ pub(crate) fn rows(harness: &Harness<'_, Shell>) -> Vec<Vec<String>> {
         .collect()
 }
 
+/// Each item row's name, in row order: which rows show, whatever their cells say. A folder's Size
+/// fills in once it is listed, so a comparison of the rows shown before and after a listing goes
+/// by these.
+pub(crate) fn row_names(harness: &Harness<'_, Shell>) -> Vec<String> {
+    harness.query_all_by_role(Role::Row).filter_map(|row| row.accesskit_node().label()).collect()
+}
+
 /// Where each node of `role` under `node` starts, left to right.
 fn lefts(node: &egui_kittest::Node<'_>, role: Role) -> Vec<f64> {
     node.query_all_by_role(role).filter_map(|cell| Some(cell.accesskit_node().bounding_box()?.x0)).collect()
