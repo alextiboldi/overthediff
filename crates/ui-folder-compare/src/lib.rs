@@ -49,12 +49,14 @@ use otd_source::{Capabilities, DataSource, Item, ItemKind, LocalSource};
 use otd_ui::colour::{ColourRole, SELECTION, SELECTION_TEXT, colour};
 use otd_ui::{Browse, PathEdit, Session, SessionType, Shell, Status, View, paint_lucide};
 
+mod copy_filename;
 pub mod expand;
 mod flat;
 mod info;
 pub mod look;
 mod refresh;
 
+pub use copy_filename::COPY_FILENAME;
 use expand::Expansion;
 pub use expand::Shown;
 pub use flat::FLAT_LIST;
@@ -70,6 +72,7 @@ pub fn commands() -> Vec<otd_core::command::Command<Shell>> {
     let mut commands = refresh::commands();
     commands.extend(expand::commands());
     commands.extend(flat::commands());
+    commands.extend(copy_filename::commands());
     commands
 }
 
@@ -184,6 +187,8 @@ pub struct FolderCompare {
     grid_focus: bool,
     /// Reports the close to a launcher waiting for this view.
     done: Option<Completion>,
+    /// Copy Filename's text, put on the clipboard on the next draw, which has the context.
+    clipboard: Option<String>,
 }
 
 impl Default for FolderCompare {
@@ -212,6 +217,7 @@ impl FolderCompare {
             focus_back: None,
             grid_focus: false,
             done: None,
+            clipboard: None,
         }
     }
 
@@ -551,6 +557,9 @@ impl View for FolderCompare {
         ui.separator();
         self.rows_ui(ui);
         self.dialog_ui(ui);
+        if let Some(text) = self.clipboard.take() {
+            ui.ctx().copy_text(text);
+        }
     }
 }
 
