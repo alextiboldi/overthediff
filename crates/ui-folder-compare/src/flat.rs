@@ -14,7 +14,7 @@ use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 use otd_core::command::{Command, Mark, State};
-use otd_folder_engine::{Aligned, Placed, Row, ScanState, Status, align_flat, case_sensitive, quick_test};
+use otd_folder_engine::{Aligned, Alignment, Placed, Row, ScanState, Status, align_flat, case_sensitive, quick_test};
 use otd_source::{Item, ItemKind};
 use otd_ui::Shell;
 
@@ -80,7 +80,7 @@ impl FolderCompare {
         let case = case_sensitive(&left.capabilities, &right.capabilities);
         let (left, right) = (left.walk(), right.walk());
         let mut rows: Vec<(PathBuf, Row)> = Vec::new();
-        for aligned in align_flat(left.files, right.files, case) {
+        for aligned in align_flat(left.files, right.files, Alignment::new(case)) {
             let key = aligned.left.as_ref().or(aligned.right.as_ref()).map(path).unwrap_or_default();
             let item = |placed: Option<Placed>| placed.map(|placed| Item { name: path(&placed).to_string_lossy().into_owned(), ..placed.item });
             let (left_item, right_item) = (item(aligned.left), item(aligned.right));
