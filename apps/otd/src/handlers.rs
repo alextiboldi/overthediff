@@ -5,8 +5,11 @@
 use otd_launch::Registry;
 
 use crate::Shell;
+use crate::quick_compare::QuickCompare;
 
 pub fn registry() -> Registry<Shell> {
-    // ponytail: no feature handles arguments yet; E11 adds the first ones.
-    Registry::new()
+    let mut registry = Registry::new();
+    registry.register(QuickCompare("qc"));
+    registry.register(QuickCompare("quickcompare"));
+    registry
 }

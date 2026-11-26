@@ -192,9 +192,15 @@ impl<S: ?Sized> Registry<S> {
 
 /// The name of a switch argument, without its prefix and value; `None` for a bare argument.
 fn switch_name(arg: &str) -> Option<&str> {
+    switch(arg).map(|(name, _)| name)
+}
+
+/// A switch argument's name and value, without its prefix: `-qc=size` (and on Windows `/qc=size`)
+/// is `("qc", Some("size"))`. `None` for a bare argument.
+pub fn switch(arg: &str) -> Option<(&str, Option<&str>)> {
     let rest = arg.strip_prefix('-').or_else(|| if cfg!(windows) { arg.strip_prefix('/') } else { None })?;
-    let name = rest.split_once('=').map_or(rest, |(name, _)| name);
-    (!name.is_empty()).then_some(name)
+    let (name, value) = rest.split_once('=').map_or((rest, None), |(name, value)| (name, Some(value)));
+    (!name.is_empty()).then_some((name, value))
 }
 
 /// Where the launch machinery looks and what it starts.
