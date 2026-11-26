@@ -454,7 +454,7 @@ These are behaviours the catalogue leaves open beyond §30. Each one is a decisi
 | E04-S3-T1 | Decide which formats beyond zip are writable |
 | E05-S3-T1 | Decide what dropping one item, more than two items, or a file with a folder does |
 | E05-S4-T1 | Decide the Favorites buttons for each view |
-| E08-S1-T1 | Decide the default timestamp tolerance |
+| E08-S1-T1 | Decide the default timestamp tolerance: **decided**, confirmed by the operator on 2026-11-25, as proposed. Quick tests default to a 2-second tolerance, which absorbs the 2-second timestamps of FAT volumes and zip archives; times exactly 2 seconds apart count as same. |
 | E10-S9-T1 | Decide the command-line variables for the four commands |
 | E21-S1-T7 | Decide where saved passwords and keys are stored (PO addition; not in the catalogue) |
 | E21-S3-T1 | Decide how host keys and server certificates are verified (not covered in the catalogue) |

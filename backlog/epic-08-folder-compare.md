@@ -66,6 +66,14 @@ As a developer, I can open two folders side by side and see at a glance which it
 - [ ] *View > Legend* explains every colour and glyph of the folder palette, including the ones that appear only once other features are in use: teal (filtered but shown), yellow folder (not scanned) and hollow folder (scan pending).
 - [ ] The status bar shows scan progress and the overall result.
 
+#### Decisions
+**Default timestamp tolerance (E08-S1-T1).** Recorded by E08-S1-T1 and confirmed by the operator on 2026-11-25, as proposed. The catalogue gives the tolerance in seconds but sets no default, so the value is *unspecified* there and is OverTheDiff's own choice.
+
+- The default is **2 seconds**. FAT volumes and zip archives keep modified times to 2 seconds, so a file copied to or from one can move by up to 2 seconds and still compares same.
+- Times exactly 2 seconds apart count as same; only a gap greater than the tolerance makes the later file newer (E03-S2-T4's exactly-at-tolerance cases).
+- A new Folder Compare session's quick tests use it until the user changes the tolerance on the Comparison tab (E08-S4). Daylight-saving and time-zone offsets stay with E08-S4.
+- The value lives in code as `otd_folder_engine::DEFAULT_TOLERANCE` (`crates/folder-engine/src/status.rs`).
+
 #### Tasks
 - **E08-S1-T1** — Decide the default timestamp tolerance · size: S · depends: — · flags: `decision`
   - AC: decision recorded in this story. Proposed default: 2 seconds, which absorbs the 2-second timestamp resolution of FAT volumes and zip archives. Quick tests use it until the user changes it.

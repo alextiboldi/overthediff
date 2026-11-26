@@ -7,6 +7,11 @@ use otd_source::{ItemKind, SourceError};
 
 use crate::Aligned;
 
+/// The default modified-time tolerance (E08-S1-T1): 2 seconds, so a copy on a FAT volume or in a
+/// zip archive, which keep times to 2 seconds, still compares same. Times exactly this far apart
+/// count as the same.
+pub const DEFAULT_TOLERANCE: Duration = Duration::from_secs(2);
+
 /// Which quick tests run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Criteria {
