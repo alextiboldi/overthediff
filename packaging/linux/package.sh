@@ -56,6 +56,21 @@ cp -R "$ROOT/assets/app-icon/hicolor" "$STAGE/usr/share/icons/"
 # The notices every package carries (E01-S2). The repository has no licence file of its own yet.
 mkdir -p "$STAGE/usr/share/doc/overthediff"
 copy_notices "$STAGE/usr/share/doc/overthediff"
+# The third-party licence texts NOTICE names, from the locked crates' own sources: the embedded
+# fonts' (epaint_default_fonts) and the MPL-2.0 crate's (option-ext).
+command -v jq >/dev/null || { echo "error: jq not found" >&2; exit 1; }
+LICENCES="$STAGE/usr/share/doc/overthediff/licences"
+mkdir -p "$LICENCES"
+META="$(cd "$ROOT" && cargo metadata --format-version 1 --locked --filter-platform "$ARCH-unknown-linux-gnu")"
+while read -r crate file dest; do
+  manifest="$(jq -r --arg n "$crate" '[.packages[] | select(.name == $n)] | if length == 1 then .[0].manifest_path else error("expected one \($n) package in Cargo.lock") end' <<<"$META")"
+  install -m644 "$(dirname "$manifest")/$file" "$LICENCES/$dest"
+done <<'LIST'
+epaint_default_fonts fonts/UFL.txt UFL.txt
+epaint_default_fonts fonts/Hack-Regular.txt Hack-Regular.txt
+epaint_default_fonts fonts/emoji-icon-font-mit-license.txt emoji-icon-font-mit-license.txt
+option-ext LICENSE.txt option-ext-LICENSE.txt
+LIST
 
 # The launcher finds the entry only if its icon and executable are where it names them.
 icon="$(sed -n 's/^Icon=//p' "$STAGE/usr/share/applications/$APP_ID.desktop")"

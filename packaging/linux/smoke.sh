@@ -30,7 +30,9 @@ command -v "$exe" >/dev/null || fail "the entry starts $exe, which is not on PAT
 icon="$(sed -n 's/^Icon=//p' "$ENTRY")"
 compgen -G "/usr/share/icons/hicolor/*/apps/$icon.*" >/dev/null || fail "no hicolor icon named $icon"
 # Read from the package: minimal images (Docker's Ubuntu) tell dpkg to skip /usr/share/doc.
-dpkg-deb -c "$DEB" | grep '/usr/share/doc/overthediff/NOTICE$' >/dev/null || fail "the package has no NOTICE"
+for f in NOTICE licences/UFL.txt licences/Hack-Regular.txt licences/emoji-icon-font-mit-license.txt licences/option-ext-LICENSE.txt; do
+  dpkg-deb -c "$DEB" | grep "/usr/share/doc/overthediff/$f\$" >/dev/null || fail "the package has no $f"
+done
 
 echo "==> start it from the desktop entry"
 version="$(dpkg-query -W -f '${Version}' overthediff)"

@@ -7,6 +7,6 @@ TryExec=otd
 Icon=io.github.alextiboldi.overthediff
 Terminal=false
 StartupNotify=true
-StartupWMClass=otd
+StartupWMClass=io.github.alextiboldi.overthediff
 Categories=Development;
 Keywords=diff;compare;merge;folder;text;

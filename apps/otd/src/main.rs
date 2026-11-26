@@ -82,7 +82,7 @@ fn spawn_instance() -> std::io::Result<()> {
 fn run_window(registry: Registry<Shell>, instance: Instance) -> eframe::Result {
     // On Wayland the window's app id must name the Linux desktop entry
     // (packaging/linux/<APP_ID>.desktop), so the launcher matches the window to its entry and icon.
-    // X11 matches the entry's StartupWMClass to the executable name instead.
+    // egui-winit also sets it as the X11 window class, which the entry's StartupWMClass names.
     let options = eframe::NativeOptions { viewport: egui::ViewportBuilder::default().with_app_id(APP_ID), ..Default::default() };
     eframe::run_native(
         "OverTheDiff",
@@ -205,7 +205,7 @@ mod tests {
         let bin = env!("CARGO_BIN_NAME");
         assert_eq!(key("Exec").split(' ').next(), Some(bin));
         assert_eq!(key("TryExec"), bin);
-        assert_eq!(key("StartupWMClass"), bin, "X11 names the window class after the executable");
+        assert_eq!(key("StartupWMClass"), super::APP_ID, "egui-winit sets the X11 window class to the app id");
         assert_eq!(key("Icon"), super::APP_ID);
         let icons = root.join("assets/app-icon/hicolor");
         assert!(icons.join(format!("256x256/apps/{}.png", super::APP_ID)).is_file());
