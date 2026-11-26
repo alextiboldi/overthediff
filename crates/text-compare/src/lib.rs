@@ -10,9 +10,11 @@
 //!   its [`History`] undoes and redoes each edit (E07-S1-T5).
 //! - [`save`] writes a pane back through a data source, and [`save_as`] to a spec, in the pane's
 //!   own encoding and line endings ([`encode`]), so only the edited bytes change (E07-S1-T6).
+//! - [`visible`] works out which aligned rows a display [`Filter`] shows (E07-S3-T1).
 
 mod decode;
 mod edit;
+mod filter;
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -20,6 +22,7 @@ use std::time::SystemTime;
 
 pub use decode::{Decoded, Encoding, LineEndings, Unencodable, WESTERN, decode, encode, system_code_page};
 pub use edit::{History, Pos, Selection};
+pub use filter::{Filter, visible};
 use otd_format::{Case, Registry};
 use otd_source::{Attributes, DataSource, ErrorKind, Item, ItemKind, Links, LocalSource, SourceError};
 pub use otd_text_engine::{Line, LineEnding};
