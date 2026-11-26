@@ -268,6 +268,17 @@ fn list_ui(ui: &mut Ui, registry: &mut Registry, dialog: &mut Dialog) {
                             node.set_label(name);
                             node.set_selected(selected);
                         });
+                        if selected {
+                            // The checkbox sits on the selection fill, where chrome.border's edge is
+                            // under 3:1 in the dark palette; selection.text's clears it there.
+                            let edge = ui.visuals().selection.stroke.color;
+                            let widgets = &mut ui.visuals_mut().widgets;
+                            for state in
+                                [&mut widgets.noninteractive, &mut widgets.inactive, &mut widgets.hovered, &mut widgets.active, &mut widgets.open]
+                            {
+                                state.bg_stroke.color = edge;
+                            }
+                        }
                         let mut enabled = format.enabled;
                         let check = cell(ui, 0, &mut |ui| ui.checkbox(&mut enabled, name));
                         if enabled != format.enabled {
