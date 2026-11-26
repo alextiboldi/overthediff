@@ -56,8 +56,8 @@ mod info;
 pub mod look;
 mod refresh;
 
-use expand::Expansion;
 pub use columns::COLUMNS_MENU;
+use expand::Expansion;
 pub use expand::Shown;
 pub use flat::FLAT_LIST;
 pub use info::{
