@@ -17,6 +17,7 @@ use otd_text_compare::{Encoding, ReadOnly, SaveError};
 use otd_ui::{Shell, path_edit};
 
 use crate::open::NOT_TEXT_COMPARE;
+use crate::read_only::{self, ENCODING_LOSSY};
 use crate::{LEFT, RIGHT, SIDES, TEXT_COMPARE, TextCompareView, encoding_name};
 
 // The commands' captions and what the panes say: English keys, drawn through `t`.
@@ -47,24 +48,26 @@ pub(crate) fn commands() -> Vec<Command<Shell>> {
     let shift = Mods { shift: true, ..Mods::CMD };
     [
         Command::typed("text-compare.save_file", SAVE_FILE, SIDE_PARAM, save_file)
-            .state(|shell: &Shell| when(shell, |view| view.can_save(view.chosen)))
+            .state(|shell: &Shell| when(shell, TextCompareView::can_save))
             .icon("save")
             .menu(FILE)
             .shortcut(Mods::CMD, Key::S),
         Command::typed("text-compare.save_file_as", SAVE_FILE_AS, AS_PARAMS, save_file_as)
-            .state(|shell: &Shell| when(shell, |view| view.can_save_as(view.chosen)))
+            .state(|shell: &Shell| when(shell, TextCompareView::can_save_as))
             .menu(FILE)
             .shortcut(shift, Key::S),
         Command::typed("text-compare.save_file_on_file_system_as", SAVE_FILE_ON_FILE_SYSTEM_AS, AS_PARAMS, save_file_as)
-            .state(|shell: &Shell| when(shell, |view| view.can_save_as(view.chosen))),
+            .state(|shell: &Shell| when(shell, TextCompareView::can_save_as)),
     ]
     .into_iter()
     .map(|command| command.views(&[TEXT_COMPARE]))
     .collect()
 }
 
-fn when(shell: &Shell, can: fn(&TextCompareView) -> bool) -> State {
-    State::enabled(shell.view::<TextCompareView>().is_some_and(can))
+/// Enabled while either pane `can` be saved: the state can't see the `side` a script passes, so
+/// the handler checks that side.
+fn when(shell: &Shell, can: fn(&TextCompareView, usize) -> bool) -> State {
+    State::enabled(shell.view::<TextCompareView>().is_some_and(|view| (0..SIDES.len()).any(|side| can(view, side))))
 }
 
 fn view_and_side<'a>(shell: &'a mut Shell, args: &Args) -> Result<(&'a mut TextCompareView, Option<usize>), CommandError> {
@@ -118,6 +121,9 @@ impl TextCompareView {
     pub fn save_file(&mut self, side: Option<usize>) -> Result<(), String> {
         let side = side.unwrap_or(self.chosen).min(SIDES.len() - 1);
         let spec = self.pane(side).map(|pane| pane.path.clone()).ok_or_else(|| t(NO_FILE).to_owned())?;
+        if let Some(why) = self.pane(side).and_then(|pane| pane.read_only) {
+            return self.refuse(side, read_only::reason(why));
+        }
         self.save_to(side, &spec)
     }
 
@@ -129,6 +135,9 @@ impl TextCompareView {
         if self.pane(side).is_none() {
             return Err(t(NO_FILE).to_owned());
         }
+        if !self.can_save_as(side) {
+            return self.refuse(side, ENCODING_LOSSY);
+        }
         match path {
             Some(path) => self.save_to(side, path),
             None => {
@@ -136,6 +145,13 @@ impl TextCompareView {
                 Ok(())
             }
         }
+    }
+
+    /// Refuses to save side `side`'s pane for `reason` (an English key), saying so in the pane.
+    fn refuse(&mut self, side: usize, reason: &str) -> Result<(), String> {
+        let message = t(reason).to_owned();
+        self.save_errors[side] = Some(message.clone());
+        Err(message)
     }
 
     /// Saves side `side`'s pane to `spec`, which the side then shows without reading it again, so

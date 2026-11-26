@@ -37,8 +37,8 @@ pub struct Pane {
     pub encoding: Encoding,
     pub endings: LineEndings,
     pub lines: Vec<Line>,
-    /// Why the pane can't be edited, if it can't. [`load`] sets [`ReadOnly::Location`],
-    /// [`ReadOnly::File`] and [`ReadOnly::Encoding`].
+    /// Why the pane can't be edited, if it can't. [`load`] sets [`ReadOnly::Encoding`] whenever
+    /// the file reads with loss, else [`ReadOnly::Location`] or [`ReadOnly::File`].
     pub read_only: Option<ReadOnly>,
     /// It was edited since it was loaded or saved. Every edit sets it, Undo included, and a save
     /// clears it.
@@ -85,12 +85,13 @@ pub fn load(source: &dyn DataSource, path: &Path, spec: &str, formats: &Registry
     let Decoded { encoding, endings, lines } = decode(&bytes, code_page);
     // What decoded with a substitute (U+FFFD) or a second spelling wouldn't save as it was.
     let lossless = encode(&lines, encoding).is_ok_and(|encoded| encoded == bytes);
-    let read_only = if source.capabilities().read_only {
+    // Encoding wins: it is the one reason Save File As can't lift, and save checks it.
+    let read_only = if !lossless {
+        Some(ReadOnly::Encoding)
+    } else if source.capabilities().read_only {
         Some(ReadOnly::Location)
-    } else if marked_read_only(&item) {
-        Some(ReadOnly::File)
     } else {
-        (!lossless).then_some(ReadOnly::Encoding)
+        marked_read_only(&item).then_some(ReadOnly::File)
     };
     Ok(Pane {
         path: spec.to_owned(),

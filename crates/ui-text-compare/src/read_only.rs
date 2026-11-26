@@ -21,7 +21,7 @@ pub const COMPARISON_FAILED: &str = "Read-only: the comparison failed";
 pub const COMPARISON_CANCELLED: &str = "Read-only: the comparison was cancelled";
 
 /// What the pane says for `reason`, as an English key.
-fn reason(reason: ReadOnly) -> &'static str {
+pub(crate) fn reason(reason: ReadOnly) -> &'static str {
     match reason {
         ReadOnly::Location => LOCATION,
         ReadOnly::File => FILE_READ_ONLY,

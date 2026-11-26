@@ -130,12 +130,16 @@ pub fn encode(lines: &[Line], encoding: Encoding) -> Result<Vec<u8>, Unencodable
         Encoding::CodePage(page) => {
             if let Some(multibyte) = multibyte_encoding_name(page).and_then(|name| encoding_rs::Encoding::for_label(name.as_bytes())) {
                 // The East Asian pages hold no state between characters, so lines encode one by one.
+                // Unmappable, or mapped to bytes that read back as another character (Shift_JIS
+                // writes ¥ as a backslash's byte, unflagged).
+                let lost = |text: &str| {
+                    let (encoded, _, unmappable) = multibyte.encode(text);
+                    (unmappable || multibyte.decode_without_bom_handling(&encoded).0 != text, encoded.into_owned())
+                };
                 for (index, line) in lines.iter().enumerate() {
-                    let (encoded, _, unmappable) = multibyte.encode(&line.text);
-                    if unmappable {
-                        // encoding_rs writes an HTML character reference for it instead: find which.
-                        let character =
-                            line.text.chars().find(|c| multibyte.encode(c.encode_utf8(&mut [0; 4])).2).unwrap_or(char::REPLACEMENT_CHARACTER);
+                    let (lossy, encoded) = lost(&line.text);
+                    if lossy {
+                        let character = line.text.chars().find(|c| lost(c.encode_utf8(&mut [0; 4])).0).unwrap_or(char::REPLACEMENT_CHARACTER);
                         return Err(Unencodable { line: index, character });
                     }
                     bytes.extend(&*encoded);

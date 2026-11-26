@@ -78,6 +78,16 @@ fn a_character_its_encoding_cant_hold_is_refused_and_nothing_is_written() {
 }
 
 #[test]
+fn a_character_that_would_read_back_as_another_is_refused_too() {
+    // Shift_JIS writes ¥ as a backslash's byte without flagging it.
+    let source = source(b"\x93\xFA\n");
+    let mut pane = load(&source, Path::new(PATH), PATH, &Registry::default(), 932).unwrap();
+    type_at(&mut pane, 0, "\u{A5}");
+    assert_eq!(save(&mut pane, &source, Path::new(PATH)), Err(SaveError::Unencodable(Unencodable { line: 0, character: '\u{A5}' })));
+    assert_eq!(read(&source), b"\x93\xFA\n", "the file is as it was");
+}
+
+#[test]
 fn a_file_with_bytes_its_encoding_cant_read_loads_read_only_and_wont_save() {
     // A byte Windows-874 doesn't assign, invalid UTF-8 after a BOM, and an odd UTF-16 tail: each
     // reads as U+FFFD, which would save as other bytes.
@@ -115,5 +125,24 @@ fn a_file_marked_read_only_opens_read_only_and_saving_it_is_refused() {
     save_as(&mut pane, &copy).unwrap();
     assert_eq!(std::fs::read(&copy).unwrap(), b"edited\n");
     assert_eq!((pane.path.as_str(), pane.read_only), (copy.as_str(), None));
+    set_read_only(false);
+}
+
+#[test]
+fn a_lossy_file_that_is_also_marked_read_only_wont_save_anywhere() {
+    let folder = tempfile::tempdir().unwrap();
+    let path = folder.path().join("locked.txt");
+    std::fs::write(&path, [&[0xEF, 0xBB, 0xBF], b"a\xFFb".as_slice()].concat()).unwrap();
+    let set_read_only = |read_only| {
+        let mut permissions = std::fs::metadata(&path).unwrap().permissions();
+        permissions.set_readonly(read_only);
+        std::fs::set_permissions(&path, permissions).unwrap();
+    };
+    set_read_only(true);
+    let mut pane = open(&path.display().to_string(), &Registry::default()).unwrap();
+    assert_eq!(pane.read_only, Some(ReadOnly::Encoding), "the reason Save File As can't lift wins");
+    let copy = folder.path().join("copy.txt");
+    assert_eq!(save_as(&mut pane, &copy.display().to_string()), Err(SaveError::Lossy));
+    assert!(!copy.exists(), "nothing was written");
     set_read_only(false);
 }

@@ -11,9 +11,10 @@ use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use otd_core::command;
 use otd_core::i18n::{fmt, t};
 use otd_core::session::Value;
+use otd_text_compare::ReadOnly;
 use otd_ui::path_edit::{Answer, PickerKind, Request};
 use otd_ui::{CANCEL, DONT_SAVE, HOME, SAVE, SAVE_CHANGES, Shell, View as _};
-use otd_ui_text_compare::{LEFT, NAME, SESSION_TYPE, TextCompareView, UNSAVED_CHANGES, commands};
+use otd_ui_text_compare::{LEFT, NAME, RIGHT, SESSION_TYPE, TextCompareView, UNSAVED_CHANGES, commands};
 
 use crate::open::{Window, harness as window_harness};
 
@@ -136,6 +137,35 @@ fn save_file_as_with_a_path_works_without_the_window() {
         command::run(&commands(), &mut harness.state_mut().shell, id, &args, false).expect("it runs without the window");
         assert_eq!(std::fs::read(&copy).unwrap(), b"one\n", "{id}");
     }
+}
+
+#[test]
+fn a_script_saves_the_side_it_names_even_when_the_chosen_pane_cant_be_saved() {
+    let folder = tempfile::tempdir().unwrap();
+    // The left pane, chosen, is marked read-only.
+    let set_read_only = |path: &Path, read_only| {
+        let mut permissions = std::fs::metadata(path).unwrap().permissions();
+        permissions.set_readonly(read_only);
+        std::fs::set_permissions(path, permissions).unwrap();
+    };
+    let (mut harness, left) = harness(folder.path(), b"one\n", b"two\n");
+    set_read_only(&left, true);
+    harness.state_mut().shell.view_mut::<TextCompareView>().unwrap().reload_files();
+    harness.run();
+    assert_eq!(view(&harness).read_only(0), Some(ReadOnly::File));
+    let right = folder.path().join("right.txt");
+    std::fs::write(&right, b"").unwrap();
+    let copy = folder.path().join("copy.txt").display().to_string();
+    let side = |side: &str| ("side", Value::Choice(side.to_owned()));
+    let run = |harness: &mut Harness<'_, Window>, id: &str, args: &[(&str, Value)]| {
+        command::run(&commands(), &mut harness.state_mut().shell, id, args, false)
+    };
+    run(&mut harness, "text-compare.save_file", &[side(RIGHT)]).expect("the right pane saves");
+    assert_eq!(std::fs::read(&right).unwrap(), b"two\n");
+    run(&mut harness, "text-compare.save_file_as", &[side(RIGHT), ("path", Value::Path(copy.clone()))]).expect("and saves as");
+    assert_eq!(std::fs::read(&copy).unwrap(), b"two\n");
+    assert!(run(&mut harness, "text-compare.save_file", &[side(LEFT)]).is_err(), "the left pane still refuses");
+    set_read_only(&left, false);
 }
 
 #[test]
