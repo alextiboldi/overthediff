@@ -12,7 +12,7 @@ one MPL-2.0 crate, which that standard allows unmodified:
   per-user folder lookup): used unmodified. Its source is at https://github.com/soc/option-ext and
   https://crates.io/crates/option-ext, and its licence is the crate's LICENSE.txt, which the Windows
   and Linux packages install as licences/option-ext-LICENSE.txt (on Linux, in
-  /usr/share/doc/overthediff/).
+  /usr/share/doc/overthediff-<major>/).
 
 Two crates also offer a GPL-family licence as an alternative, and OverTheDiff uses them under their
 allowlisted options only:
@@ -171,7 +171,7 @@ Fonts
 The app embeds the fonts of egui's epaint_default_fonts crate ((MIT OR Apache-2.0) AND OFL-1.1 AND
 Ubuntu-font-1.0), unmodified. Each is listed in ATTRIBUTION.md, and its licence text is in that
 crate's fonts/ folder, which the Windows and Linux packages install in their licences/ folder (on
-Linux, in /usr/share/doc/overthediff/):
+Linux, in /usr/share/doc/overthediff-<major>/):
 
 - Ubuntu Light: Copyright 2011 Canonical Ltd., designed by Dalton Maag Ltd. Licensed under the Ubuntu Font Licence,
   Version 1.0 (fonts/UFL.txt).
