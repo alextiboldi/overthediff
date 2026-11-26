@@ -36,3 +36,16 @@ fn a_name_filter_that_does_not_compile_keeps_the_previous_one() {
     settle(&mut harness);
     assert_eq!(rows(&harness), before);
 }
+
+#[test]
+fn a_name_filter_leaves_its_files_and_the_files_in_its_excluded_folders_out_of_the_flat_list() {
+    let root = tempfile::tempdir().unwrap();
+    fixture(root.path());
+    std::fs::write(root.path().join("left/both/inside.txt"), "inside").unwrap();
+    let mut harness = filtered(root.path());
+    assert!(harness.state_mut().run("folder-compare.flat_list"), "Flat List ran");
+    settle(&mut harness);
+    let cells = rows(&harness).concat();
+    assert!(cells.contains(&on(ON_LEFT, "same.txt")), "{cells:?}");
+    assert!(!cells.iter().any(|cell| cell.contains("only-") || cell.contains("inside")), "{cells:?}");
+}
