@@ -91,6 +91,12 @@ impl Aligned {
         Self { rows, importance, result, chars: HashMap::new(), digits: longest.to_string().len(), scroll: 0.0, drawn: [None; 2] }
     }
 
+    /// Takes `old`'s shared scroll offset, so a comparison rerun over the same panes keeps their
+    /// place. egui clamps it if the rows got fewer.
+    pub(crate) fn keep_scroll(&mut self, old: &Aligned) {
+        self.scroll = old.scroll;
+    }
+
     /// The comparison's overall result and statistics, or `None` with a pane missing.
     pub fn result(&self) -> Option<(Outcome, Statistics)> {
         self.result

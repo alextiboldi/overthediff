@@ -73,6 +73,23 @@ fn swap_sides_moves_each_file_to_the_other_pane_and_compares_them_again() {
 }
 
 #[test]
+fn recompare_files_and_swap_sides_keep_the_panes_where_they_were_scrolled() {
+    let body: String = (1..300).map(|n| format!("line {n}\n")).collect();
+    let (mut harness, _folder) = harness(&format!("left\n{body}"), &format!("right\n{body}"));
+    let line = "line 10";
+    let y = |harness: &Harness<'_, Shell>| harness.get_all_by_label(line).next().expect("the line is shown").rect().center().y;
+    let top = y(&harness);
+    harness.get_all_by_label(line).next().unwrap().scroll_down();
+    harness.run();
+    assert!(y(&harness) < top, "the panes scrolled");
+
+    for id in ["text-compare.recompare_files", "text-compare.swap_sides"] {
+        run(&mut harness, id);
+        assert!(y(&harness) < top, "{id} keeps the panes scrolled");
+    }
+}
+
+#[test]
 fn info_counts_each_panes_lines_and_its_changed_inserted_and_deleted_lines_for_the_window_and_scripts() {
     let (mut harness, _folder) = harness("same\nold\ngone\nend\n", "same\nnew\nend\nadded\n");
     let info = info(&harness);

@@ -18,6 +18,7 @@ use otd_core::session::Value;
 use otd_text_engine::{Outcome, Statistics};
 use otd_ui::{CLOSE, Field, Shell, Status};
 
+use crate::aligned::Aligned;
 use crate::open::NOT_TEXT_COMPARE;
 use crate::{FIELD, TEXT_COMPARE, TextCompareView};
 
@@ -178,7 +179,10 @@ impl TextCompareView {
     pub fn recompare_files(&mut self) {
         // This comparison completes, which lifts a failed or cancelled one's read-only panes.
         self.comparison = None;
+        let old = std::mem::replace(&mut self.aligned, Aligned::new(None, None));
         self.compare(Instant::now());
+        // The panes stay where the user scrolled them; only reading new files starts at the top.
+        self.aligned.keep_scroll(&old);
     }
 
     /// Swap Sides: the left pane's file, with its edits, goes right and the right one left; then
