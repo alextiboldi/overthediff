@@ -13,7 +13,7 @@ use craft_menu::{BarStyle, Gate, ItemKind, ItemRole, Layout, LayoutOptions, Menu
 use egui::accesskit::Role;
 use egui::os::OperatingSystem;
 use egui::{Key as EguiKey, Modifiers, Ui};
-use otd_core::command::{Chord, Command, CommandError, Key, Mods, Outcome, Placement, Platform, Views};
+use otd_core::command::{Chord, Command, CommandError, Key, Mark, Mods, Outcome, Placement, Platform, Views};
 
 use otd_core::i18n::t;
 
@@ -230,7 +230,11 @@ impl Shell {
                 label: state.caption.unwrap_or_else(|| t(command.caption).to_owned()),
                 shortcut: None,
                 enabled: state.enabled,
-                kind: ItemKind::Plain,
+                kind: match state.mark {
+                    None => ItemKind::Plain,
+                    Some(Mark::Check(on)) => ItemKind::Check(on),
+                    Some(Mark::Radio(on)) => ItemKind::Radio(on),
+                },
             });
         }
         let mut bar = craft_menu::from_items(&tops, &rows);

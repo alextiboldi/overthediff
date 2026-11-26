@@ -24,6 +24,8 @@
 //! `go_to.rs` holds *Search > Go To* and the hidden *Go To Line* (E07-S6-T1).
 //!
 //! `bookmarks.rs` holds the Search menu's bookmarks 0–9 and their gutter marks (E07-S6-T2).
+//!
+//! `layout.rs` holds the View menu's Side-by-Side and Top and Bottom layouts (E07-S9-T3).
 
 mod read_only;
 pub mod session;
@@ -36,6 +38,7 @@ mod bookmarks;
 mod edit;
 mod font_size;
 mod go_to;
+mod layout;
 mod open;
 mod save;
 
@@ -52,6 +55,7 @@ pub use bookmarks::{BOOKMARK, CLEAR_BOOKMARKS, GO_TO_BOOKMARK, TOGGLE_BOOKMARK};
 pub use edit::{COPY, CUT, DELETE, INSERT_TEXT, PASTE, REDO, SELECT_ALL, UNDO};
 pub use font_size::{DECREASE_FONT_SIZE, INCREASE_FONT_SIZE, RESET_FONT_SIZE};
 pub use go_to::{COLUMN, GO_TO, GO_TO_LINE, LINE, NOT_A_NUMBER};
+pub use layout::{Layout, SIDE_BY_SIDE, TOP_AND_BOTTOM};
 pub use open::{OPEN_FILE, OPEN_FILE_ON_FILE_SYSTEM, OpenFiles, commands};
 
 pub use read_only::{COMPARISON_CANCELLED, COMPARISON_FAILED, ENCODING_LOSSY, FILE_READ_ONLY, LOCATION};
@@ -148,6 +152,10 @@ pub struct TextCompareView {
     go_to: Option<go_to::GoToDialog>,
     /// What the last bookmark toggle or clear did, announced (E07-S6-T2).
     bookmark_said: Option<String>,
+    /// Side by side or over and under (`layout.rs`).
+    layout: Layout,
+    /// Each pane header's height on the last frame, which places a stacked top body.
+    headers: [f32; 2],
 }
 
 impl Drop for TextCompareView {
@@ -198,6 +206,8 @@ impl TextCompareView {
             font_step: 0,
             go_to: None,
             bookmark_said: None,
+            layout: Layout::default(),
+            headers: [0.0; 2],
         }
     }
 
@@ -326,49 +336,81 @@ impl View for TextCompareView {
 
     fn ui(&mut self, ui: &mut Ui) {
         self.reload_if_changed();
-        ui.columns(SIDES.len(), |columns| {
-            for (side, column) in columns.iter_mut().enumerate() {
-                column.push_id(side, |ui| {
-                    // The side's caption, so the two headers' identical facts read apart; it also
-                    // names the path edit.
-                    let unsaved = TextCompareView::unsaved(self, side);
-                    let caption = ui
-                        .horizontal(|ui| {
-                            let caption = ui.strong(t(SIDES[side]));
-                            save::mark(ui, unsaved);
-                            caption
-                        })
-                        .inner;
-                    self.path_edit(ui, side, caption.id);
-                    pane(ui, self.panes.get(side).and_then(Option::as_ref), self.read_only(side), self.save_errors[side].as_deref());
-                    if clicked(ui) {
-                        self.chosen = side;
-                    }
-                });
-            }
-        });
-        // The bodies start below both headers, at one height, so their rows line up. Each is named
-        // by its side's caption, so a line and its counterpart read apart.
+        // Each pane's header and body keep their ids in either layout (`layout.rs`), so switching
+        // keeps their scroll offset, caret and focus. Side by side, both headers come before both
+        // bodies; stacked, each header comes just before its body. Either way the Tab and
+        // accessibility order follow the screen, top to bottom and left to right.
+        let slots = layout::slots(self.layout, ui.available_rect_before_wrap(), ui.spacing().item_spacing.x);
+        let stacked = self.layout == Layout::OverUnder;
+        // Stacked, the top body is placed before the bottom header is measured, so its height
+        // uses that header's height from the last frame.
+        let mut headers = self.headers;
         let mut editing = false;
-        ui.columns(SIDES.len(), |columns| {
-            for (side, column) in columns.iter_mut().enumerate() {
-                if self.pane(side).is_some() {
-                    let body = UiBuilder::new().id_salt(side).accessibility_role(Role::Group).accessibility_label(t(SIDES[side]));
-                    column.scope_builder(body, |ui| {
-                        font_size::apply(ui, self.font_step);
-                        editing |= self.body(ui, side);
-                        if clicked(ui) {
-                            self.chosen = side;
-                        }
-                    });
-                }
+        for side in 0..SIDES.len() {
+            headers[side] = self.header_ui(ui, side, slots[side]);
+            if stacked {
+                editing |= self.body_ui(ui, side, layout::bodies(self.layout, slots, headers, ui)[side]);
             }
-        });
+        }
+        if !stacked {
+            for (side, rect) in layout::bodies(self.layout, slots, headers, ui).into_iter().enumerate() {
+                editing |= self.body_ui(ui, side, rect);
+            }
+        }
+        if headers != self.headers {
+            self.headers = headers;
+            ui.ctx().request_repaint();
+        }
         self.field_focus = ui.ctx().text_edit_focused() && !editing;
         self.info_ui(ui);
         self.save_as_ui(ui);
         self.go_to_ui(ui);
         self.bookmark_ui(ui);
+    }
+}
+
+impl TextCompareView {
+    /// The header of `side` in `slot`: its caption, path edit and file facts. Returns its height.
+    fn header_ui(&mut self, ui: &mut Ui, side: usize, slot: egui::Rect) -> f32 {
+        let builder = UiBuilder::new().id_salt(("header", side)).max_rect(slot);
+        ui.scope_builder(builder, |ui| {
+            // The side's caption, so the two headers' identical facts read apart; it also names
+            // the path edit.
+            let unsaved = TextCompareView::unsaved(self, side);
+            let caption = ui
+                .horizontal(|ui| {
+                    let caption = ui.strong(t(SIDES[side]));
+                    save::mark(ui, unsaved);
+                    caption
+                })
+                .inner;
+            self.path_edit(ui, side, caption.id);
+            pane(ui, self.panes.get(side).and_then(Option::as_ref), self.read_only(side), self.save_errors[side].as_deref());
+            if clicked(ui) {
+                self.chosen = side;
+            }
+        })
+        .response
+        .rect
+        .height()
+    }
+
+    /// The body of `side` in `rect`, if it has a pane, named by its side's caption so a line and
+    /// its counterpart read apart. Returns whether its editor has focus.
+    fn body_ui(&mut self, ui: &mut Ui, side: usize, rect: egui::Rect) -> bool {
+        if self.pane(side).is_none() {
+            return false;
+        }
+        let body = UiBuilder::new().id_salt(side).max_rect(rect).accessibility_role(Role::Group).accessibility_label(t(SIDES[side]));
+        ui.scope_builder(body, |ui| {
+            font_size::apply(ui, self.font_step);
+            let editing = self.body(ui, side);
+            if clicked(ui) {
+                self.chosen = side;
+            }
+            editing
+        })
+        .inner
     }
 }
 

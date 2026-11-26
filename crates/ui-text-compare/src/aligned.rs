@@ -156,6 +156,13 @@ impl Aligned {
         self.reveal = Some((side, line));
     }
 
+    /// The panes are about to change size (a new layout): their viewports are measured again, and
+    /// then `caret`'s line (side, line) is scrolled into view.
+    pub(crate) fn relayout(&mut self, caret: Option<(usize, usize)>) {
+        self.viewport = [0.0; 2];
+        self.reveal = caret.or(self.reveal);
+    }
+
     /// Takes `old`'s shared scroll offset, so a comparison rerun over the same panes keeps their
     /// place. egui clamps it if the rows got fewer.
     pub(crate) fn keep_scroll(&mut self, old: &Aligned) {
@@ -296,11 +303,16 @@ pub fn show(ui: &mut Ui, side: usize, lines: [&[Line]; 2], aligned: &mut Aligned
     let font = TextStyle::Monospace.resolve(ui.style());
     let digit = ui.fonts_mut(|fonts| fonts.glyph_width(&font, '0'));
     let height = ui.text_style_height(&TextStyle::Monospace);
-    let reveal = aligned.reveal.take_if(|(s, _)| *s == side).and_then(|(_, line)| aligned.row_of(side, line));
+    let viewport = aligned.viewport.get(side).copied().unwrap_or_default();
+    // Kept until the pane's viewport is measured, after a new layout, and then applied on the next
+    // draw.
+    if aligned.reveal.is_some_and(|(s, _)| s == side) && viewport <= 0.0 {
+        ui.ctx().request_repaint();
+    }
+    let reveal = aligned.reveal.take_if(|(s, _)| *s == side && viewport > 0.0).and_then(|(_, line)| aligned.row_of(side, line));
     let metrics = Metrics { height, digit, digits: aligned.digits, colours: Colours::of(ui), font, side, reveal };
     ui.spacing_mut().item_spacing.y = 0.0;
-    let viewport = aligned.viewport.get(side).copied().unwrap_or_default();
-    if let Some(row) = reveal.filter(|_| viewport > 0.0) {
+    if let Some(row) = reveal {
         // The caret's row into view: up to the top, or down to the bottom.
         let top = row as f32 * metrics.height;
         let scroll = aligned.scroll.min(top).max(top + metrics.height - viewport);

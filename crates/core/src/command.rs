@@ -71,11 +71,21 @@ pub struct State {
     pub caption: Option<String>,
     /// Replaces the command's icon while set.
     pub icon: Option<&'static str>,
+    /// Shows the menu entry as a check or radio item, in this state; `None` is a plain entry.
+    pub mark: Option<Mark>,
+}
+
+/// A menu entry's check mark: whether a check item is on, or whether a radio item is the chosen
+/// one of the radio items next to it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Mark {
+    Check(bool),
+    Radio(bool),
 }
 
 impl State {
     pub fn enabled(enabled: bool) -> State {
-        State { enabled, caption: None, icon: None }
+        State { enabled, caption: None, icon: None, mark: None }
     }
 }
 
