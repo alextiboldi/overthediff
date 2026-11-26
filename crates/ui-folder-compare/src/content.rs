@@ -5,7 +5,8 @@
 //!
 //! The options reach the folder engine as [`ContentOptions`] ([`FolderCompare::content_options`]).
 //! Running the tests and folding their results into the rows is E08-S5-T2's: until then the
-//! options change no row's status.
+//! options change no row's status, and while Compare contents is on the status bar and Info say
+//! so ([`CONTENT_NOT_RUN`]).
 
 use otd_folder_engine::{ContentOptions, ContentTest};
 use otd_ui::{Setting, Value};
@@ -20,6 +21,8 @@ pub const CRC_COMPARISON: &str = "CRC comparison";
 pub const BINARY_COMPARISON: &str = "Binary comparison";
 pub const SKIP_IF_QUICK_SAME: &str = "Skip if quick tests indicate files are the same";
 pub const OVERRIDE_QUICK_RESULTS: &str = "Override quick test results";
+/// The Content comparison status field's value while Compare contents is on. E08-S5-T2 removes it.
+pub const CONTENT_NOT_RUN: &str = "Not supported yet, so rows show the quick tests' results";
 
 // Stable ids: the session-defaults store keeps the values under them.
 const COMPARE_ID: &str = "compare_contents";
@@ -62,6 +65,12 @@ impl FolderCompare {
             skip_if_quick_same: on(SKIP_ID, default.skip_if_quick_same),
             override_quick_results: on(OVERRIDE_ID, default.override_quick_results),
         }
+    }
+
+    /// Whether Compare contents is on though content tests don't run yet (rule 15): the status bar
+    /// and Info say so. E08-S5-T2 removes it.
+    pub(crate) fn content_not_run(&self) -> bool {
+        self.content_options().test.is_some()
     }
 
     /// Compares again, in place, when the Comparison tab's values differ from the ones the rows

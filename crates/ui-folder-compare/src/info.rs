@@ -25,6 +25,7 @@ use otd_source::ItemKind;
 use otd_ui::colour::{ColourRole, colour};
 use otd_ui::{CLOSE, Field, Shell, Status, paint_lucide};
 
+use crate::content::{CONTENT_COMPARISON, CONTENT_NOT_RUN};
 use crate::look::{DIFFERENT, ERROR_GLYPH, ERROR_ICON, FILTERED, IS_DIFFERENT, IS_SAME, LINK_ICON, ORPHAN, SAME, UNKNOWN, UNSCANNED};
 use crate::{FolderCompare, GLYPH, SPOT, paint_spot};
 
@@ -221,6 +222,9 @@ impl FolderCompare {
         if self.scanning() {
             lines.push(t(STILL_SCANNING).to_owned());
         }
+        if self.content_not_run() {
+            lines.push(fmt(t(FIELD), &[("label", t(CONTENT_COMPARISON)), ("value", t(CONTENT_NOT_RUN))]));
+        }
         Some(lines)
     }
 
@@ -240,6 +244,9 @@ impl FolderCompare {
             status.fields.push(Field { id: "scan", label: t(SCAN).to_owned(), value });
         } else if let Some(info) = self.info() {
             status.result = Some(Field { id: "result", label: t(RESULT).to_owned(), value: t(info.outcome()).to_owned() });
+        }
+        if self.content_not_run() {
+            status.fields.push(Field { id: "content", label: t(CONTENT_COMPARISON).to_owned(), value: t(CONTENT_NOT_RUN).to_owned() });
         }
         status
     }
