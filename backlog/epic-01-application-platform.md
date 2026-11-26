@@ -28,7 +28,7 @@ This epic is the desktop frame every other story plugs into: a single-instance a
 - **Routes/endpoints** (desktop app, so these are commands and process entry points):
   - Session menu: New Session ▸ <type>, New Tab, Open Session, Clear Session, Session Settings (plus the Rules toolbar button), Close Tab, Exit.
   - Tools > Options.
-  - The process entry point `otd [arguments]` (final executable name is decided in E01-S2). It hands arguments to registered handlers.
+  - The process entry point `otd [arguments]` (executable name `otd`, decided in E01-S2-T1). It hands arguments to registered handlers.
 - **Integrations**: the OS file and folder pickers, the per-user configuration folders of each OS, and the OS mechanism for a second process to reach a running instance.
 - **Rules/states**:
   - **Single instance and launch modes.**
@@ -231,6 +231,23 @@ As a release engineer, I can install the product on Windows, macOS and Linux fro
 - [ ] Two major versions install side by side, and each keeps its own settings.
 - [ ] The supported OS versions, CPU architectures and package formats are recorded (T1) and each one is covered by a smoke test.
 - [ ] Packages are built by the storytold/craft-common-actions release workflow, in a pull request of their own (AGENTS.md rule 17). NOTICE and the licence texts ship inside every package. Nothing is signed or published without the maintainer's go-ahead (rule 4).
+
+#### Decisions
+Recorded by E01-S2-T1 and confirmed by the operator on 2026-11-25, as proposed, with the executable name `otd`. The feature catalogue (F-25.1, §3.2) names the executables but no OS versions, architectures or package formats, so these are OverTheDiff's own choice. The proposed default fixes the platforms, architectures and the number of package formats. The named formats, the Linux baseline and the smoke-test runners are E01-S2-T1's refinements (*inferred*), chosen to match what the shared release workflow builds.
+
+**Supported platforms (Release 1)**
+
+| OS | Versions | Architectures | Package | Smoke test |
+|---|---|---|---|---|
+| Windows | Windows 10 and Windows 11 | x64, ARM64 | MSI installer, one per architecture (*inferred*) | CI: `windows-latest` (x64) and `windows-11-arm` (ARM64). Windows 10 has no hosted runner, so it is checked by hand |
+| macOS | The two newest major versions at each release | Universal (Apple silicon and Intel in one app) | Application bundle in a disk image (*inferred*) | One check per architecture. T3 picks the runners |
+| Linux | x64 distributions with glibc 2.35 or newer, the glibc of Ubuntu 22.04, which builds the packages (*inferred*) | x64 | Distribution-neutral: AppImage. Native: `.deb` (*inferred*) | CI: Ubuntu 22.04 and 24.04 |
+
+- **Executable name.** `otd` (`otd.exe` on Windows) on every OS, as the shell already builds it (`apps/otd`). The product's display name is OverTheDiff. `otd` is a fixed executable name, not a feature label, so it has no naming-check row.
+- **macOS versions.** "The two newest" is a rule, so the versions move with each release. The minimum system version the bundle declares is T3's decision. It must not exclude either supported version. Intel Macs stay supported for as long as one of those two versions still runs on them.
+- **Signing.** Builds start as unsigned dry runs. Signing and notarisation need the maintainer's secrets and go-ahead (rule 4), so until then the AC about opening a macOS build "without security warnings" can only be verified by hand.
+- **Built but not supported.** By default the shared release workflow (storytold/craft-common-actions `release.yml`) also builds Linux aarch64, Flatpak, Arch Linux, Linux riscv64, FreeBSD and a web (wasm) build. None of them is supported in Release 1. They have no smoke test, and they are not offered as supported packages. The app's release workflow turns them off with `has-arch`, `has-riscv64`, `has-freebsd` and `has-web` set to `false`. The workflow has no switch for its Linux aarch64 and Flatpak jobs, so T4's packaging scripts decide how those jobs are handled. Supporting any of them later means adding a smoke test for it first.
+- **Known gap for T3.** The shared workflow's dry run skips its macOS job, and its real run works only on the `release` branch. An unsigned macOS package therefore needs another route, and T3 records it.
 
 #### Tasks
 - **E01-S2-T1** — Decide supported OS versions, CPU architectures, package formats and the executable name · size: S · depends: — · flags: `decision`
