@@ -1,7 +1,8 @@
 //! Importance: which differences matter. Rules mark parts of a line's text unimportant; a changed
 //! row is unimportant when its two lines are equal once those parts are left out. An orphan line
 //! (a line against a gap) is always important, whatever its text, and with no rules every
-//! difference is important.
+//! difference is important. A different line ending is important when the comparison compared line
+//! endings ([`Options::line_endings`](crate::Options)), and ignored otherwise.
 
 use std::ops::Range;
 
@@ -71,8 +72,11 @@ pub fn classify(comparison: &Comparison, left: &[Line], right: &[Line], rules: &
                 RowKind::LeftOnly | RowKind::RightOnly => Some(Importance::Important),
                 RowKind::Changed => {
                     let pair = row.left.and_then(|i| left.get(i)).zip(row.right.and_then(|j| right.get(j)));
-                    // A line ending isn't text a rule can mark, so a different ending matters.
-                    let minor = pair.is_some_and(|(l, r)| l.ending == r.ending && important_part(&l.text, rules) == important_part(&r.text, rules));
+                    // A line ending isn't text a rule can mark, so a different ending matters
+                    // whenever line endings are compared.
+                    let endings = comparison.options.line_endings;
+                    let minor = pair
+                        .is_some_and(|(l, r)| (!endings || l.ending == r.ending) && important_part(&l.text, rules) == important_part(&r.text, rules));
                     Some(if minor { Importance::Unimportant } else { Importance::Important })
                 }
             };

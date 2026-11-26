@@ -3,7 +3,7 @@
 //! Rows are written as pictures: `a` is a same row, `b ~ x` a changed row (left ~ right), `b <` a
 //! left line against a gap and `> x` a right line against a gap.
 
-use otd_text_engine::{Comparison, Line, LineEnding, RowKind, compare};
+use otd_text_engine::{Comparison, Line, LineEnding, Options, RowKind, compare, compare_with};
 
 pub(crate) fn side(texts: &[&str]) -> Vec<Line> {
     texts.iter().map(|t| Line { text: (*t).to_owned(), ending: LineEnding::Lf }).collect()
@@ -210,11 +210,11 @@ fn sections_are_the_maximal_runs_of_differing_rows_and_repeat_exactly() {
 }
 
 #[test]
-fn lines_align_on_their_text_and_a_different_line_ending_makes_the_row_changed() {
+fn lines_align_on_their_text_and_with_line_endings_compared_a_different_ending_makes_the_row_changed() {
     let crlf = |t: &str| Line { text: t.to_owned(), ending: LineEnding::CrLf };
     let left: Vec<Line> = ["a", "b", "c", "d"].map(crlf).into();
     let right = side(&["a", "b", "n", "c", "d"]);
-    let c = compare(&left, &right);
+    let c = compare_with(&left, &right, Options { line_endings: true });
     let kinds: Vec<RowKind> = c.rows.iter().map(|r| r.kind).collect();
     use RowKind::{Changed, RightOnly};
     assert_eq!(kinds, [Changed, Changed, RightOnly, Changed, Changed]);

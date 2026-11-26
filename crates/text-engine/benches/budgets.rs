@@ -18,7 +18,7 @@ use std::ops::{ControlFlow, Range};
 use std::process::{Command, ExitCode};
 use std::time::{Duration, Instant};
 
-use otd_text_engine::{Line, LineEnding, Pair, char_differences, compare_progressive};
+use otd_text_engine::{Line, LineEnding, Options, Pair, char_differences, compare_progressive};
 
 const LARGE: usize = 100_000;
 const FIRST_ROWS_WITHIN: Duration = Duration::from_secs(1);
@@ -64,7 +64,7 @@ fn repetitive(n: usize) -> (Vec<Line>, Vec<Line>) {
 fn time_compare(left: &[Line], right: &[Line]) -> (Option<Duration>, Duration, usize) {
     let start = Instant::now();
     let mut first_rows = None;
-    let done = compare_progressive(left, right, |batch| {
+    let done = compare_progressive(left, right, Options::default(), |batch| {
         if first_rows.is_none() && !batch.is_empty() {
             first_rows = Some(start.elapsed());
         }
@@ -96,7 +96,7 @@ fn growth_kib(left: &[Line], right: &[Line]) -> Option<u64> {
     let before = resident_kib()?;
     let mut peak = before;
     let mut polls = 0_usize;
-    let done = compare_progressive(left, right, |_| {
+    let done = compare_progressive(left, right, Options::default(), |_| {
         polls += 1;
         if polls.is_multiple_of(5_000) {
             peak = peak.max(resident_kib().unwrap_or(0));

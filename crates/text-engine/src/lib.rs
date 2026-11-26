@@ -10,7 +10,9 @@
 //! one where the sides agree for longer wins, so a single edit aligns the same way whichever file
 //! is on which side.
 //!
-//! Lines align on their text. A pair whose text matches but whose ending differs is a changed row.
+//! Lines align on their text. A pair whose text matches but whose ending differs is the same row,
+//! unless [`Options::line_endings`] (*Compare line endings*, off by default) is on: then it is a
+//! changed row.
 //!
 //! [`compare_progressive`] hands out rows as they are decided and stops when its caller says so;
 //! [`compare`] runs it to the end.
@@ -71,6 +73,14 @@ pub struct Row {
     pub kind: RowKind,
 }
 
+/// What counts when two lines are compared.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Options {
+    /// *Compare line endings*: whether two lines that differ only in their line ending differ.
+    /// Off by default, so line endings are ignored, by [`classify`] too.
+    pub line_endings: bool,
+}
+
 /// The aligned rows of a comparison and its sections.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Comparison {
@@ -79,6 +89,8 @@ pub struct Comparison {
     /// Each section is a maximal run of contiguous rows that aren't [`RowKind::Same`], as a range
     /// of row indices, in row order.
     pub sections: Vec<Range<usize>>,
+    /// The options it was compared with, which [`classify`] follows.
+    pub options: Options,
 }
 
 /// How many consecutive equal lines confirm that the two sides are back in step after a mismatch.
@@ -87,27 +99,38 @@ pub const RUN: usize = 3;
 /// The id that pads a run past the end of its input, so equal endings confirm a short final run.
 const END: u32 = u32::MAX;
 
-/// Aligns `left` against `right` with Standard alignment.
+/// Aligns `left` against `right` with Standard alignment and the default [`Options`].
 pub fn compare(left: &[Line], right: &[Line]) -> Comparison {
-    match compare_progressive(left, right, |_| ControlFlow::<Infallible>::Continue(())) {
+    compare_with(left, right, Options::default())
+}
+
+/// Aligns `left` against `right` with Standard alignment and `options`.
+pub fn compare_with(left: &[Line], right: &[Line], options: Options) -> Comparison {
+    match compare_progressive(left, right, options, |_| ControlFlow::<Infallible>::Continue(())) {
         ControlFlow::Continue(comparison) => comparison,
         ControlFlow::Break(never) => match never {},
     }
 }
 
-/// Aligns `left` against `right` like [`compare`], calling `step` with each batch of new rows
+/// Aligns `left` against `right` like [`compare_with`], calling `step` with each batch of new rows
 /// while it works, so a caller can show the top of a large comparison before the rest is done.
 ///
 /// Rows are final when handed out, and the batches, in order, are exactly the finished
 /// comparison's rows. `step` is called often, with an empty batch while the engine searches, so
 /// the work between two calls stays small. When `step` returns [`ControlFlow::Break`], the
 /// comparison stops at once and returns that break instead of a result.
-pub fn compare_progressive<B>(left: &[Line], right: &[Line], mut step: impl FnMut(&[Row]) -> ControlFlow<B>) -> ControlFlow<B, Comparison> {
+pub fn compare_progressive<B>(
+    left: &[Line],
+    right: &[Line],
+    options: Options,
+    mut step: impl FnMut(&[Row]) -> ControlFlow<B>,
+) -> ControlFlow<B, Comparison> {
     // ponytail: interning and indexing are single hashing passes with no poll, a few milliseconds
     // per 100,000 lines; poll inside them if inputs reach tens of millions of lines.
     let (l, r) = intern(left, right);
     let index = Index::new(&r);
-    let mut out = Rows { left, right, rows: Vec::with_capacity(left.len().max(right.len())), step: &mut step, sent: 0 };
+    let mut out =
+        Rows { left, right, line_endings: options.line_endings, rows: Vec::with_capacity(left.len().max(right.len())), step: &mut step, sent: 0 };
     let (mut i, mut j) = (0, 0);
     loop {
         while l.get(i).is_some_and(|id| r.get(j) == Some(id)) {
@@ -125,7 +148,7 @@ pub fn compare_progressive<B>(left: &[Line], right: &[Line], mut step: impl FnMu
     }
     out.poll()?;
     let sections = sections(&out.rows);
-    ControlFlow::Continue(Comparison { rows: out.rows, sections })
+    ControlFlow::Continue(Comparison { rows: out.rows, sections, options })
 }
 
 /// Gives each distinct line text a small id, shared by both sides.
@@ -259,6 +282,8 @@ type Poll<'p, B> = dyn FnMut() -> ControlFlow<B> + 'p;
 struct Rows<'a, B> {
     left: &'a [Line],
     right: &'a [Line],
+    /// Whether a pair's line endings count, [`Options::line_endings`].
+    line_endings: bool,
     rows: Vec<Row>,
     step: &'a mut dyn FnMut(&[Row]) -> ControlFlow<B>,
     /// How many rows `step` has had.
@@ -275,7 +300,8 @@ impl<B> Rows<'_, B> {
 
     /// A row holding left line `i` and right line `j`.
     fn pair(&mut self, i: usize, j: usize) {
-        let kind = if self.left.get(i) == self.right.get(j) { RowKind::Same } else { RowKind::Changed };
+        let same = self.left.get(i).zip(self.right.get(j)).is_some_and(|(l, r)| l.text == r.text && (!self.line_endings || l.ending == r.ending));
+        let kind = if same { RowKind::Same } else { RowKind::Changed };
         self.rows.push(Row { left: Some(i), right: Some(j), kind });
     }
 
