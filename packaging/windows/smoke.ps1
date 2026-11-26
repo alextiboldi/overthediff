@@ -7,7 +7,7 @@
   without a UAC prompt, and writes a marker file into the per-user settings folder.
 
   Checks: the install puts otd.exe, NOTICE and ATTRIBUTION.md in Program Files\OverTheDiff and a
-  Start menu entry that points at otd.exe; the installed otd.exe runs (a launch without a window
+  Start menu entry; the installed otd.exe runs (a launch without a window
   returns its exit code); uninstalling removes the program folder and the Start menu entry and
   keeps the settings folder. Opening the window from the Start menu entry is reported only: a
   hosted runner may have no graphics adapter, so that check is done by hand.

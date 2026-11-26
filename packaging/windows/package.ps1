@@ -31,8 +31,9 @@ function Invoke-Native([string] $What, [scriptblock] $Block) {
   if ($LASTEXITCODE -ne 0) { throw "$What failed with exit code $LASTEXITCODE" }
 }
 
-# The release workflow exports OVERTHEDIFF_VERSION; otherwise [workspace.package] version.
-$Version = $env:OVERTHEDIFF_VERSION
+# The release workflow exports <PREFIX>_VERSION, with the prefix packaging/env.sh names (OTD) or,
+# without that file, the app name's (OVERTHEDIFF); otherwise [workspace.package] version.
+$Version = if ($env:OTD_VERSION) { $env:OTD_VERSION } else { $env:OVERTHEDIFF_VERSION }
 if (-not $Version) {
   $inPkg = $false
   foreach ($line in Get-Content (Join-Path $Root 'Cargo.toml')) {
