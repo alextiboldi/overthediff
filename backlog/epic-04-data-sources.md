@@ -104,8 +104,9 @@ As a release engineer, I can open zip-family archives as folders and compare the
 - [ ] A damaged archive shows the folder-error glyph with the error message, and the rest of the comparison still loads.
 
 #### Tasks
-- **E04-S2-T1** — Zip provider for listing and reading, with stored CRCs · size: M · depends: — · flags: `licence-check`, `craft-libs`
+- **E04-S2-T1** — Zip provider for listing and reading, with stored CRCs · size: M · depends: — · flags: `licence-check`, `craft-libs` · status: done
   - AC: the contract read cases pass against the zip provider, and listing a 10,000-entry archive doesn't decompress any entry.
+  - Implemented: `ZipSource`, the zip provider, in `crates/source/src/archive.rs` (`otd-source`). Opening reads only the end records and the central directory, behind craft-zip's entry-count guard and caps on entries, index nodes, metadata bytes and folder depth, so listing and stat never decompress an entry; files report the stored CRC-32, DOS time and DOS attributes. Reads stream one entry, checked against its stored CRC. Hostile or damaged names are listed with an error; writes are refused until E04-S2-T2. The zip crate (MIT) is used where craft-zip doesn't expose stored CRCs, times or an owned entry reader yet (#132). Tests: `crates/source/tests/it/archive.rs` (every contract read case, a 10,000-entry archive listed without reading entry data, damaged archives and odd names). Checks: `cargo xtask ci` on macOS and the Windows `cargo check` passed. Merged as dc2aa98; this ticket line was lost in that squash and added afterwards.
 - **E04-S2-T2** — Zip provider writes: add, replace, delete and rename entries, create folders · size: L · depends: E04-S2-T1
   - AC: the contract write cases pass, and an archive modified through the provider opens in standard zip tools.
 - **E04-S2-T3** — Archive detection by mask, zipper icon, and expand-and-compare in Folder Compare · size: M · depends: E04-S2-T1
