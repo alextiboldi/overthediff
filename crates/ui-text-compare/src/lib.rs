@@ -423,6 +423,7 @@ impl TextCompareView {
                 })
                 .inner;
             self.path_edit(ui, side, caption.id);
+            self.override_notice(ui, side);
             let format = self.format(side);
             pane(ui, self.panes.get(side).and_then(Option::as_ref), format, self.read_only(side), self.save_errors[side].as_deref());
             if clicked(ui) {

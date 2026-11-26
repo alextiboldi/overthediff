@@ -4,8 +4,12 @@
 //! in its override instead, and the file info header names it.
 //!
 //! When a side's override changes, that side is read again in it, unless it has unsaved edits:
-//! those stay until *Reload Files*. Prompting to save them first is E07-S10-T3's.
+//! those stay, and the pane says the override waits, until they are saved (then the side is read
+//! again) or *Reload Files* drops them. Prompting to save them first is E07-S10-T3's.
 
+use egui::Ui;
+use egui::accesskit::Live;
+use otd_core::i18n::t;
 use otd_core::session::{Setting, Value};
 use otd_text_compare::Encoding;
 
@@ -17,6 +21,8 @@ const TAB: &str = "Format";
 // ponytail: no format fixes an encoding yet (`otd_format::Format` has no such property), so None
 // means detection; a format's own encoding comes with the File Formats manager (E10-S1).
 pub const NONE: &str = "None";
+/// What a pane says while its override waits for its unsaved edits, in English.
+pub const OVERRIDE_WAITS: &str = "The encoding chosen for this side applies once its unsaved edits are saved, or on Reload Files";
 /// Each side's override, left then right: its setting id and its label.
 pub const ENCODING_OVERRIDES: [(&str, &str); 2] = [("left-encoding", "Left encoding"), ("right-encoding", "Right encoding")];
 /// The choices, spelled as the file info header names each encoding.
@@ -71,12 +77,26 @@ impl TextCompareView {
         }
     }
 
+    /// Whether side `side`'s override changed since its pane was read, so it isn't the one in use.
+    pub fn override_waits(&self, side: usize) -> bool {
+        self.decoded_as.get(side).is_some_and(|&read_in| read_in != self.encoding_override(side))
+    }
+
     /// Reads again each side whose override changed since it was read, unless it has unsaved edits.
     pub(crate) fn retry_changed_overrides(&mut self) {
         for side in 0..self.decoded_as.len() {
-            if self.decoded_as[side] != self.encoding_override(side) && !self.unsaved(side) {
+            if self.override_waits(side) && !self.unsaved(side) {
                 self.retry(side);
             }
+        }
+    }
+
+    /// Says in side `side`'s pane that its override waits, while it does. Announced: it appears
+    /// when the Session Settings dialog closes, away from the pane.
+    pub(crate) fn override_notice(&self, ui: &mut Ui, side: usize) {
+        if self.pane(side).is_some() && self.override_waits(side) {
+            let label = ui.label(t(OVERRIDE_WAITS));
+            ui.ctx().accesskit_node_builder(label.id, |node| node.set_live(Live::Polite));
         }
     }
 
@@ -130,6 +150,7 @@ mod tests {
         let pane = view.pane(0).unwrap();
         assert_eq!(pane.lines[0].text, "Café edited", "the edit stays");
         assert_ne!(pane.encoding, Encoding::CodePage(1252), "and the header still names the encoding it was read in");
+        assert!(view.override_waits(0), "so the pane says the override waits");
     }
 
     #[test]
