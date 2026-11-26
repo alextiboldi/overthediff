@@ -87,7 +87,7 @@ impl Shell {
         self.session_types.iter().find(|t| t.kinds.contains(&kind))
     }
 
-    fn session_type(&self, id: &str) -> Option<&SessionType> {
+    pub(crate) fn session_type(&self, id: &str) -> Option<&SessionType> {
         self.session_types.iter().find(|t| t.id == id)
     }
 

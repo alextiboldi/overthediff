@@ -110,9 +110,9 @@ fn a_caption_with_a_translation_shows_translated_and_one_without_shows_its_engli
 
     let tab = harness.get_by_role(Role::Tab).accesskit_node().label().unwrap_or_default();
     assert_ne!(tab, HOME, "the shell's own caption is translated");
-    assert!(harness.query_by_role_and_label(Role::Button, TRANSLATED).is_none(), "a session type's name is translated");
-    assert!(harness.query_by_role_and_label(Role::Button, "Alpha-Vergleich").is_some());
-    assert!(harness.query_by_role_and_label(Role::Button, UNTRANSLATED).is_some(), "without a translation, the English key");
+    assert!(harness.query_by_role_and_label(Role::TreeItem, TRANSLATED).is_none(), "a session type's name is translated");
+    assert!(harness.query_by_role_and_label(Role::TreeItem, "Alpha-Vergleich").is_some());
+    assert!(harness.query_by_role_and_label(Role::TreeItem, UNTRANSLATED).is_some(), "without a translation, the English key");
 }
 
 /// Every label and value in the window, with its role.

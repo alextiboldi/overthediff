@@ -149,10 +149,10 @@ fn tab_to(harness: &mut Harness<'_, Shell>, role: Role, name: &str) {
 }
 
 #[test]
-fn each_session_type_has_a_home_button_that_opens_it_in_a_new_focused_tab() {
+fn each_session_type_has_a_new_entry_on_home_that_opens_it_in_a_new_focused_tab() {
     let mut harness = harness();
     for name in [ALPHA, BETA] {
-        tab_to(&mut harness, Role::Button, name);
+        tab_to(&mut harness, Role::TreeItem, name);
         press(&mut harness, Modifiers::NONE, Key::Enter);
         assert_eq!(tabs(&harness).len(), 2, "{name} opens in a new tab");
         assert_eq!(selected(&harness).as_deref(), Some(name), "the new tab is selected");

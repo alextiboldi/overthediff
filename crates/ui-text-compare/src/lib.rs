@@ -103,7 +103,7 @@ pub use whitespace::SHOW_WHITESPACE;
 
 /// The session type's and the view type's id.
 pub const TEXT_COMPARE: &str = "text-compare";
-/// The view's name: Home's button, *New Session ▸ Text Compare* and the tab's title
+/// The view's name: its entry on Home, *New Session ▸ Text Compare* and the tab's title
 /// (docs/feature-names.md).
 pub const NAME: &str = "Text Compare";
 pub const LEFT: &str = "Left";

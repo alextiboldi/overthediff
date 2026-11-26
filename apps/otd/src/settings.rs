@@ -1,8 +1,12 @@
 //! The app's settings store: opened at startup, saved during use and on exit, and the notice the
-//! user sees when the settings were reset or can't be saved.
+//! user sees when the settings were reset or can't be saved. It also reads the named sessions
+//! again for Home whenever they change.
+
+use std::collections::BTreeMap;
 
 use eframe::egui;
 use otd_core::i18n::{fmt, t};
+use otd_core::session::Session;
 use otd_settings::{Location, SaveStatus, SettingsError, Store};
 
 pub struct Settings {
@@ -12,13 +16,33 @@ pub struct Settings {
     notices: Vec<String>,
     /// The last save's failure, until a save succeeds.
     save_error: Option<String>,
+    /// The named sessions' change count ([`otd_settings::sessions::changes`]) when they were last read.
+    sessions_read: Option<u64>,
 }
 
 impl Settings {
     /// Opens the store; `Location::Auto` is the real one, in the per-user, per-major-version folder.
     pub fn open(location: Location) -> Self {
         let (store, notice) = otd_settings::open(location);
-        Self { store, notices: notice.into_iter().collect(), save_error: None }
+        Self { store, notices: notice.into_iter().collect(), save_error: None, sessions_read: None }
+    }
+
+    /// Every named session, by name, read again when they changed since the last call (or on the
+    /// first): Home's Saved branch. A file that was skipped adds its warning to the notices, once.
+    pub fn saved_sessions(&mut self) -> Option<BTreeMap<String, Session>> {
+        let changes = otd_settings::sessions::changes(&self.store);
+        if self.sessions_read == Some(changes) {
+            return None;
+        }
+        self.sessions_read = Some(changes);
+        let (sessions, warnings) = otd_settings::sessions::load(&self.store, &crate::session_settings::session_settings());
+        // A file that can't be moved aside warns again on every read, so it is shown once.
+        for warning in warnings {
+            if !self.notices.contains(&warning) {
+                self.notices.push(warning);
+            }
+        }
+        Some(sessions)
     }
 
     /// Saves pending changes when they are due, and shows the notice above the window's contents.
@@ -84,5 +108,17 @@ mod tests {
         let announced: Vec<String> =
             harness.query_all_by(|node| node.live() == Live::Polite).filter_map(|node| node.accesskit_node().value()).collect();
         assert!(announced.iter().any(|text| text.contains(&set_aside)), "an announced notice names where the file went: {announced:?}");
+    }
+
+    /// Home's tree lists a session as soon as it is saved, and the folder isn't read every frame.
+    #[test]
+    fn the_named_sessions_are_read_again_after_a_save_and_only_then() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut settings = Settings::open(Location::Dir(dir.path().to_path_buf()));
+        assert_eq!(settings.saved_sessions().map(|s| s.len()), Some(0), "read on the first call");
+        assert!(settings.saved_sessions().is_none(), "not again while nothing changed");
+        otd_settings::sessions::save(&settings.store, "Weekly", &Session::new("text")).unwrap();
+        let saved = settings.saved_sessions().unwrap_or_default();
+        assert!(saved.contains_key("Weekly"), "read again after the save: {saved:?}");
     }
 }

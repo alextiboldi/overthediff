@@ -111,6 +111,7 @@ fn run_window(registry: Registry<Shell>, instance: Instance) -> eframe::Result {
                 .with_options(options, saved)?
                 .with_commands(commands::commands());
             shell.load_session_defaults(&mut settings.store);
+            auto_save::show(&mut settings.store, &mut shell);
             // On macOS the menus go in the native menu bar, the application menu included; when
             // AppKit refuses them, the window keeps its own bar.
             #[cfg(target_os = "macos")]
@@ -169,15 +170,24 @@ impl eframe::App for App {
                 self.shell.run(&command.id);
             }
         }
+        if let Some(saved) = self.settings.saved_sessions() {
+            self.shell.set_saved_sessions(saved);
+        }
         self.settings.frame(ui);
         self.shell.ui(ui);
         self.shell.sessions_ui(&ctx, &self.settings.store);
         self.path_edits.frame(&ctx, Some(&*frame), &mut self.settings.store);
         let cap = auto_save::cap(&self.shell);
-        auto_save::closed(&mut self.settings.store, &mut self.shell, cap);
+        let mut auto_saved = auto_save::closed(&mut self.settings.store, &mut self.shell, cap);
         if let Some(values) = self.shell.take_applied_options() {
             otd_settings::options::write(&mut self.settings.store, &values);
             otd_settings::auto_saved::trim(&mut self.settings.store, otd_settings::auto_saved::cap(values.get(otd_settings::auto_saved::MAX)));
+            auto_saved = true;
+        }
+        if auto_saved {
+            auto_save::show(&mut self.settings.store, &mut self.shell);
+            // After the shell drew, so Home shows the new list on the next frame.
+            ctx.request_repaint();
         }
         let new_defaults = self.shell.take_session_defaults();
         for session in &new_defaults {

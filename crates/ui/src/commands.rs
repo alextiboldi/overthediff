@@ -119,7 +119,7 @@ pub(crate) fn shell_commands(session_types: &[SessionType]) -> Vec<Command<Shell
         // Q24: Cmd+, in the macOS application menu; no default elsewhere.
         Command::new("otd.options", OPTIONS, Shell::open_options).application_menu(&["Tools"]).shortcut_on(MAC, Mods::CMD, Key::Comma),
     ]);
-    commands.map(Command::needs_window).collect()
+    commands.chain(crate::home::commands()).map(Command::needs_window).collect()
 }
 
 /// The default keymap of `commands` on `platform`. A command's shortcuts work in each of its

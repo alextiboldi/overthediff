@@ -87,6 +87,8 @@ pub struct Store {
     /// Sections already found damaged, so each is copied and reported once.
     damaged: BTreeSet<String>,
     notices: Vec<String>,
+    /// Counts the named sessions' changes on disk ([`sessions::changes`]).
+    sessions_changes: std::sync::atomic::AtomicU64,
 }
 
 impl Deref for Store {
@@ -158,7 +160,7 @@ fn keep_copy(path: &Path) -> std::io::Result<PathBuf> {
 /// value is a notice to show the user when the settings were reset or won't be saved.
 pub fn open(location: Location) -> (Store, Option<String>) {
     let (store, notice) = open_inner(location);
-    (Store { inner: store, damaged: BTreeSet::new(), notices: Vec::new() }, notice)
+    (Store { inner: store, damaged: BTreeSet::new(), notices: Vec::new(), sessions_changes: Default::default() }, notice)
 }
 
 fn open_inner(location: Location) -> (SettingsStore<Sections>, Option<String>) {

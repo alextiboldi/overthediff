@@ -1,8 +1,8 @@
 //! The main window's shell (E01-S1-T3): a tab strip, the Home launcher tab and the status bar.
 //!
 //! Features plug in two ways. A [`SessionType`] in the app's session-type list
-//! (`apps/otd/src/session_types.rs`) gets a button on Home, which opens its empty [`View`] in a new
-//! tab. A launch-argument handler opens a view with [`Shell::open`]. The shell draws the status
+//! (`apps/otd/src/session_types.rs`) gets an entry in the New branch of Home's sessions tree
+//! ([`home`](crate::home)), which opens its empty [`View`] in a new tab. A launch-argument handler opens a view with [`Shell::open`]. The shell draws the status
 //! bar from the active view's [`Status`] (the Q25 field model in E01-S1); views never draw it.
 //! The session model, the Session Settings dialog and the session commands are in [`session`].
 //! Save Session and Save Session As write named sessions to the settings store through
@@ -26,7 +26,10 @@ pub mod path_edit;
 pub use path_edit::{Browse, PathEdit, PathEdits};
 
 mod commands;
+mod home;
 mod unsaved;
+
+pub use home::{AUTO_SAVED, NEW, OPEN_SAVED_SESSION, SAVED, SESSIONS};
 
 pub use unsaved::{CANT_SAVE, DONT_SAVE, NOT_SAVED, SAVE, SAVE_CHANGES, UNSAVED_LOST, save_first_later};
 
@@ -110,7 +113,7 @@ pub trait View: Any {
 pub struct SessionType {
     /// A stable id, unique among session types, independent of the translated name.
     pub id: &'static str,
-    /// The Home button's caption, in English: the shell looks it up (`otd_core::i18n::t`).
+    /// Its entry's caption in the New branch of Home's sessions tree, in English: the shell looks it up (`otd_core::i18n::t`).
     pub name: &'static str,
     /// The file-format kinds it opens. [`Shell::session_type_for`] looks a kind up.
     pub kinds: &'static [Kind],
@@ -187,6 +190,8 @@ pub struct Shell {
     options: options::Options,
     /// The sessions of views closed since the app last took them ([`Shell::take_closed_sessions`]).
     closed: Vec<Session>,
+    /// Home's sessions tree.
+    home: home::Home,
 }
 
 impl Shell {
@@ -214,6 +219,7 @@ impl Shell {
             refocus: None,
             options: options::Options::default(),
             closed: Vec::new(),
+            home: home::Home::default(),
         };
         shell.push(None);
         shell.focus_active = false;
@@ -407,19 +413,7 @@ impl Shell {
             view.ui(ui);
             return;
         }
-        ui.heading(t(HOME));
-        if self.session_types.is_empty() {
-            ui.label(t(NO_SESSION_TYPES));
-        }
-        let mut chosen = None;
-        for session_type in &self.session_types {
-            if ui.push_id(session_type.id, |ui| ui.button(t(session_type.name))).inner.clicked() {
-                chosen = Some(session_type.new);
-            }
-        }
-        if let Some(new) = chosen {
-            self.open(new());
-        }
+        self.home_ui(ui);
     }
 
     fn status_bar(&mut self, ui: &mut Ui) {

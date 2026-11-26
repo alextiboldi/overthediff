@@ -10,11 +10,19 @@ pub fn cap(shell: &Shell) -> usize {
     auto_saved::cap(shell.applied_option(auto_saved::MAX))
 }
 
-/// Auto-saves the sessions of the tabs closed since the last call.
-pub fn closed(store: &mut Store, shell: &mut Shell, cap: usize) {
-    for session in shell.take_closed_sessions() {
-        auto_saved::add(store, &session, cap);
+/// Auto-saves the sessions of the tabs closed since the last call; true when there were any.
+pub fn closed(store: &mut Store, shell: &mut Shell, cap: usize) -> bool {
+    let closed = shell.take_closed_sessions();
+    for session in &closed {
+        auto_saved::add(store, session, cap);
     }
+    !closed.is_empty()
+}
+
+/// Hands Home's Auto-saved branch (E06-S1-T3) the list as the store holds it: at startup and after
+/// it changed, so the tree updates without reopening Home.
+pub fn show(store: &mut Store, shell: &mut Shell) {
+    shell.set_auto_saved_sessions(auto_saved::load(store, &crate::session_settings::session_settings()));
 }
 
 /// Auto-saves every session exiting closes: the tabs just closed, then the open ones in tab order.
@@ -27,6 +35,8 @@ pub fn exit(store: &mut Store, shell: &mut Shell, cap: usize) {
 
 #[cfg(test)]
 mod tests {
+    use egui_kittest::Harness;
+    use egui_kittest::kittest::Queryable as _;
     use otd_settings::Location;
 
     use super::*;
@@ -70,5 +80,23 @@ mod tests {
         closed(&mut store, &mut shell, 10);
         let saved: Vec<_> = auto_saved::load(&mut store, &[]).into_iter().map(|s| s.specs).collect();
         assert_eq!(saved, [["/left/a.txt", "/right/a.txt"]]);
+    }
+
+    #[test]
+    fn closing_a_tab_lists_its_session_on_homes_auto_saved_branch() {
+        let (mut store, _) = otd_settings::open(Location::Memory);
+        let mut shell = Shell::new(crate::session_types::session_types());
+        let mut view = (otd_ui_text_compare::SESSION_TYPE.new)();
+        if let Some(session) = view.session() {
+            session.specs = vec!["/left/a.txt".into(), "/right/a.txt".into()];
+        }
+        shell.open(view);
+        shell.close_tab();
+        if closed(&mut store, &mut shell, 10) {
+            show(&mut store, &mut shell);
+        }
+        let mut harness = Harness::builder().build_ui_state(|ui, shell: &mut Shell| shell.ui(ui), shell);
+        harness.run();
+        assert!(harness.query_by_label("/left/a.txt — /right/a.txt").is_some(), "the closed session is listed on Home");
     }
 }

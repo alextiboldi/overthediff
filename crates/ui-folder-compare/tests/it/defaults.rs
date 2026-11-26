@@ -43,7 +43,10 @@ fn folder_compare_from_home_and_from_the_command_line_start_from_the_updated_def
     let mut harness = Harness::builder().build_ui_state(|ui, shell: &mut Shell| shell.ui(ui), shell);
     harness.run();
 
-    harness.get_by_role_and_label(Role::Button, t(FOLDER_COMPARE)).click();
+    // Home's sessions tree opens a row with Enter.
+    harness.get_by_role_and_label(Role::TreeItem, t(FOLDER_COMPARE)).focus();
+    harness.run();
+    harness.key_press(egui::Key::Enter);
     harness.run();
     let home = active_session(&mut harness);
 

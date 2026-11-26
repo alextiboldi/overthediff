@@ -13,6 +13,7 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::Ordering;
 
 use otd_core::i18n::{fmt, t};
 use otd_core::session::{Session, Setting};
@@ -56,7 +57,15 @@ pub fn save(store: &Store, name: &str, session: &Session) -> Result<(), String> 
     };
     let text = toml::to_string(&file).map_err(|e| failed(name, &e.to_string()))?;
     let dir = path.parent().unwrap_or(&path);
-    std::fs::create_dir_all(dir).and_then(|()| craft_atomic::atomic_write(&path, text.as_bytes())).map_err(|e| failed(name, &e.to_string()))
+    std::fs::create_dir_all(dir).and_then(|()| craft_atomic::atomic_write(&path, text.as_bytes())).map_err(|e| failed(name, &e.to_string()))?;
+    store.sessions_changes.fetch_add(1, Ordering::Relaxed);
+    Ok(())
+}
+
+/// A count that goes up with each change this store makes to the named sessions, so a list of
+/// them (Home's sessions tree) knows when to [`load`] them again.
+pub fn changes(store: &Store) -> u64 {
+    store.sessions_changes.load(Ordering::Relaxed)
 }
 
 /// Whether a session is saved under `name`, damaged or not: saving under it replaces that file.
