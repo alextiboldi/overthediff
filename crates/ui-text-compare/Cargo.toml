@@ -1,0 +1,25 @@
+[package]
+name = "otd-ui-text-compare"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "OverTheDiff's Text Compare view: two panes, each with its file info header and text"
+
+[lints]
+workspace = true
+
+[dependencies]
+egui = { workspace = true }
+otd-core = { path = "../core" }
+otd-format = { path = "../format" }
+otd-text-compare = { path = "../text-compare" }
+otd-ui = { path = "../ui" }
+# The file info header's modified time, in the local time zone (`clock`).
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+
+[dev-dependencies]
+egui_kittest = { workspace = true }
+tempfile = "3"
+# `default_fonts` so that the tests lay out text, as the app does.
+egui = { workspace = true, features = ["default_fonts"] }

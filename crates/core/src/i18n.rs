@@ -64,6 +64,13 @@ pub fn measure(value: f64, decimals: usize, unit: &str) -> String {
     catalogs.measure(lang, value, decimals, unit)
 }
 
+/// `bytes` as a file size in steps of 1024 (`1.5 MB`, `512 bytes`), in the interface language with
+/// the number written for the user's region.
+pub fn file_size(bytes: u64) -> String {
+    let (catalogs, lang) = current();
+    catalogs.file_size(lang, bytes, craft_i18n::FileSize::BINARY)
+}
+
 /// The wording for a count `n`, `one` or `other` (`{n} item failed:`, `{n} items failed:`), both
 /// English keys, in the interface language's plural form, with `n` written for the user's region.
 pub fn trn(n: u64, one: &str, other: &str) -> String {

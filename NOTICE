@@ -68,6 +68,13 @@ with their derive crates), under Unicode-3.0, whose notice is below; synstructur
 cobs, displaydoc, postcard, stable_deref_trait, sys-locale, utf8_iter, utf16_iter, utf_types,
 write16, and windows-registry on Windows (each MIT OR Apache-2.0).
 
+Text Compare (otd-text-compare, otd-ui-text-compare) decodes legacy code-page text with
+craft-codepage (MIT OR Apache-2.0, storytold/craft-libs), reads the Windows code page with
+windows-registry (MIT OR Apache-2.0), and writes a file's modified time in the local time zone with
+chrono (MIT OR Apache-2.0) and its `clock` dependencies iana-time-zone, iana-time-zone-haiku,
+core-foundation-sys on macOS, windows-core on Windows and android_system_properties on Android
+(each MIT OR Apache-2.0).
+
 The tests also use egui_kittest, kittest, craft-testkit and tempfile (each MIT OR Apache-2.0),
 which the app doesn't ship.
 

@@ -36,6 +36,8 @@ craft-settings = { git = "https://github.com/storytold/craft-libs", rev = "2c81e
 craft-quit = { git = "https://github.com/storytold/craft-libs", rev = "2c81ed850319ef3504ce56d82379b346522af18e" }
 # Native file and folder pickers that never block the event loop (otd-ui's path edit).
 craft-dialogs = { git = "https://github.com/storytold/craft-libs", rev = "2c81ed850319ef3504ce56d82379b346522af18e" }
+# Legacy single-byte code pages, for text that is neither UTF-8 nor UTF-16 (otd-text-compare).
+craft-codepage = { git = "https://github.com/storytold/craft-libs", rev = "2c81ed850319ef3504ce56d82379b346522af18e" }
 
 [workspace.lints.rust]
 # `deny`, not `forbid`, so a module AGENTS.md names can `allow(unsafe_code)` (rule 13).
