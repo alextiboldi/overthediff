@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use otd_folder_engine::{Criteria, Resolved, Row, TreeScan, TreeSide, compare_trees, resolve_selection};
+use otd_folder_engine::{Alignment, Criteria, Resolved, Row, TreeScan, TreeSide, compare_trees, resolve_selection};
 use otd_source::{DataSource, Item, MemorySource};
 
 use crate::fixture::{at, caps};
@@ -28,7 +28,7 @@ fn scan(source: MemorySource, background: bool) -> TreeScan {
 
 fn rows(left: MemorySource, right: MemorySource, background: bool, visible: &dyn Fn(TreeSide, &Path, &Item) -> bool) -> Vec<Row> {
     let case_sensitive = left.capabilities().case_sensitive && right.capabilities().case_sensitive;
-    compare_trees(&scan(left, background), &scan(right, background), &CRITERIA, case_sensitive, visible)
+    compare_trees(&scan(left, background), &scan(right, background), &CRITERIA, Alignment::new(case_sensitive), visible)
 }
 
 fn all(_: TreeSide, _: &Path, _: &Item) -> bool {

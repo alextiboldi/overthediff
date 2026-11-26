@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 
 use otd_source::{Item, ItemKind, SourceError};
 
-use crate::{Criteria, ScanState, Status, TreeScan, align, quick_test};
+use crate::{Alignment, Criteria, ScanState, Status, TreeScan, align, quick_test};
 
 /// One side of a comparison.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -117,8 +117,8 @@ impl Row {
 /// *Unspecified*, decided here: the contents of a folder hidden on a side are hidden on that side
 /// too; a file against a folder has the folder's contents as orphans of the folder's side; an
 /// orphan folder adds its orphan cue even when it is empty.
-pub fn compare_trees(left: &TreeScan, right: &TreeScan, criteria: &Criteria, case_sensitive: bool, visible: &Visibility<'_>) -> Vec<Row> {
-    let trees = Trees { left, right, criteria, case_sensitive, visible };
+pub fn compare_trees(left: &TreeScan, right: &TreeScan, criteria: &Criteria, alignment: Alignment, visible: &Visibility<'_>) -> Vec<Row> {
+    let trees = Trees { left, right, criteria, alignment, visible };
     let base = Some(Path::new(""));
     trees.rows([trees.listing(TreeSide::Left, base), trees.listing(TreeSide::Right, base)], [false, false], [false, false])
 }
@@ -127,7 +127,7 @@ struct Trees<'a> {
     left: &'a TreeScan,
     right: &'a TreeScan,
     criteria: &'a Criteria,
-    case_sensitive: bool,
+    alignment: Alignment,
     visible: &'a Visibility<'a>,
 }
 
@@ -161,7 +161,7 @@ impl Trees<'_> {
         let unlisted = |l: &Listing| l.dir.is_some() && (l.state != ScanState::Done || l.error.is_some());
         let unknown = [unknown[0] || unlisted(&left), unknown[1] || unlisted(&right)];
         let mut rows = Vec::new();
-        for aligned in align(left.items, right.items, self.case_sensitive) {
+        for aligned in align(left.items, right.items, self.alignment) {
             let mut status = match quick_test(&aligned, self.criteria) {
                 Status::LeftOrphan if unknown[1] => Status::Unknown,
                 Status::RightOrphan if unknown[0] => Status::Unknown,

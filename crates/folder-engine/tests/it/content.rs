@@ -3,7 +3,7 @@
 use std::path::Path;
 use std::time::Duration;
 
-use otd_folder_engine::{Aligned, Compared, ContentOptions, ContentResult, ContentTest, Criteria, Status, align, compare};
+use otd_folder_engine::{Aligned, Alignment, Compared, ContentOptions, ContentResult, ContentTest, Criteria, Status, align, compare};
 use otd_source::{DataSource, Delete, ErrorKind, Links, MemorySource};
 
 use crate::fixture::{at, caps};
@@ -28,7 +28,7 @@ fn root(file: &str, content: impl Into<Vec<u8>>, modified: u64) -> MemorySource 
 
 fn rows(left: &MemorySource, right: &MemorySource) -> Vec<Aligned> {
     let list = |source: &MemorySource| source.list(Path::new(""), Links::Report).expect("the root lists");
-    align(list(left), list(right), true)
+    align(list(left), list(right), Alignment::new(true))
 }
 
 fn run(row: &Aligned, left: &MemorySource, right: &MemorySource, options: ContentOptions) -> Compared {

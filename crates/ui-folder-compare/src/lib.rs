@@ -42,7 +42,7 @@ use egui::{
     WidgetInfo, WidgetText,
 };
 use otd_core::i18n::{fmt, t, trn};
-use otd_folder_engine::{Criteria, DEFAULT_TOLERANCE, Row, ScanEvent, TreeScan, TreeSide, case_sensitive, compare_trees};
+use otd_folder_engine::{Alignment, Criteria, DEFAULT_TOLERANCE, Row, ScanEvent, TreeScan, TreeSide, case_sensitive, compare_trees};
 use otd_launch::{Completion, Handler, Pattern, Request};
 use otd_source::{Capabilities, DataSource, Item, ItemKind, LocalSource};
 use otd_ui::colour::{ColourRole, SELECTION, SELECTION_TEXT, colour};
@@ -329,7 +329,7 @@ impl FolderCompare {
         self.rows = match (&self.scans, &self.errors) {
             ([Some(left), Some(right)], [None, None]) => {
                 let case_sensitive = case_sensitive(&left.capabilities, &right.capabilities);
-                compare_trees(&left.scan, &right.scan, &CRITERIA, case_sensitive, &|_, _, _| true)
+                compare_trees(&left.scan, &right.scan, &CRITERIA, Alignment::new(case_sensitive), &|_, _, _| true)
             }
             _ => Vec::new(),
         };

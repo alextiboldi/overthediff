@@ -3,7 +3,7 @@
 
 use std::path::Path;
 
-use otd_folder_engine::{Aligned, align, case_sensitive};
+use otd_folder_engine::{Aligned, Alignment, align, case_sensitive};
 use otd_source::{DataSource, Item, Links, MemorySource};
 
 use crate::fixture::{at, caps};
@@ -18,7 +18,7 @@ fn root(source: &MemorySource) -> Vec<Item> {
 
 /// Aligns the two roots the way the engine would: with the case rule the sources report.
 fn align_roots(left: &MemorySource, right: &MemorySource) -> Vec<Aligned> {
-    align(root(left), root(right), case_sensitive(&left.capabilities(), &right.capabilities()))
+    align(root(left), root(right), Alignment::new(case_sensitive(&left.capabilities(), &right.capabilities())))
 }
 
 /// Each row's (left name, right name).
@@ -56,5 +56,48 @@ fn listing_order_does_not_change_the_rows() {
     let left = root(&source(false, &["Ab", "c"]));
     let right = root(&source(true, &["aB", "C", "AB"]));
     let reversed = |items: &[Item]| items.iter().rev().cloned().collect::<Vec<_>>();
-    assert_eq!(align(left.clone(), right.clone(), false), align(reversed(&left), reversed(&right), false));
+    assert_eq!(align(left.clone(), right.clone(), Alignment::new(false)), align(reversed(&left), reversed(&right), Alignment::new(false)));
+}
+
+/// A name with precomposed `é` (NFC) and its twin spelt `e` plus a combining acute (NFD), as
+/// macOS and Linux file systems may each hold it. Escapes, so no editor or file system changes them.
+const NFC: &str = "caf\u{e9}.txt";
+const NFD: &str = "cafe\u{301}.txt";
+
+fn with(extensions: bool, normalization: bool) -> Alignment {
+    Alignment { extensions, normalization, ..Alignment::new(true) }
+}
+
+fn align_names(left: &[&str], right: &[&str], alignment: Alignment) -> Vec<Aligned> {
+    align(root(&source(true, left)), root(&source(true, right)), alignment)
+}
+
+#[test]
+fn names_differing_only_in_extension_share_a_row_only_with_the_extension_switch_on() {
+    assert_eq!(pairs(&align_names(&["a.txt"], &["a.csv"], with(true, false))), [(Some("a.txt"), Some("a.csv"))]);
+    assert_eq!(pairs(&align_names(&["a.txt"], &["a.csv"], with(false, true))), [(None, Some("a.csv")), (Some("a.txt"), None)]);
+}
+
+#[test]
+fn an_nfc_name_and_its_nfd_twin_share_a_row_only_with_the_normalization_switch_on() {
+    assert_eq!(pairs(&align_names(&[NFC], &[NFD], with(false, true))), [(Some(NFC), Some(NFD))]);
+    assert_eq!(pairs(&align_names(&[NFC], &[NFD], with(true, false))).len(), 2, "two orphans");
+}
+
+/// An exact name pairs before a twin in another form, and both before a name with another
+/// extension, so switching the options on never breaks up a pair that matched without them.
+#[test]
+fn a_closer_match_wins_over_a_looser_one() {
+    let rows = align_names(&["a.csv", NFC], &[NFD, "a.txt", "caf\u{e9}.csv", NFC], with(true, true));
+    assert_eq!(pairs(&rows), [(Some("a.csv"), Some("a.txt")), (None, Some(NFD)), (None, Some("caf\u{e9}.csv")), (Some(NFC), Some(NFC))]);
+}
+
+/// Two folders with dated names, or `README` and `README.md`, are different things, not one item
+/// with another extension.
+#[test]
+fn the_extension_switch_pairs_only_files_that_both_have_an_extension() {
+    let left = MemorySource::new(caps(true)).folder("release.2024", at(1)).file("README", "x", at(1)).file(".bashrc", "x", at(1));
+    let right = MemorySource::new(caps(true)).folder("release.2025", at(1)).file("README.md", "x", at(1)).file(".profile", "x", at(1));
+    let rows = align(root(&left), root(&right), with(true, false));
+    assert!(rows.iter().all(|row| row.left.is_none() || row.right.is_none()), "{:?}", pairs(&rows));
 }

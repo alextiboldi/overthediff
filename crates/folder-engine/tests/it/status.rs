@@ -4,7 +4,7 @@
 use std::path::Path;
 use std::time::{Duration, SystemTime};
 
-use otd_folder_engine::{Aligned, Criteria, Status, align, quick_test};
+use otd_folder_engine::{Aligned, Alignment, Criteria, Status, align, quick_test};
 use otd_source::{Attributes, DataSource, ErrorKind, Links, MemorySource};
 
 use crate::fixture::{at, caps};
@@ -26,7 +26,7 @@ fn ms(millis: u64) -> SystemTime {
 /// The one aligned row of two roots.
 fn row(left: &MemorySource, right: &MemorySource) -> Aligned {
     let list = |source: &MemorySource| source.list(Path::new(""), Links::Report).expect("the root lists");
-    let mut rows = align(list(left), list(right), true);
+    let mut rows = align(list(left), list(right), Alignment::new(true));
     assert_eq!(rows.len(), 1, "{rows:#?}");
     rows.remove(0)
 }
@@ -119,7 +119,7 @@ fn a_folders_own_timestamp_never_makes_it_newer() {
 fn names_that_differ_only_in_case_are_different_only_with_the_filename_case_test_on() {
     let source = |name| MemorySource::new(caps(false)).file(name, "same", at(1));
     let list = |source: &MemorySource| source.list(Path::new(""), Links::Report).expect("the root lists");
-    let mut rows = align(list(&source("Readme.md")), list(&source("README.md")), false);
+    let mut rows = align(list(&source("Readme.md")), list(&source("README.md")), Alignment::new(false));
     assert_eq!(rows.len(), 1, "a case-insensitive alignment pairs them: {rows:#?}");
     let paired = rows.remove(0);
     assert_eq!(quick_test(&paired, &BOTH), Status::Same);

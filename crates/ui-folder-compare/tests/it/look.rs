@@ -4,7 +4,7 @@
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
-use otd_folder_engine::{Criteria, DEFAULT_TOLERANCE, Row, TreeScan, TreeSide, compare_trees};
+use otd_folder_engine::{Alignment, Criteria, DEFAULT_TOLERANCE, Row, TreeScan, TreeSide, compare_trees};
 use otd_source::{Capabilities, MemorySource};
 use otd_ui::colour::ColourRole;
 use otd_ui_folder_compare::look::{Cue, DIFFERENT, Look, ORPHAN, SAME, UNKNOWN, look};
@@ -41,7 +41,7 @@ pub(crate) fn rows(left: MemorySource, right: MemorySource, background: bool) ->
         while scan.step() {}
         scan
     };
-    compare_trees(&scan(left), &scan(right), &CRITERIA, true, &|_, _, _| true)
+    compare_trees(&scan(left), &scan(right), &CRITERIA, Alignment::new(true), &|_, _, _| true)
 }
 
 fn row<'a>(rows: &'a [Row], name: &str) -> &'a Row {

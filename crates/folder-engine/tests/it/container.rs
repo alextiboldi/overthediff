@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
-use otd_folder_engine::{Criteria, Folder, ScanState, TreeScan, align, quick_test};
+use otd_folder_engine::{Alignment, Criteria, Folder, ScanState, TreeScan, align, quick_test};
 use otd_source::{Capabilities, Item, ItemKind, MemorySource};
 
 fn path(names: &[&str]) -> PathBuf {
@@ -101,7 +101,7 @@ fn an_expanded_container_aligns_with_a_folder_and_its_children_pair_up_like_a_fo
     let (right, _) = TreeScan::new(right, "", false);
     let pair = |folder: &str| {
         let items = |scan: &TreeScan| scan.folder(Path::new(folder)).map(|f| f.items).unwrap_or_default();
-        align(items(&left), items(&right), true)
+        align(items(&left), items(&right), Alignment::new(true))
     };
     let kinds = |rows: Vec<otd_folder_engine::Aligned>| -> Vec<_> {
         rows.into_iter().map(|row| (row.name, row.left.map(|i| i.kind), row.right.map(|i| i.kind))).collect()
@@ -145,7 +145,7 @@ fn an_unopened_container_pair_gets_a_files_status_and_an_expanded_one_a_folders(
         let (left, right) = (side("ab", 10), side(content, time));
         let status = |name: &str| {
             let items = |scan: &TreeScan| scan.folder(Path::new("")).map(|f| f.items).unwrap_or_default();
-            let row = align(items(&left), items(&right), true).into_iter().find(|row| row.name == name).expect("the row is aligned");
+            let row = align(items(&left), items(&right), Alignment::new(true)).into_iter().find(|row| row.name == name).expect("the row is aligned");
             quick_test(&row, &criteria)
         };
         for scan in [&left, &right] {

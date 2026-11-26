@@ -73,6 +73,8 @@ fixed_decimal, writeable, litemap, tinystr, potential_utf, yoke, zerofrom, zerot
 with their derive crates), under Unicode-3.0, whose notice is below; synstructure (MIT); and
 cobs, displaydoc, postcard, stable_deref_trait, sys-locale, utf8_iter, utf16_iter, utf_types,
 write16, and windows-registry on Windows (each MIT OR Apache-2.0).
+The folder comparison engine (otd-folder-engine) also uses one of those ICU4X crates,
+icu_normalizer, with its Unicode normalization data, to align names across normalization forms.
 
 Text Compare (otd-text-compare, otd-ui-text-compare) decodes legacy code-page text with
 craft-codepage (MIT OR Apache-2.0, storytold/craft-libs) and the East Asian code pages with
