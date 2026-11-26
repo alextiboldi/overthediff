@@ -3,6 +3,7 @@
 mod align;
 mod container;
 mod content;
+mod display;
 mod fixture;
 mod flat;
 mod scan;

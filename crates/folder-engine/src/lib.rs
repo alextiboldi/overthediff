@@ -4,6 +4,7 @@
 
 mod align;
 mod content;
+mod display;
 mod scan;
 mod select;
 mod status;
@@ -11,6 +12,7 @@ mod tree;
 
 pub use align::{Aligned, Placed, align, align_flat, case_sensitive};
 pub use content::{Compared, ContentOptions, ContentResult, ContentTest, Side, compare};
+pub use display::DisplayFilter;
 pub use scan::{Folder, ScanEvent, ScanState, TreeScan};
 pub use select::{Resolved, resolve_selection};
 pub use status::{Criteria, DEFAULT_TOLERANCE, Status, quick_test};
