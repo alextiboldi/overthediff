@@ -275,6 +275,9 @@ impl Shell {
     /// Draws the window: menu bar, tab strip, toolbar, the active tab's contents and the status
     /// bar.
     pub fn ui(&mut self, ui: &mut Ui) {
+        // ponytail: views and roles recolour this frame; the chrome a frame later, since `ui`
+        // already holds its style, and the restyle requests that frame.
+        colour::sync_system(ui.ctx());
         self.options.publish(ui.ctx());
         let keymap = keymap(&self.commands, ui.ctx().os().into());
         self.shortcuts(ui, &keymap);

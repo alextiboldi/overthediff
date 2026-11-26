@@ -5,6 +5,9 @@
 //! The window chrome and the selection draw with the [`CHROME`] roles too (E05-S1): [`install`] and
 //! [`set_palette`] rebuild egui's visuals from them, for both of egui's styles, so the OS setting
 //! alone never swaps them for egui's own.
+//!
+//! [`follow_system`] makes the palette the OS light or dark setting's instead, at start-up and
+//! whenever the setting changes while the app runs (E05-S1-T3).
 
 use std::sync::Arc;
 
@@ -13,6 +16,7 @@ pub use otd_core::colour::{ColourRole, ColourRoles, Contrast, ContrastProblem, D
 
 const ROLES: &str = "otd-colour-roles";
 const PALETTE: &str = "otd-colour-palette";
+const FOLLOW: &str = "otd-colour-follow-system";
 
 /// What a role that was never registered draws with: a colour no palette would choose, so the
 /// mistake shows on screen.
@@ -75,8 +79,37 @@ pub fn palette(ctx: &Context) -> Palette {
     ctx.data(|data| data.get_temp(Id::unique(PALETTE))).unwrap_or_default()
 }
 
-/// Makes `palette` active. Every view takes its values on the next frame, which this requests.
+/// Makes `palette` active, whatever the OS setting, and stops [`follow_system`]. Every view takes its
+/// values on the next frame, which this requests.
 pub fn set_palette(ctx: &Context, palette: Palette) {
+    ctx.data_mut(|data| data.remove_temp::<bool>(Id::unique(FOLLOW)));
+    show(ctx, palette);
+}
+
+/// Makes the active palette the OS setting's: dark while the OS is dark, light otherwise, including
+/// while the OS reports no setting. The shell takes each change of the setting on the frame that
+/// reports it ([`sync_system`]), until [`set_palette`] picks a palette.
+pub fn follow_system(ctx: &Context) {
+    ctx.data_mut(|data| data.insert_temp(Id::unique(FOLLOW), true));
+    sync_system(ctx);
+}
+
+/// While following the OS, takes its setting's palette when that differs from the active one. The
+/// shell calls it every frame; restyling only on a change keeps an idle window from repainting.
+pub(crate) fn sync_system(ctx: &Context) {
+    if !ctx.data(|data| data.get_temp::<bool>(Id::unique(FOLLOW))).unwrap_or(false) {
+        return;
+    }
+    let system = match ctx.system_theme() {
+        Some(Theme::Dark) => Palette::Dark,
+        Some(Theme::Light) | None => Palette::Light,
+    };
+    if system != palette(ctx) {
+        show(ctx, system);
+    }
+}
+
+fn show(ctx: &Context, palette: Palette) {
     ctx.data_mut(|data| data.insert_temp(Id::unique(PALETTE), palette));
     apply(ctx);
 }
