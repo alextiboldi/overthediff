@@ -7,7 +7,9 @@ use egui::os::OperatingSystem;
 use egui::{Key, Modifiers};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
-use otd_ui::{CLEAR_SESSION, CLOSE_CURRENT_TAB, DONT_SAVE, HOME, NEW_SESSION, OPEN_SESSION, SESSION_SETTINGS, Session, SessionType, Shell, View};
+use otd_ui::{
+    CANCEL, CLEAR_SESSION, CLOSE_CURRENT_TAB, DONT_SAVE, HOME, NEW_SESSION, OPEN_SESSION, SESSION_SETTINGS, Session, SessionType, Shell, View,
+};
 
 const ALPHA: &str = "Alpha Compare";
 const BETA: &str = "Beta Compare";
@@ -257,12 +259,25 @@ fn close_tab_from_the_menu_on_an_unsaved_view_gives_focus_to_its_tab_on_cancel()
         view.unsaved = true;
     }
 
-    run_from_session_menu(&mut harness, &[CLOSE_CURRENT_TAB]);
-    assert!(prompt_open(&harness), "Save / Don't Save / Cancel");
-    press(&mut harness, Modifiers::NONE, Key::Escape);
-    assert!(!prompt_open(&harness));
-    assert_eq!(tab_names(&harness), [HOME, ALPHA], "Cancel keeps the tab");
-    assert_eq!(focused(&harness), Some((Role::Tab, ALPHA.to_owned())), "and focus goes to it");
+    for cancel in [None, Some(CANCEL)] {
+        run_from_session_menu(&mut harness, &[CLOSE_CURRENT_TAB]);
+        assert!(prompt_open(&harness), "Save / Don't Save / Cancel");
+        match cancel {
+            Some(button) => {
+                for _ in 0..10 {
+                    if focused(&harness).is_some_and(|(_, label)| label == button) {
+                        break;
+                    }
+                    press(&mut harness, Modifiers::NONE, Key::Tab);
+                }
+                press(&mut harness, Modifiers::NONE, Key::Enter);
+            }
+            None => press(&mut harness, Modifiers::NONE, Key::Escape),
+        }
+        assert!(!prompt_open(&harness), "{cancel:?} closes the prompt");
+        assert_eq!(tab_names(&harness), [HOME, ALPHA], "{cancel:?} keeps the tab");
+        assert_eq!(focused(&harness), Some((Role::Tab, ALPHA.to_owned())), "{cancel:?} gives focus to it");
+    }
 }
 
 #[test]

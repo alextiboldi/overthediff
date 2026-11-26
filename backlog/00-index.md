@@ -506,7 +506,7 @@ Behaviour that comes from AGENTS.md rather than the catalogue.
 | Rule | Stories |
 |---|---|
 | 13, 17, 21, 30, 33: lints, CI in its own PRs, keyboard and accessibility tests, one test binary per crate, checks | E27-S1 |
-| 21: keyboard focus is never lost when a dialog or prompt closes | E01-S1 |
+| 21: a cancelled unsaved-changes prompt gives focus to a widget that still exists | E01-S1 |
 | 14: every feature works without the window | E01-S1, E28-S1, E28-S2 |
 | 15: partial or unsupported behaviour says so | E01-S1, E28-S1 |
 | 16: text through the translation system | E01-S1 |
