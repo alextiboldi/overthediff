@@ -10,6 +10,7 @@ description = "OverTheDiff's settings store: one section per feature, saved atom
 workspace = true
 
 [dependencies]
+craft-atomic = { workspace = true }
 craft-settings = { workspace = true }
 otd-core = { path = "../core" }
 serde = { version = "1", features = ["derive"] }

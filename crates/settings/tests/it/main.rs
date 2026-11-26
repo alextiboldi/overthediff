@@ -4,4 +4,5 @@
 mod hostile;
 mod options;
 mod session_defaults;
+mod sessions;
 mod store;
