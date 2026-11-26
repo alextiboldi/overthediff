@@ -95,7 +95,7 @@ fn the_chrome_and_the_selection_take_the_active_palettes_values() {
 #[test]
 fn an_os_in_dark_mode_leaves_the_chrome_in_the_light_palette() {
     let mut harness = Harness::builder().build_ui_state(|ui, shell: &mut Shell| shell.ui(ui), Shell::new(Vec::new()));
-    // As in the app: egui follows the OS until a palette is installed, and the OS says dark.
+    // As in the app, egui follows the OS, and the OS says dark.
     harness.ctx.set_theme(ThemePreference::System);
     harness.input_mut().system_theme = Some(Theme::Dark);
     colour::install(&harness.ctx, ColourRoles::new(CHROME).expect("distinct ids"));

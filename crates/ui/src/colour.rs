@@ -3,8 +3,8 @@
 //! palette live in the egui context, so any view or painter reaches them without the shell.
 //!
 //! The window chrome and the selection draw with the [`CHROME`] roles too (E05-S1): [`install`] and
-//! [`set_palette`] rebuild egui's visuals from them, and pin egui to the active palette so the OS
-//! setting alone never swaps them for egui's own.
+//! [`set_palette`] rebuild egui's visuals from them, for both of egui's styles, so the OS setting
+//! alone never swaps them for egui's own.
 
 use std::sync::Arc;
 
@@ -80,16 +80,20 @@ pub fn set_palette(ctx: &Context, palette: Palette) {
     apply(ctx);
 }
 
-/// Styles the chrome from the [`CHROME`] roles in the active palette, and makes egui use that style
-/// whatever the OS setting.
+/// Styles the chrome from the [`CHROME`] roles in the active palette, whatever the OS setting.
+///
+/// The palette's visuals go into both of egui's styles rather than pinning egui's theme preference:
+/// egui would pass a pinned theme on to the native window, and winit then stops reporting the OS
+/// setting's changes (`Context::system_theme`), which following the OS (E05-S1-T3) reads.
 fn apply(ctx: &Context) {
-    let palette = palette(ctx);
-    let theme = match palette {
+    let theme = match palette(ctx) {
         Palette::Light => Theme::Light,
         Palette::Dark => Theme::Dark,
     };
-    ctx.set_visuals_of(theme, visuals(ctx, theme));
-    ctx.set_theme(theme);
+    let visuals = visuals(ctx, theme);
+    for style in [Theme::Light, Theme::Dark] {
+        ctx.set_visuals_of(style, visuals.clone());
+    }
     ctx.request_repaint();
 }
 

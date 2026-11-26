@@ -28,4 +28,13 @@ mod tests {
         let low: Vec<String> = roles.low_contrast(&super::contrast()).iter().map(ToString::to_string).collect();
         assert!(low.is_empty(), "{low:#?}");
     }
+
+    #[test]
+    fn every_registered_role_is_in_a_contrast_pair() {
+        let pairs = super::contrast();
+        let roles = super::colour_roles().expect("distinct ids");
+        let unpaired: Vec<&str> =
+            roles.iter().map(|role| role.id).filter(|&id| !pairs.iter().any(|pair| pair.fore == id || pair.back == id)).collect();
+        assert!(unpaired.is_empty(), "no contrast pair names {unpaired:?}");
+    }
 }
