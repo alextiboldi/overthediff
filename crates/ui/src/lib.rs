@@ -45,7 +45,8 @@ pub use options::{APPLY, CHOOSE_A_PAGE, DuplicateOption, NO_OPTIONS, OPTION_PAGE
 mod session;
 mod session_defaults;
 pub use session::{
-    DESCRIPTION, DuplicateSetting, INPUTS, Kind, OK, SCOPE, SESSION_SETTINGS, Session, SessionError, Setting, THIS_VIEW_ONLY, Value, edit_value,
+    DESCRIPTION, DuplicateSetting, INPUTS, Kind, OK, SCOPE, SESSION_SETTINGS, Session, SessionError, Setting, THIS_VIEW_ONLY,
+    UPDATE_SESSION_DEFAULTS, Value, edit_value,
 };
 
 // The shell's own text: English keys, drawn only through `t` (E01-S1-T13). The menus' and the tab
@@ -163,6 +164,8 @@ pub struct Shell {
     session_defaults: std::collections::BTreeMap<String, otd_settings::session_defaults::Rules>,
     /// The open Session Settings dialog.
     dialog: Option<session::Dialog>,
+    /// Sessions whose settings Session Settings made their type's defaults, for the app to store.
+    new_defaults: Vec<Session>,
     /// The open unsaved-changes prompt.
     prompt: Option<unsaved::Prompt>,
     /// Every unsaved view was answered for, so the window may close.
@@ -192,6 +195,7 @@ impl Shell {
             settings: Vec::new(),
             session_defaults: Default::default(),
             dialog: None,
+            new_defaults: Vec::new(),
             prompt: None,
             exit_confirmed: false,
             exit_requested: false,

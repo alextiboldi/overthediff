@@ -4,9 +4,10 @@
 //! A view shows a session by returning it from [`View::session`]. The dialog edits a copy of the
 //! active view's session: the Specs tab holds one input per side and the Description, and each
 //! tab contributed for the session type holds its contributed options ([`Setting`], added with
-//! [`Shell::with_settings`]). OK writes the copy back to that view only ("Use for this view only",
-//! the one scope until E06-S2 adds more); Cancel and Esc drop it, and a click outside it
-//! does nothing.
+//! [`Shell::with_settings`]). OK writes the copy back to that view. With the scope "Update session
+//! defaults" (E06-S2-T2) OK also hands the copy to the app, which stores its settings as its type's
+//! defaults ([`Shell::take_session_defaults`]); with "Use for this view only" it doesn't. Cancel
+//! and Esc drop the copy, and a click outside it does nothing.
 
 use std::fmt;
 
@@ -28,6 +29,7 @@ pub const INPUTS: &str = "Inputs";
 pub const DESCRIPTION: &str = "Description";
 pub const SCOPE: &str = "Scope";
 pub const THIS_VIEW_ONLY: &str = "Use for this view only";
+pub const UPDATE_SESSION_DEFAULTS: &str = "Update session defaults";
 pub const OK: &str = "OK";
 const NO_SESSION: &str = "The current tab shows no session.";
 const UNKNOWN_TYPE: &str = "This session's type is not available.";
@@ -67,6 +69,8 @@ pub(crate) struct Dialog {
     focus: bool,
     /// The single-line edits drawn last frame, where Enter is OK.
     single_line: Vec<Id>,
+    /// The scope "Update session defaults" is chosen; each open starts on "Use for this view only".
+    update_defaults: bool,
 }
 
 impl Shell {
@@ -130,8 +134,14 @@ impl Shell {
                 pages.push(setting.tab);
             }
         }
-        self.dialog = Some(Dialog { tab: self.active, working, pages, page: 0, focus: true, single_line: Vec::new() });
+        self.dialog = Some(Dialog { tab: self.active, working, pages, page: 0, focus: true, single_line: Vec::new(), update_defaults: false });
         Ok(())
+    }
+
+    /// The sessions OK made their type's defaults since the last call, oldest first: what the app
+    /// stores (`otd_settings::session_defaults::write`). Each holds every setting of its type.
+    pub fn take_session_defaults(&mut self) -> Vec<Session> {
+        std::mem::take(&mut self.new_defaults)
     }
 
     fn active_session(&mut self) -> Option<&mut Session> {
@@ -165,7 +175,7 @@ impl Shell {
             dialog.tab_list(ui);
             ui.separator();
             dialog.single_line.clear();
-            let Dialog { working, pages, page, single_line, .. } = dialog;
+            let Dialog { working, pages, page, single_line, update_defaults, .. } = dialog;
             match page.checked_sub(1).and_then(|p| pages.get(p)) {
                 None => specs(ui, sides, working, single_line),
                 Some(tab) => {
@@ -181,9 +191,19 @@ impl Shell {
                 }
             }
             ui.separator();
-            egui::ComboBox::new("otd-session-scope", t(SCOPE)).selected_text(t(THIS_VIEW_ONLY)).show_ui(ui, |ui| {
-                let _ = ui.selectable_label(true, t(THIS_VIEW_ONLY));
+            let selected = if *update_defaults { UPDATE_SESSION_DEFAULTS } else { THIS_VIEW_ONLY };
+            let scope = egui::ComboBox::new("otd-session-scope", t(SCOPE)).selected_text(t(selected)).show_ui(ui, |ui| {
+                let picked = ui.selectable_value(update_defaults, false, t(THIS_VIEW_ONLY)).clicked()
+                    | ui.selectable_value(update_defaults, true, t(UPDATE_SESSION_DEFAULTS)).clicked();
+                // A pick by keyboard leaves egui's popup open; close it and give focus back to the box.
+                if picked {
+                    ui.close();
+                }
+                picked
             });
+            if scope.inner == Some(true) {
+                scope.response.request_focus();
+            }
             ui.horizontal(|ui| {
                 ok |= ui.button(t(OK)).clicked();
                 cancel |= ui.button(t(CANCEL)).clicked();
@@ -196,9 +216,14 @@ impl Shell {
             return;
         }
         let dialog = self.dialog.take();
-        if let Some(Dialog { tab, working, .. }) = dialog.filter(|_| ok)
+        if let Some(Dialog { tab, mut working, update_defaults, .. }) = dialog.filter(|_| ok)
             && let Some(session) = self.tabs.get_mut(tab).and_then(|t| t.as_mut()?.session())
         {
+            if update_defaults {
+                // Complete, as storing them needs: a tab never opened in the dialog may lack some.
+                working.fill_defaults(&self.settings);
+                self.new_defaults.push(working.clone());
+            }
             *session = working;
         }
         // Focus goes back to the window: its selected tab.

@@ -173,6 +173,14 @@ impl eframe::App for App {
         if let Some(values) = self.shell.take_applied_options() {
             otd_settings::options::write(&mut self.settings.store, &values);
         }
+        let new_defaults = self.shell.take_session_defaults();
+        for session in &new_defaults {
+            otd_settings::session_defaults::write(&mut self.settings.store, session);
+        }
+        // Sessions opened later in this run start from them too (E06-S2-T3).
+        if !new_defaults.is_empty() {
+            self.shell.load_session_defaults(&mut self.settings.store);
+        }
         if let Some(menu) = &mut self.native_menu {
             // Its clashes are the system items macOS gives up for the app's shortcuts (⌘W); the
             // layout has already resolved them.

@@ -7,7 +7,8 @@ use egui::{Key, Modifiers};
 use egui_kittest::Harness;
 use egui_kittest::kittest::{NodeT as _, Queryable as _};
 use otd_ui::{
-    CANCEL, DESCRIPTION, HOME, INPUTS, Kind, OK, SCOPE, SESSION_SETTINGS, Session, SessionType, Setting, Shell, THIS_VIEW_ONLY, Value, View,
+    CANCEL, DESCRIPTION, HOME, INPUTS, Kind, OK, SCOPE, SESSION_SETTINGS, Session, SessionType, Setting, Shell, THIS_VIEW_ONLY,
+    UPDATE_SESSION_DEFAULTS, Value, View,
 };
 
 const ALPHA: &str = "Alpha Compare";
@@ -394,4 +395,85 @@ fn a_colour_changed_by_keyboard_is_written_back() {
     type_text(&mut harness, "5");
     press(&mut harness, Modifiers::NONE, Key::Enter);
     assert_ne!(*harness.state(), start);
+}
+
+/// Ticks Ignore case on the Comparison tab, then picks `scope` by keyboard: the box shows it and
+/// has focus back.
+fn tick_ignore_case_and_pick(harness: &mut Harness<'static, Shell>, scope: &str) {
+    tab_to(harness, Role::Tab, COMPARISON);
+    press(harness, Modifiers::NONE, Key::Enter);
+    tab_to(harness, Role::CheckBox, IGNORE_CASE);
+    press(harness, Modifiers::NONE, Key::Space);
+    tab_to(harness, Role::ComboBox, SCOPE);
+    press(harness, Modifiers::NONE, Key::Space);
+    tab_to(harness, Role::Button, scope);
+    press(harness, Modifiers::NONE, Key::Enter);
+    let focus = harness.get_by(|node| node.is_focused());
+    let focus = focus.accesskit_node();
+    assert_eq!((focus.role(), focus.label().as_deref(), focus.value().as_deref()), (Role::ComboBox, Some(SCOPE), Some(scope)));
+}
+
+fn tick_ignore_case_and_ok(harness: &mut Harness<'static, Shell>, scope: &str) {
+    tick_ignore_case_and_pick(harness, scope);
+    tab_to(harness, Role::Button, OK);
+    press(harness, Modifiers::NONE, Key::Enter);
+}
+
+#[test]
+fn update_session_defaults_then_ok_changes_the_view_and_the_stored_defaults_of_its_type_only() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut store, _) = otd_settings::open(otd_settings::Location::Dir(dir.path().to_path_buf()));
+    let stored = |store: &mut otd_settings::Store| ["alpha", "beta"].map(|type_id| otd_settings::session_defaults::read(store, &settings(), type_id));
+    let before = stored(&mut store);
+    let mut harness = dialog();
+    let view_before = shown(&harness, SHOWS_RULE);
+    tick_ignore_case_and_ok(&mut harness, UPDATE_SESSION_DEFAULTS);
+    assert!(!is_open(&harness));
+    assert_ne!(shown(&harness, SHOWS_RULE), view_before, "the view changed");
+    for session in harness.state_mut().take_session_defaults() {
+        otd_settings::session_defaults::write(&mut store, &session);
+    }
+    let [alpha, beta] = stored(&mut store);
+    assert_ne!(alpha, before[0], "alpha's stored defaults changed");
+    assert_eq!(alpha.get(COMPARISON).and_then(|tab| tab.get("ignore_case")), Some(&Value::Bool(true)));
+    assert_eq!(beta, before[1], "beta's didn't");
+    assert!(harness.state_mut().take_session_defaults().is_empty(), "handed over once");
+}
+
+#[test]
+fn cancel_and_esc_with_update_session_defaults_change_neither_the_view_nor_the_defaults() {
+    for close in [None, Some(CANCEL)] {
+        let mut harness = dialog();
+        let view_before = shown(&harness, SHOWS_RULE);
+        tick_ignore_case_and_pick(&mut harness, UPDATE_SESSION_DEFAULTS);
+        match close {
+            None => press(&mut harness, Modifiers::NONE, Key::Escape),
+            Some(cancel) => {
+                tab_to(&mut harness, Role::Button, cancel);
+                press(&mut harness, Modifiers::NONE, Key::Enter);
+            }
+        }
+        assert!(!is_open(&harness), "{close:?} closes the dialog");
+        assert_eq!(shown(&harness, SHOWS_RULE), view_before, "{close:?} leaves the view");
+        assert!(harness.state_mut().take_session_defaults().is_empty(), "{close:?} leaves the defaults");
+    }
+}
+
+#[test]
+fn use_for_this_view_only_leaves_the_defaults_untouched() {
+    let mut harness = dialog();
+    let view_before = shown(&harness, SHOWS_RULE);
+    tick_ignore_case_and_ok(&mut harness, THIS_VIEW_ONLY);
+    assert_ne!(shown(&harness, SHOWS_RULE), view_before, "the view changed");
+    assert!(harness.state_mut().take_session_defaults().is_empty());
+}
+
+#[test]
+fn the_scope_starts_on_use_for_this_view_only_each_time_the_dialog_opens() {
+    let mut harness = dialog();
+    tick_ignore_case_and_ok(&mut harness, UPDATE_SESSION_DEFAULTS);
+    harness.state_mut().session_settings().unwrap();
+    harness.run();
+    let scope = harness.get_by(|node| node.role() == Role::ComboBox && node.label().as_deref() == Some(SCOPE));
+    assert_eq!(scope.accesskit_node().value().as_deref(), Some(THIS_VIEW_ONLY));
 }

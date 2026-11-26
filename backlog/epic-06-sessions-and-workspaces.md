@@ -85,20 +85,21 @@ As a developer who compares the same folders every week, I can save a comparison
 As a team lead who wants every folder comparison to use our standard rules, I can make a session's settings the default for its type so that every new session of that type starts with them.
 
 **Acceptance criteria**
-- [ ] The Session Settings scope dropdown offers *Update session defaults* in addition to *Use for this view only*.
-- [ ] With *Update session defaults* selected, OK applies the settings to the current view and stores them as the defaults for that session type.
-- [ ] Every new session of that type starts with the stored defaults, whether it is opened from Home, the Session menu or the command line.
-- [ ] Defaults are per type: updating Text Compare defaults doesn't change new Folder Compare sessions.
-- [ ] *Use for this view only* changes the current view and leaves the defaults untouched.
-- [ ] Defaults cover the session settings but not the specs or description (*inferred*), and they persist across restarts.
+- [x] The Session Settings scope dropdown offers *Update session defaults* in addition to *Use for this view only*.
+- [x] With *Update session defaults* selected, OK applies the settings to the current view and stores them as the defaults for that session type.
+- [x] Every new session of that type starts with the stored defaults, whether it is opened from Home, the Session menu or the command line.
+- [x] Defaults are per type: updating Text Compare defaults doesn't change new Folder Compare sessions.
+- [x] *Use for this view only* changes the current view and leaves the defaults untouched.
+- [x] Defaults cover the session settings but not the specs or description (*inferred*), and they persist across restarts.
 
-- [ ] Acceptance uses settings tabs contributed by a test harness on Text Compare and Folder Compare, so it doesn't depend on which real settings exist yet.
+- [x] Acceptance uses settings tabs contributed by a test harness on Text Compare and Folder Compare, so it doesn't depend on which real settings exist yet.
 #### Tasks
 - **E06-S2-T1** — Store and load one settings set per session type · size: S · depends: — · status: done
   - AC: defaults written for Folder Compare survive a restart and never apply to Text Compare.
   - Implemented: `session_defaults::read(store, settings, type_id)` and `write(store, session)` in `crates/settings/src/session_defaults.rs` (`otd-settings`) keep each session type's settings in the settings store's `session-defaults` section as `[session-defaults.<type>.<tab>]` tables, sharing the Options dialog's value codec (`options::to_toml`/`from_toml`); only settings are stored, never specs or description, and a missing or ill-fitting stored value falls back to the setting's own default. Tests in `crates/settings/tests/it/session_defaults.rs` (restart survival per type, isolation from Text Compare, reset back to defaults) and the hostile-input sweep. Checks: `cargo xtask ci` on macOS passed after rebasing onto `main`; pull-request CI on Linux and macOS passed. Pull request: https://github.com/alextiboldi/overthediff/pull/129
-- **E06-S2-T2** — *Update session defaults* in the scope dropdown · size: S · depends: E06-S2-T1
+- **E06-S2-T2** — *Update session defaults* in the scope dropdown · size: S · depends: E06-S2-T1 · status: done
   - AC: choosing it and pressing OK updates both the view and the stored defaults. Cancel changes neither.
+  - Implemented: the Session Settings dialog's scope dropdown in `crates/ui/src/session.rs` (`otd-ui`) offers *Update session defaults* (`otd_ui::UPDATE_SESSION_DEFAULTS`) beside *Use for this view only*, and starts on the latter each time it opens; with it, OK applies the settings to the view and queues the session for `Shell::take_session_defaults`, which `apps/otd/src/main.rs` stores each frame with `otd_settings::session_defaults::write` (E06-S2-T1) and then reloads with `Shell::load_session_defaults` (E06-S2-T3), so later sessions in the same run start from them. Cancel and Esc change neither. The name is recorded in `docs/feature-names.md`. Tests in `crates/ui/tests/it/session.rs`, by keyboard with test-contributed settings: OK updates the view and only its own type's stored defaults; Cancel and Esc change neither; *Use for this view only* leaves the defaults untouched; the scope starts on *Use for this view only*. Checks: `cargo xtask ci` on macOS passed after rebasing onto `main`; no `cfg(windows)` code, so no Windows check; Linux and Windows tests run in main's CI. Merged straight into `main` (no pull request).
 - **E06-S2-T3** — New sessions start from their type's defaults · size: S · depends: E06-S2-T1 · status: done
   - AC: after Folder Compare defaults are updated, a Folder Compare opened from Home and one opened from the command line both show the new settings, with specs only from their own inputs.
   - Implemented: `Shell::load_session_defaults(store)` and `apply_session_defaults` in `crates/ui/src/session_defaults.rs` (`otd-ui`) read each session type's stored defaults with `otd_settings::session_defaults::read` (E06-S2-T1); `Shell::prepare` in `crates/ui/src/session.rs`, which every new view goes through (Home, New Session, Clear Session, command-line opens), applies them before the settings' own defaults, never to specs or description; `apps/otd/src/main.rs` loads them at start. Test in `crates/ui-folder-compare/tests/it/defaults.rs`: defaults written and reloaded, then Home's Folder Compare and an `otd <left> <right>` launch both open with the new value and only their own specs. Hookup left for E06-S2-T2: after it writes the defaults, the app must call `shell.load_session_defaults` so later sessions in the same run see them. Checks: `cargo xtask ci` on macOS passed; `cargo check --target x86_64-pc-windows-msvc -p otd-ui -p otd-ui-folder-compare --all-targets` passed; Linux and Windows tests run in main's CI. Merged straight into `main` (no pull request).
