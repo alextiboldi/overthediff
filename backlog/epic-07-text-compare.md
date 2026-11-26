@@ -257,8 +257,9 @@ As a developer, I can jump to a line and column and set numbered bookmarks so th
 - [ ] Bookmarked lines are marked in the gutter, and a bookmark moves with its line when lines are inserted or deleted above it (*inferred*).
 
 #### Tasks
-- **E07-S6-T1** — Go To line and column · size: S · depends: —
+- **E07-S6-T1** — Go To line and column · size: S · depends: — · status: done
   - AC: Go To 120:5 puts the cursor on line 120, column 5, of the active pane and both panes show it.
+  - Implemented: `crates/ui-text-compare/src/go_to.rs` registers *Search > Go To* (`text-compare.go_to`, Lucide `corner-down-right`, no default shortcut), a modal dialog with Line and Column fields that moves the chosen pane's caret, scrolls it into view through `Aligned::reveal` and gives the pane focus, and the hidden *Go To Line* (`text-compare.go_to_line`, `line` required, `column` optional) for scripts and automation. Lines and columns count from 1; a value out of range goes to the nearest valid position (*inferred*, confirmed by the operator), and text that isn't a whole number keeps the dialog open with a polite live message. Both panes share one vertical offset, so the other pane shows the same row. `crates/ui/src/commands.rs` puts the Search menu after Edit, and `docs/feature-names.md` records the names. Tests: `crates/ui-text-compare/tests/it/go_to.rs` (Go To 120:5 lands on line 120, column 5, with both panes drawing that line on the same row; out-of-range lines and columns; the dialog by keyboard with its accessibility tree, refused text and Esc giving focus back) and a unit test of the dialog's number parsing. Checks: `cargo xtask ci` on macOS and pull-request CI on Linux and macOS; no Windows matrix run, as the change has no platform-dependent code. https://github.com/alextiboldi/overthediff/pull/108
 - **E07-S6-T2** — Bookmarks 0–9: toggle, go to, clear, gutter marks, and keeping their position through edits · size: S · depends: —
   - AC: after inserting 3 lines above bookmark 2 on line 50, Go To Bookmark 2 lands on line 53.
 
