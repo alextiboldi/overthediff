@@ -20,11 +20,9 @@ pub const SHOW_WHITESPACE: &str = "Show Whitespace";
 /// The View menu's on/off item. Q24 names no shortcut for it.
 pub(crate) fn commands() -> Vec<Command<Shell>> {
     vec![
-        Command::typed("text-compare.show_whitespace", SHOW_WHITESPACE, &[], toggle)
-            .views(&[TEXT_COMPARE])
-            .icon("pilcrow")
-            .menu(&["View"])
-            .state(|shell| State { mark: Some(Mark::Check(shell.view::<TextCompareView>().is_some_and(|view| view.whitespace))), ..State::default() }),
+        Command::typed("text-compare.show_whitespace", SHOW_WHITESPACE, &[], toggle).views(&[TEXT_COMPARE]).icon("pilcrow").menu(&["View"]).state(
+            |shell| State { mark: Some(Mark::Check(shell.view::<TextCompareView>().is_some_and(|view| view.whitespace))), ..State::default() },
+        ),
     ]
 }
 
