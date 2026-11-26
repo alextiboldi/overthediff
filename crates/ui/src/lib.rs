@@ -4,6 +4,7 @@
 //! (`apps/otd/src/session_types.rs`) gets a button on Home, which opens its empty [`View`] in a new
 //! tab. A launch-argument handler opens a view with [`Shell::open`]. The shell draws the status
 //! bar from the active view's [`Status`] (the Q25 field model in E01-S1); views never draw it.
+//! The session model, the Session Settings dialog and the session commands are in [`session`].
 //! Background tasks show their progress and end-of-task summary through [`show_task`].
 
 mod tasks;
@@ -18,6 +19,11 @@ use egui::accesskit::{Live, Role};
 use egui::os::OperatingSystem;
 use egui::{Key, Modifiers, Response, Sense, Stroke, Ui, Vec2, WidgetInfo};
 use otd_core::i18n::{fmt, measure, t};
+
+mod session;
+pub use session::{
+    DESCRIPTION, DuplicateSetting, INPUTS, Kind, OK, SCOPE, SESSION_SETTINGS, Session, SessionError, Setting, THIS_VIEW_ONLY, Value, edit_value,
+};
 
 // The shell's own text: English keys, drawn only through `t` (E01-S1-T13).
 pub const HOME: &str = "Home";
@@ -44,6 +50,11 @@ pub trait View {
     /// The status bar's insert/overwrite field was activated. Only views that publish
     /// [`Status::insert`] get this.
     fn toggle_insert(&mut self) {}
+    /// The session this view shows, which Session Settings edits and Clear Session replaces. `None`
+    /// for a view that shows no session.
+    fn session(&mut self) -> Option<&mut Session> {
+        None
+    }
     fn ui(&mut self, ui: &mut Ui);
 }
 
@@ -53,7 +64,13 @@ pub struct SessionType {
     pub id: &'static str,
     /// The Home button's caption, in English: the shell looks it up (`otd_core::i18n::t`).
     pub name: &'static str,
-    /// An empty session of this type.
+    /// The file-format kinds it opens. [`Shell::session_type_for`] looks a kind up.
+    pub kinds: &'static [Kind],
+    /// Each side's caption in English, such as Left and Right, which the shell looks up: one input
+    /// per side on the Inputs tab.
+    pub sides: &'static [&'static str],
+    /// An empty session of this type. Its [`View::session`] has this type's id; the shell gives it
+    /// one input per side and each contributed setting's default.
     pub new: fn() -> Box<dyn View>,
 }
 
@@ -94,12 +111,24 @@ pub struct Shell {
     /// The active tab changed by a command, so its tab in the strip takes focus on the next draw.
     focus_active: bool,
     tasks: tasks::Tasks,
+    /// The options features contribute to Session Settings tabs.
+    settings: Vec<Setting>,
+    /// The open Session Settings dialog.
+    dialog: Option<session::Dialog>,
 }
 
 impl Shell {
     /// A shell with one Home tab.
     pub fn new(session_types: Vec<SessionType>) -> Self {
-        let mut shell = Self { session_types, tabs: Vec::new(), active: 0, focus_active: false, tasks: tasks::Tasks::default() };
+        let mut shell = Self {
+            session_types,
+            tabs: Vec::new(),
+            active: 0,
+            focus_active: false,
+            tasks: tasks::Tasks::default(),
+            settings: Vec::new(),
+            dialog: None,
+        };
         shell.push(None);
         shell.focus_active = false;
         shell
@@ -123,6 +152,8 @@ impl Shell {
 
     /// Closes the tab at `index`. Closing a tab other than the active one keeps the active tab.
     fn close(&mut self, index: usize) {
+        // The dialog edits a tab by index, so it goes with any close.
+        self.dialog = None;
         self.tabs.remove(index);
         if index < self.active {
             self.active -= 1;
@@ -148,7 +179,10 @@ impl Shell {
         self.focus_active = true;
     }
 
-    fn push(&mut self, view: Option<Box<dyn View>>) {
+    fn push(&mut self, mut view: Option<Box<dyn View>>) {
+        if let Some(view) = &mut view {
+            self.prepare(view.as_mut());
+        }
         self.tabs.push(view);
         self.select(self.tabs.len() - 1);
     }
@@ -172,6 +206,7 @@ impl Shell {
             ui.separator();
             ui.horizontal(|ui| self.status_bar(ui));
         });
+        self.dialog_ui(ui.ctx());
         self.tasks.ui(ui.ctx());
         if self.focus_active {
             // A click changed the active tab after the strip was drawn: draw again to move focus.
@@ -188,8 +223,9 @@ impl Shell {
         let os = ui.ctx().os();
         let ctrl_tab = ui.ctx().data_mut(|data| data.remove_temp::<CtrlTabPresses>(egui::Id::unique(CTRL_TAB)));
         let CtrlTabPresses { mut previous, mut next } = ctrl_tab.unwrap_or_default();
-        // A modal dialog (last frame's top modal layer) keeps the window behind it out of reach.
-        if ui.ctx().memory(|memory| memory.top_modal_layer().is_some()) {
+        // A modal dialog (last frame's top modal layer) keeps the window behind it out of reach, and so
+        // does the Session Settings dialog from the frame it opens.
+        if self.dialog.is_some() || ui.ctx().memory(|memory| memory.top_modal_layer().is_some()) {
             return;
         }
         let [new, close] = ui.input_mut(|i| {
@@ -252,7 +288,8 @@ impl Shell {
                     node.set_position_in_set(index + 1);
                     node.set_size_of_set(count);
                 });
-                if selected && self.focus_active {
+                // Not while a dialog is open: a view opened behind it doesn't take its focus.
+                if selected && self.focus_active && self.dialog.is_none() {
                     response.request_focus();
                 }
                 if response.clicked() {

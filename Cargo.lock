@@ -2594,6 +2594,7 @@ dependencies = [
  "egui",
  "egui_kittest",
  "otd-core",
+ "otd-format",
 ]
 
 [[package]]

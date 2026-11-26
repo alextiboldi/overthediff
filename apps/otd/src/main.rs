@@ -3,6 +3,7 @@
 
 mod colour_roles;
 mod handlers;
+mod session_settings;
 mod session_types;
 
 use std::process::{Command, Stdio};
@@ -66,7 +67,11 @@ fn run_window(registry: Registry<Shell>, instance: Instance) -> eframe::Result {
             otd_core::i18n::set_language(catalogs, catalogs.system_lang());
             let ctx = cc.egui_ctx.clone();
             instance.set_waker(move || ctx.request_repaint());
-            Ok(Box::new(App { registry, instance, shell: Shell::new(session_types::session_types()) }))
+            Ok(Box::new(App {
+                registry,
+                instance,
+                shell: Shell::new(session_types::session_types()).with_settings(session_settings::session_settings())?,
+            }))
         }),
     )
 }
