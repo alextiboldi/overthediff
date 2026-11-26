@@ -226,7 +226,7 @@ impl TextCompareView {
             let value = fmt(t(LINE_COLUMN), &[("line", &(head.line + 1).to_string()), ("column", &(head.column + 1).to_string())]);
             Field { id: "cursor", label: t(CURSOR).to_owned(), value }
         });
-        Status { result, fields: cursor.into_iter().collect(), insert: Some(self.insert), load_time: self.load_time }
+        Status { result, fields: cursor.into_iter().chain(self.find_field()).collect(), insert: Some(self.insert), load_time: self.load_time }
     }
 
     /// Draws the Info dialog while it is open. It takes focus when it opens; Esc or Close closes it

@@ -48,6 +48,9 @@
 //!
 //! [`filtered`] holds the Text Editing page's *Number of context lines* and *Show filtered line
 //! counts*, and the rows the display filter leaves in both panes (E07-S3-T3).
+//!
+//! `find_next.rs` holds *Search > Find Next* and *Find Previous*, and the Text Editing option that
+//! fills the find box with the word at the caret (E07-S5-T3).
 
 mod read_only;
 pub mod session;
@@ -63,6 +66,7 @@ mod edited;
 pub mod encoding;
 pub mod file_format;
 pub mod filtered;
+mod find_next;
 mod font_size;
 mod go_to;
 pub mod importance;
@@ -86,6 +90,7 @@ pub use bookmarks::{BOOKMARK, CLEAR_BOOKMARKS, GO_TO_BOOKMARK, TOGGLE_BOOKMARK};
 pub use edit::{COPY, CUT, DELETE, INSERT_TEXT, PASTE, REDO, SELECT_ALL, UNDO};
 pub use edited::{NEXT_EDIT, PREVIOUS_EDIT};
 pub use file_format::{DETECTED, FORMAT_PICKERS, FORMAT_TAB, formats, session_settings};
+pub use find_next::{CURRENT_WORD, CURRENT_WORD_LABEL, FIND_NEXT, FIND_PREVIOUS, NOT_FOUND, TEXT_EDITING, options};
 pub use font_size::{DECREASE_FONT_SIZE, INCREASE_FONT_SIZE, RESET_FONT_SIZE};
 pub use go_to::{COLUMN, GO_TO, GO_TO_LINE, LINE, NOT_A_NUMBER};
 pub use layout::{Layout, SIDE_BY_SIDE, TOP_AND_BOTTOM};
@@ -197,6 +202,10 @@ pub struct TextCompareView {
     decoded_as: [Option<Encoding>; 2],
     /// The display filter both panes show (`filtered.rs`).
     filter: Filter,
+    /// The last search, which Find Next and Find Previous repeat (`find_next.rs`).
+    search: Option<find_next::Search>,
+    /// Why the last Find Next or Find Previous found nothing, shown and announced.
+    find_said: Option<String>,
 }
 
 impl Drop for TextCompareView {
@@ -251,6 +260,8 @@ impl TextCompareView {
             whitespace: false,
             decoded_as: Default::default(),
             filter: Filter::All,
+            search: None,
+            find_said: None,
         }
     }
 
@@ -422,6 +433,7 @@ impl View for TextCompareView {
         self.save_as_ui(ui);
         self.go_to_ui(ui);
         self.bookmark_ui(ui);
+        self.find_said_ui(ui);
     }
 }
 

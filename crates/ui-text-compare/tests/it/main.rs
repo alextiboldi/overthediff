@@ -8,6 +8,7 @@ mod edited;
 mod encoding;
 mod file_format;
 mod filtered;
+mod find_next;
 mod font_size;
 mod go_to;
 mod header;
