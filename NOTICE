@@ -5,8 +5,14 @@ Third-party material
 
 OverTheDiff is built from Rust crates under their own licences. Cargo.lock pins every one, and
 each crate's licence is in its manifest. Every crate's licence expression offers an option made only
-of identifiers on the Craft licence allowlist (storytold/craft-contrib standards/licences.md). Two
-crates also offer a GPL-family licence as an alternative, and OverTheDiff uses them under their
+of identifiers on the Craft licence allowlist (storytold/craft-contrib standards/licences.md), except
+one MPL-2.0 crate, which that standard allows unmodified:
+
+- option-ext 0.2.0 (MPL-2.0) by Simon Ochsenreither, through dirs-sys (the settings store's
+  per-user folder lookup): used unmodified. Its source is at https://github.com/soc/option-ext and
+  https://crates.io/crates/option-ext, and its licence is the crate's LICENSE.txt.
+
+Two crates also offer a GPL-family licence as an alternative, and OverTheDiff uses them under their
 allowlisted options only:
 
 - self_cell (Apache-2.0 OR GPL-2.0-only), through epaint: used under Apache-2.0.
@@ -34,6 +40,10 @@ them interprocess (0BSD OR Apache-2.0), recvmsg and doctest-file (0BSD), and gen
 Commands, menus and shortcuts (otd-core, otd-ui) use craft-keymap, craft-menu and craft-quit
 (MIT OR Apache-2.0, storytold/craft-libs), with serde and serde_json, and on macOS muda (Apache-2.0
 OR MIT) with keyboard-types and crossbeam-channel (MIT OR Apache-2.0) for the native menu bar.
+
+The settings store (otd-settings) uses craft-settings (MIT OR Apache-2.0, storytold/craft-libs),
+with toml and toml_writer (MIT OR Apache-2.0), and finds the per-user folder with dirs and dirs-sys
+(MIT OR Apache-2.0), redox_users (MIT) on Redox only, and option-ext (MPL-2.0, above).
 
 The local data source moves items to the OS recycle bin or trash with trash (MIT, Copyright 2019
 Artúr Barnabás Kovács), which brings objc2 and objc2-foundation (MIT) on macOS, the windows crates

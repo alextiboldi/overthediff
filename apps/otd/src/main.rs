@@ -6,6 +6,7 @@ mod commands;
 mod handlers;
 mod session_settings;
 mod session_types;
+mod settings;
 
 use std::process::{Command, Stdio};
 
@@ -66,6 +67,8 @@ fn run_window(registry: Registry<Shell>, instance: Instance) -> eframe::Result {
             // On the UI thread, which draws all the text.
             let catalogs = otd_core::i18n::embedded();
             otd_core::i18n::set_language(catalogs, catalogs.system_lang());
+            // After the language, so its notice is translated.
+            let settings = settings::Settings::open(otd_settings::Location::Auto);
             let ctx = cc.egui_ctx.clone();
             instance.set_waker(move || ctx.request_repaint());
             let mut shell =
@@ -79,7 +82,7 @@ fn run_window(registry: Registry<Shell>, instance: Instance) -> eframe::Result {
             if native_menu.is_some() {
                 shell.hide_in_window_menu();
             }
-            Ok(Box::new(App { registry, instance, shell, native_menu }))
+            Ok(Box::new(App { registry, instance, shell, native_menu, settings }))
         }),
     )
 }
@@ -89,6 +92,7 @@ struct App {
     instance: Instance,
     shell: Shell,
     native_menu: Option<craft_menu::NativeMenu>,
+    settings: settings::Settings,
 }
 
 impl eframe::App for App {
@@ -105,8 +109,8 @@ impl eframe::App for App {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Focus);
             if let Err(err) = self.registry.open(incoming, &mut self.shell) {
                 // ponytail: standard error only. The status bar shows the active view's fields
-                // (Q25), not the shell's messages; a window notice comes with the first shell notice
-                // surface (E01-S1-T5 adds one for settings).
+                // (Q25), not the shell's messages, and the settings notice (`settings.rs`) is the
+                // settings store's own.
                 eprintln!("otd: {err}");
             }
         }
@@ -117,11 +121,16 @@ impl eframe::App for App {
                 self.shell.run(&command.id);
             }
         }
+        self.settings.frame(ui);
         self.shell.ui(ui);
         if let Some(menu) = &mut self.native_menu {
             // Its clashes are the system items macOS gives up for the app's shortcuts (⌘W); the
             // layout has already resolved them.
             menu.sync(self.shell.menu_layout(ctx.os()));
         }
+    }
+
+    fn on_exit(&mut self) {
+        self.settings.exit();
     }
 }
