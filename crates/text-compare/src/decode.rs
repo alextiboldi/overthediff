@@ -161,12 +161,23 @@ fn endings(lines: &[Line]) -> LineEndings {
 /// system has none.
 pub fn system_code_page() -> u16 {
     #[cfg(windows)]
-    {
-        // The value GetACP returns, read with safe calls (no `unsafe` needed).
-        let acp = windows_registry::LOCAL_MACHINE.open(r"SYSTEM\CurrentControlSet\Control\Nls\CodePage").and_then(|key| key.get_string("ACP"));
-        if let Some(page) = acp.ok().and_then(|page| page.trim().parse().ok()) {
-            return page;
-        }
+    if let Some(page) = windows_code_page() {
+        return page;
     }
     WESTERN
+}
+
+/// Windows' ANSI code page, the value GetACP returns, read from the registry with safe calls.
+#[cfg(windows)]
+fn windows_code_page() -> Option<u16> {
+    let key = windows_registry::LOCAL_MACHINE.open(r"SYSTEM\CurrentControlSet\Control\Nls\CodePage").ok()?;
+    key.get_string("ACP").ok()?.trim().parse().ok()
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    #[test]
+    fn windows_names_its_code_page() {
+        assert!(super::windows_code_page().is_some(), "a wrong key, value name or type would fall back to Windows-1252 unnoticed");
+    }
 }

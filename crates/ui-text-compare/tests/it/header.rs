@@ -28,3 +28,26 @@ fn each_pane_shows_its_decoded_text_with_the_detected_encoding_and_line_endings(
     let path = format!("Path: {}", left.display());
     assert!(harness.query_by_label(&path).is_some(), "the left header names its file");
 }
+
+/// Only Unix's `SystemTime` reaches past the dates chrono holds; Windows' ends in the year 30828.
+#[cfg(unix)]
+#[test]
+fn a_modified_time_past_the_calendar_shows_as_unknown_instead_of_panicking() {
+    use otd_text_compare::{Encoding, LineEndings, Pane};
+    use std::time::{Duration, UNIX_EPOCH};
+
+    let pane = Pane {
+        path: "far.txt".to_owned(),
+        size: 0,
+        // About 35 million years on.
+        modified: UNIX_EPOCH.checked_add(Duration::from_secs(1 << 50)),
+        format: "Plain text".to_owned(),
+        encoding: Encoding::Utf8 { bom: false },
+        endings: LineEndings::None,
+        lines: Vec::new(),
+    };
+    assert!(pane.modified.is_some());
+    let mut harness = Harness::builder().build_ui_state(|ui, pane: &mut Pane| otd_ui_text_compare::file_info_header(ui, pane), pane);
+    harness.run();
+    assert!(harness.query_by_label("Modified: Unknown").is_some());
+}

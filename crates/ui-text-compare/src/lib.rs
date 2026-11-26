@@ -8,6 +8,8 @@
 //!
 //! ponytail: the text is a plain list of lines until E07-S1-T4 draws the aligned comparison.
 
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use chrono::{DateTime, Local};
 use egui::{RichText, ScrollArea, Ui};
 use otd_core::i18n::{file_size, fmt, t};
@@ -97,25 +99,33 @@ impl View for TextCompareView {
         self.reload_if_changed();
         ui.columns(2, |columns| {
             for (side, column) in columns.iter_mut().enumerate() {
-                column.push_id(side, |ui| match self.panes.get(side).and_then(Option::as_ref) {
-                    None => {}
-                    Some(Err(message)) => {
-                        ui.label(message);
-                    }
-                    Some(Ok(pane)) => {
-                        file_info_header(ui, pane);
-                        ui.separator();
-                        lines(ui, pane);
-                    }
+                column.push_id(side, |ui| {
+                    // The side's caption, so the two headers' identical facts read apart.
+                    ui.strong(t(if side == 0 { LEFT } else { RIGHT }));
+                    pane(ui, self.panes.get(side).and_then(Option::as_ref));
                 });
             }
         });
     }
 }
 
+fn pane(ui: &mut Ui, pane: Option<&Result<Pane, String>>) {
+    match pane {
+        None => {}
+        Some(Err(message)) => {
+            ui.label(message);
+        }
+        Some(Ok(pane)) => {
+            file_info_header(ui, pane);
+            ui.separator();
+            lines(ui, pane);
+        }
+    }
+}
+
 /// A pane's file info header: one labelled line per fact.
 pub fn file_info_header(ui: &mut Ui, pane: &Pane) {
-    let modified = pane.modified.map_or_else(|| t(UNKNOWN).to_owned(), |time| DateTime::<Local>::from(time).format("%Y-%m-%d %H:%M:%S").to_string());
+    let modified = pane.modified.and_then(local_time).unwrap_or_else(|| t(UNKNOWN).to_owned());
     let fields = [
         (PATH, pane.path.clone()),
         (SIZE, file_size(pane.size)),
@@ -127,6 +137,16 @@ pub fn file_info_header(ui: &mut Ui, pane: &Pane) {
     for (label, value) in fields {
         ui.label(fmt(t(FIELD), &[("label", t(label)), ("value", &value)]));
     }
+}
+
+/// `time` in the local time zone, to the second; `None` outside the dates chrono holds. (chrono's
+/// `From<SystemTime>` panics there, and a file system or source can report any time.)
+fn local_time(time: SystemTime) -> Option<String> {
+    let seconds = match time.duration_since(UNIX_EPOCH) {
+        Ok(after) => i64::try_from(after.as_secs()).ok()?,
+        Err(before) => i64::try_from(before.duration().as_secs()).ok()?.checked_neg()?,
+    };
+    Some(DateTime::from_timestamp(seconds, 0)?.with_timezone(&Local).format("%Y-%m-%d %H:%M:%S").to_string())
 }
 
 fn encoding_name(encoding: Encoding) -> String {
