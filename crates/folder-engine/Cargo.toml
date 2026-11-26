@@ -14,3 +14,6 @@ workspace = true
 otd-source = { path = "../source" }
 # CRC-32 for the CRC content test (MIT OR Apache-2.0, already in the lock file through png).
 crc32fast = "1.5"
+# NFC for aligning names across Unicode normalization forms (Unicode-3.0, already in the lock file
+# through craft-i18n).
+icu_normalizer = "2.3"

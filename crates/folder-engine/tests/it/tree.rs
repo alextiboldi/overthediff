@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use otd_folder_engine::{Criteria, Cues, Row, Status, TreeScan, TreeSide, compare_trees};
+use otd_folder_engine::{Alignment, Criteria, Cues, Row, Status, TreeScan, TreeSide, compare_trees};
 use otd_source::{DataSource, ErrorKind, Item, MemorySource, SourceError};
 
 use crate::fixture::{at, caps};
@@ -32,7 +32,7 @@ fn scan(source: MemorySource, background: bool) -> TreeScan {
 /// Both trees fully scanned, compared with `visible` as the predicate.
 fn rows(left: MemorySource, right: MemorySource, visible: &dyn Fn(TreeSide, &Path, &Item) -> bool) -> Vec<Row> {
     let case_sensitive = left.capabilities().case_sensitive && right.capabilities().case_sensitive;
-    compare_trees(&scan(left, true), &scan(right, true), &CRITERIA, case_sensitive, visible)
+    compare_trees(&scan(left, true), &scan(right, true), &CRITERIA, Alignment::new(case_sensitive), visible)
 }
 
 fn all(_: TreeSide, _: &Path, _: &Item) -> bool {
@@ -113,7 +113,7 @@ fn folders_whose_names_differ_only_in_case_compare_their_contents() {
 fn a_folder_not_yet_scanned_is_unknown_not_same() {
     let tree = || MemorySource::new(caps(true)).file("d/x.txt", "x", at(1));
     // Background scanning off and `d` never opened: only the base is listed.
-    let rows = compare_trees(&scan(tree(), false), &scan(tree(), false), &CRITERIA, true, &all);
+    let rows = compare_trees(&scan(tree(), false), &scan(tree(), false), &CRITERIA, Alignment::new(true), &all);
     let cues = Cues::of(&rows);
     assert!(cues.contains(&Status::Unknown) && !cues.contains(&Status::Same), "{cues:?}");
 }
@@ -136,7 +136,7 @@ fn no_orphans(cues: Cues) -> bool {
 #[test]
 fn items_facing_a_folder_not_yet_listed_on_the_other_side_are_unknown_not_orphans() {
     let tree = || MemorySource::new(caps(true)).file("d/sub/x.txt", "x", at(1));
-    let rows = compare_trees(&scan(tree(), true), &scan(tree(), false), &CRITERIA, true, &all);
+    let rows = compare_trees(&scan(tree(), true), &scan(tree(), false), &CRITERIA, Alignment::new(true), &all);
     for cues in [row(&rows, "d").cues(), Cues::of(&rows)] {
         assert!(cues.contains(&Status::Unknown) && no_orphans(cues), "{cues:?}");
     }
@@ -146,7 +146,7 @@ fn items_facing_a_folder_not_yet_listed_on_the_other_side_are_unknown_not_orphan
 fn items_facing_a_base_not_yet_listed_are_unknown_not_orphans() {
     let tree = || MemorySource::new(caps(true)).file("x.txt", "x", at(1));
     let (unlisted, _events) = TreeScan::new(Arc::new(tree()), "", false);
-    let cues = Cues::of(&compare_trees(&scan(tree(), true), &unlisted, &CRITERIA, true, &all));
+    let cues = Cues::of(&compare_trees(&scan(tree(), true), &unlisted, &CRITERIA, Alignment::new(true), &all));
     assert!(cues.contains(&Status::Unknown) && no_orphans(cues), "{cues:?}");
 }
 
@@ -167,4 +167,16 @@ fn the_contents_of_a_hidden_folder_are_hidden_and_add_no_cues() {
     let d = row(&rows, "d");
     assert!(d.children.iter().all(Row::hidden), "{d:#?}");
     assert!(Cues::of(&rows).is_empty());
+}
+
+/// The normalization switch pairs folders too, so a folder spelt NFD on one side and NFC on the
+/// other compares its contents instead of showing two orphan trees.
+#[test]
+fn with_the_normalization_switch_on_an_nfd_folder_and_its_nfc_twin_compare_their_contents() {
+    let left = MemorySource::new(caps(true)).file("caf\u{e9}/a.txt", "x", at(1));
+    let right = MemorySource::new(caps(true)).file("cafe\u{301}/a.txt", "x", at(1));
+    let alignment = Alignment { normalization: true, ..Alignment::new(true) };
+    let rows = compare_trees(&scan(left, true), &scan(right, true), &CRITERIA, alignment, &all);
+    let folder = row(&rows, "caf\u{e9}");
+    assert_eq!(row(&folder.children, "a.txt").status, Status::Same);
 }

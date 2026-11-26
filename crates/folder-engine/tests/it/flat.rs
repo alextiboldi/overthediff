@@ -3,7 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
-use otd_folder_engine::{Aligned, Placed, align, align_flat};
+use otd_folder_engine::{Aligned, Alignment, Placed, align, align_flat};
 use otd_source::{DataSource, ItemKind, Links, MemorySource};
 
 use crate::fixture::{at, caps};
@@ -23,7 +23,8 @@ fn placed(source: &MemorySource, folder: &Path) -> Vec<Placed> {
 /// The (left path, right path) of every row that has both sides, through per-folder alignment
 /// that descends into folders present on both sides.
 fn paired_per_folder(left: &MemorySource, right: &MemorySource, folder: &Path) -> Vec<(PathBuf, PathBuf)> {
-    let rows = align(left.list(folder, Links::Report).expect("left lists"), right.list(folder, Links::Report).expect("right lists"), true);
+    let rows =
+        align(left.list(folder, Links::Report).expect("left lists"), right.list(folder, Links::Report).expect("right lists"), Alignment::new(true));
     rows.into_iter()
         .flat_map(|row| match (row.left, row.right) {
             (Some(l), Some(r)) if l.kind == ItemKind::Folder && r.kind == ItemKind::Folder => paired_per_folder(left, right, &folder.join(&l.name)),
@@ -46,7 +47,7 @@ fn some(path: &str) -> Option<PathBuf> {
 #[test]
 fn a_file_aligns_with_its_namesake_in_another_subfolder_when_flattened_and_not_otherwise() {
     let (left, right) = (tree(&["a/x.txt"]), tree(&["b/x.txt"]));
-    let flat = align_flat(placed(&left, Path::new("")), placed(&right, Path::new("")), true);
+    let flat = align_flat(placed(&left, Path::new("")), placed(&right, Path::new("")), Alignment::new(true));
     assert_eq!(paths(&flat), [(some("a/x.txt"), some("b/x.txt"))], "folders are not rows when flattened");
     assert!(paired_per_folder(&left, &right, Path::new("")).is_empty());
 }
@@ -56,18 +57,18 @@ fn a_file_aligns_with_its_namesake_in_another_subfolder_when_flattened_and_not_o
 fn among_files_of_one_name_the_same_path_pairs_first_then_folder_order_and_the_rest_are_orphans() {
     let left = placed(&tree(&["c/x.txt", "b/x.txt", "a/x.txt", "z.txt"]), Path::new(""));
     let right = placed(&tree(&["d/x.txt", "b/x.txt"]), Path::new(""));
-    let rows = align_flat(left.clone(), right.clone(), true);
+    let rows = align_flat(left.clone(), right.clone(), Alignment::new(true));
     let expected = [(some("b/x.txt"), some("b/x.txt")), (some("a/x.txt"), some("d/x.txt")), (some("c/x.txt"), None), (some("z.txt"), None)];
     assert_eq!(paths(&rows), expected);
     let reversed = |side: &[Placed]| side.iter().rev().cloned().collect::<Vec<_>>();
-    assert_eq!(align_flat(reversed(&left), reversed(&right), true), rows);
+    assert_eq!(align_flat(reversed(&left), reversed(&right), Alignment::new(true)), rows);
 }
 
 /// When matching is case-insensitive, a path that differs only in case, in its name or its folder,
 /// is the same path, so it pairs before an exact-name match in another folder.
 #[test]
 fn a_same_path_match_that_differs_only_in_case_pairs_before_an_exact_name_in_another_folder() {
-    let flat = |l: &[&str], r: &[&str]| paths(&align_flat(placed(&tree(l), Path::new("")), placed(&tree(r), Path::new("")), false));
+    let flat = |l: &[&str], r: &[&str]| paths(&align_flat(placed(&tree(l), Path::new("")), placed(&tree(r), Path::new("")), Alignment::new(false)));
     assert_eq!(flat(&["a/X.txt", "b/x.txt"], &["a/x.txt"]), [(some("a/X.txt"), some("a/x.txt")), (some("b/x.txt"), None)]);
     assert_eq!(flat(&["A/x.txt", "B/x.txt"], &["b/x.txt"]), [(some("B/x.txt"), some("b/x.txt")), (some("A/x.txt"), None)]);
 }
