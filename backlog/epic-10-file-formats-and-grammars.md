@@ -124,7 +124,8 @@ As a developer, I can see source code syntax-highlighted in Text Compare so that
 - E10-S7's built-in document converters, the other half of Q8, stay with E10-S7-T1.
 
 #### Tasks
-- **E10-S2-T1** — Decide the starter language set and built-in format list (Q8) · size: S · depends: — · flags: `decision`
+- **E10-S2-T1** — Decide the starter language set and built-in format list (Q8) · size: S · depends: — · flags: `decision` · status: done
+  - Implemented: the decision is recorded in E10-S2's `#### Decisions` section, confirmed by the operator on 2026-11-25 as proposed: 15 built-in Text formats with grammars (each slash-joined pair is one format), non-overlapping masks for each, plain text as E02-S1's existing catch-all format, POSIX-family shells only, and Comment, String and Keyword as the shared elements; `00-index.md` and `PRD.md` mark the E10-S2 half of Q8 decided. Docs only, no code. Checks: `cargo xtask ci` on macOS after rebasing onto main, plus pull-request CI (Linux, macOS). Pull request: https://github.com/alextiboldi/overthediff/pull/122
   - AC: decision recorded in this story. Proposed default:
     - C/C++, C#, Java, JavaScript/TypeScript, Python, Go, Rust
     - HTML/XML, CSS
