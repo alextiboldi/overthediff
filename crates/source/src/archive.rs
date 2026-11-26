@@ -9,8 +9,8 @@
 //! - Times are the entries' DOS times, which have no zone: they are local time, in 2 s steps.
 //! - Attributes are the DOS attribute byte every entry stores. A zip keeps no owner or group, so
 //!   the Unix mode some entries carry isn't reported.
-//! - An entry whose name climbs out with `..` is listed at the root under its whole name, with an
-//!   error, so it can't be reached or copied. A file that is also another entry's folder is listed
+//! - An entry whose name climbs out with `..`, or sits more than 256 folders deep, is listed at
+//!   the root under its whole name, with an error, so it can't be reached or copied. A file that is also another entry's folder is listed
 //!   as the folder, with an error.
 //!
 //! ponytail: read-only, every write refused, until E04-S2-T2 writes archives. Symbolic links in an
@@ -19,7 +19,7 @@
 //! stored CRC, time or attributes, or an entry reader that owns its archive, so this module reads
 //! the directory and entries through the `zip` crate it wraps (#132).
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
@@ -42,6 +42,11 @@ const MAX_ENTRIES: u64 = 1 << 20;
 const MAX_METADATA_BYTES: u64 = 256 << 20;
 /// How much of an entry each hand-over between the reading thread and its reader holds.
 const CHUNK: usize = 64 << 10;
+/// Most folders an entry may sit in. A deeper one is listed at the root with an error, as copying
+/// it would take a call per folder.
+const MAX_DEPTH: usize = 256;
+/// Where [`ZipSource::nodes`] keeps the root.
+const ROOT: usize = 0;
 /// The DOS attribute every folder has.
 const DIRECTORY: u32 = 0x10;
 
@@ -54,16 +59,17 @@ pub struct ZipSource {
     name: String,
     storage: Arc<Mutex<Box<dyn Storage>>>,
     metadata: Arc<ZipArchiveMetadata>,
-    /// Every file and folder by its path, `/` between names; the root is "".
-    nodes: HashMap<String, Node>,
+    /// Every file and folder; the root is [`ROOT`].
+    nodes: Vec<Node>,
 }
 
 struct Node {
     item: Item,
     /// A file's index in the directory.
     entry: Option<usize>,
-    /// A folder's children, by path.
-    children: Vec<String>,
+    /// A folder's children by name, as indexes into [`ZipSource::nodes`]. Names, not paths, so a
+    /// deeply nested entry costs its name's length, not its length times its depth.
+    children: BTreeMap<String, usize>,
 }
 
 impl ZipSource {
@@ -87,8 +93,8 @@ impl ZipSource {
         indexing.finish();
         let metadata = archive.metadata();
         let storage: Box<dyn Storage> = Box::new(archive.into_inner());
-        let mut source = Self { name: name.clone(), storage: Arc::new(Mutex::new(storage)), metadata: Arc::clone(&metadata), nodes: HashMap::new() };
-        source.nodes.insert(String::new(), Node::folder(String::new(), modified));
+        let root = Node::folder(String::new(), modified);
+        let mut source = Self { name: name.clone(), storage: Arc::new(Mutex::new(storage)), metadata: Arc::clone(&metadata), nodes: vec![root] };
         for index in 0..metadata.len() {
             let entry = metadata.entry(index).map_err(|e| damaged(&e))?;
             source.add(index, &entry, modified);
@@ -102,58 +108,70 @@ impl ZipSource {
         let modified = entry.last_modified().and_then(local_time).unwrap_or(fallback);
         let names: Vec<&str> = raw.split(['/', '\\']).filter(|name| !name.is_empty() && *name != ".").collect();
         let Some((last, parents)) = names.split_last() else { return };
-        if names.contains(&"..") {
-            let error = SourceError::new(ErrorKind::NotFound, format!("{raw} in {} points outside the archive", self.name));
+        let unreachable = if names.contains(&"..") {
+            Some("points outside the archive")
+        } else if names.len() > MAX_DEPTH {
+            Some("is nested deeper than folders can be copied")
+        } else {
+            None
+        };
+        if let Some(why) = unreachable {
+            let error = SourceError::new(ErrorKind::NotFound, format!("{raw} in {} {why}", self.name));
             let item = Item { error: Some(error), ..file_item(raw.clone(), entry, modified) };
-            self.insert("", raw, Node { item, entry: None, children: Vec::new() });
+            self.insert(ROOT, &raw, Node { item, entry: None, children: BTreeMap::new() });
             return;
         }
-        let mut parent = String::new();
+        let mut parent = ROOT;
         for name in parents {
-            parent = self.folder(&parent, name, fallback);
+            parent = self.folder(parent, name, fallback);
         }
         if entry.is_dir() {
-            let key = self.folder(&parent, last, modified);
-            if let Some(node) = self.nodes.get_mut(&key) {
+            let at = self.folder(parent, last, modified);
+            if let Some(node) = self.nodes.get_mut(at) {
                 node.item.modified = Some(modified);
             }
         } else {
-            let node = Node { item: file_item((*last).to_owned(), entry, modified), entry: Some(index), children: Vec::new() };
-            self.insert(&parent, join(&parent, last), node);
+            let node = Node { item: file_item((*last).to_owned(), entry, modified), entry: Some(index), children: BTreeMap::new() };
+            self.insert(parent, last, node);
         }
     }
 
-    /// The path of folder `name` in `parent`, made if it isn't there. A file in its place becomes
-    /// the folder, with an error, so what is inside stays reachable.
-    fn folder(&mut self, parent: &str, name: &str, modified: SystemTime) -> String {
-        let key = join(parent, name);
-        match self.nodes.get_mut(&key) {
-            Some(node) if node.item.kind == ItemKind::File => {
-                *node = Node::folder(name.to_owned(), modified);
-                node.item.error = Some(clash(&self.name, &key));
-            }
-            Some(_) => {}
-            None => self.insert(parent, key.clone(), Node::folder(name.to_owned(), modified)),
+    /// Folder `name` in `parent`, made if it isn't there. A file in its place becomes the folder,
+    /// with an error, so what is inside stays reachable.
+    fn folder(&mut self, parent: usize, name: &str, modified: SystemTime) -> usize {
+        let Some(&at) = self.nodes.get(parent).and_then(|node| node.children.get(name)) else {
+            return self.insert(parent, name, Node::folder(name.to_owned(), modified));
+        };
+        if let Some(node) = self.nodes.get_mut(at).filter(|node| node.item.kind == ItemKind::File) {
+            *node = Node::folder(name.to_owned(), modified);
+            node.item.error = Some(clash(&self.name, name));
         }
-        key
+        at
     }
 
-    /// Adds `node` at `key` in `parent`. When something is already there, it stays and carries
+    /// Adds `node` as `name` in `parent`. When something is already there, it stays and carries
     /// the error.
-    fn insert(&mut self, parent: &str, key: String, node: Node) {
-        if let Some(existing) = self.nodes.get_mut(&key) {
-            existing.item.error = Some(clash(&self.name, &key));
-            return;
+    fn insert(&mut self, parent: usize, name: &str, node: Node) -> usize {
+        if let Some(&at) = self.nodes.get(parent).and_then(|folder| folder.children.get(name)) {
+            if let Some(existing) = self.nodes.get_mut(at) {
+                existing.item.error = Some(clash(&self.name, name));
+            }
+            return at;
         }
+        let at = self.nodes.len();
+        self.nodes.push(node);
         if let Some(folder) = self.nodes.get_mut(parent) {
-            folder.children.push(key.clone());
+            folder.children.insert(name.to_owned(), at);
         }
-        self.nodes.insert(key, node);
+        at
     }
 
     fn node(&self, path: &Path) -> Result<&Node, SourceError> {
-        let key = segments(path)?.join("/");
-        self.nodes.get(&key).ok_or_else(|| SourceError::new(ErrorKind::NotFound, format!("{key} isn't in {}", self.name)))
+        let mut node = self.nodes.get(ROOT);
+        for name in segments(path)? {
+            node = node.and_then(|folder| folder.children.get(&name)).and_then(|&at| self.nodes.get(at));
+        }
+        node.ok_or_else(|| SourceError::new(ErrorKind::NotFound, format!("{} isn't in {}", path.display(), self.name)))
     }
 
     fn read_only(&self) -> SourceError {
@@ -175,7 +193,7 @@ impl Node {
             container: false,
             error: None,
         };
-        Self { item, entry: None, children: Vec::new() }
+        Self { item, entry: None, children: BTreeMap::new() }
     }
 }
 
@@ -195,12 +213,8 @@ fn file_item(name: String, entry: &ZipFileEntry<'_>, modified: SystemTime) -> It
     }
 }
 
-fn clash(archive: &str, key: &str) -> SourceError {
-    SourceError::new(ErrorKind::Io, format!("{archive} holds more than one entry named {key}"))
-}
-
-fn join(parent: &str, name: &str) -> String {
-    if parent.is_empty() { name.to_owned() } else { format!("{parent}/{name}") }
+fn clash(archive: &str, name: &str) -> SourceError {
+    SourceError::new(ErrorKind::Io, format!("{archive} holds more than one entry named {name}"))
 }
 
 /// A DOS time as local time. A date that doesn't exist, or a time a clock change skipped, is `None`.
@@ -227,7 +241,7 @@ impl DataSource for ZipSource {
         if node.item.kind != ItemKind::Folder {
             return Err(SourceError::new(ErrorKind::Io, format!("{} isn't a folder", folder.display())));
         }
-        Ok(node.children.iter().filter_map(|key| self.nodes.get(key)).map(|child| child.item.clone()).collect())
+        Ok(node.children.values().filter_map(|&at| self.nodes.get(at)).map(|child| child.item.clone()).collect())
     }
 
     fn stat(&self, path: &Path, _: Links) -> Result<Item, SourceError> {

@@ -177,6 +177,24 @@ fn odd_entry_names_are_listed_where_they_lead_or_with_an_error_never_dropped() {
     assert_eq!(source.list(Path::new("both"), Links::Report).unwrap()[0].name, "inner.txt");
 }
 
+#[test]
+fn an_entry_nested_thousands_of_folders_deep_lists_at_the_root_with_an_error() {
+    // 30,000 folders in one name, near the longest a zip allows: indexed by path, its folders
+    // would take gigabytes, and copying them a call per folder would overflow the stack.
+    let deep = format!("{}x.txt", "a/".repeat(30_000));
+    let mut zip = ZipWriter::new(Cursor::new(Vec::new()));
+    for name in [deep.as_str(), "ok.txt"] {
+        zip.start_file(name, SimpleFileOptions::default()).unwrap();
+        zip.write_all(b"x").unwrap();
+    }
+    let (_dir, path) = save(&zip.finish().unwrap().into_inner());
+    let source = ZipSource::open(path).unwrap();
+    let root = source.list(Path::new(""), Links::Report).unwrap();
+    let listed = root.iter().find(|item| item.name == deep).unwrap();
+    assert!(listed.error.is_some(), "{:?}", listed.error);
+    assert!(root.iter().any(|item| item.name == "ok.txt" && item.error.is_none()));
+}
+
 /// Lists every folder and reads every file, ignoring errors.
 fn walk(source: &ZipSource, folder: &Path) {
     let Ok(items) = source.list(folder, Links::Report) else { return };
