@@ -135,8 +135,13 @@ fn prompt_open(harness: &Harness<'_, Shell>) -> bool {
     harness.query_by_role(Role::AlertDialog).is_some()
 }
 
-/// The labels in the Session menu, at any depth, as the shell lays it out.
+/// The labels in the Session menu, at any depth, as the shell lays it out on Windows.
 fn session_menu(harness: &Harness<'_, Shell>) -> Vec<String> {
+    session_menu_on(harness, OperatingSystem::Windows)
+}
+
+/// The labels in the Session menu, at any depth, as the shell lays it out on `os`.
+fn session_menu_on(harness: &Harness<'_, Shell>, os: OperatingSystem) -> Vec<String> {
     fn walk(nodes: &[craft_menu::Node], out: &mut Vec<String>) {
         for node in nodes {
             match node {
@@ -149,7 +154,7 @@ fn session_menu(harness: &Harness<'_, Shell>) -> Vec<String> {
             }
         }
     }
-    let bar = harness.state().menu_layout(OperatingSystem::Windows).bar;
+    let bar = harness.state().menu_layout(os).bar;
     let mut out = Vec::new();
     for menu in bar.menus.iter().filter(|menu| menu.title == "Session") {
         walk(&menu.children, &mut out);
@@ -171,9 +176,12 @@ fn set_description(harness: &mut Harness<'_, Shell>, text: &str) {
 #[test]
 fn new_session_has_an_entry_per_registered_type_and_each_opens_an_empty_session_of_it_in_a_new_tab() {
     let mut harness = harness();
-    let menu = session_menu(&harness);
-    let at = menu.iter().position(|label| label == NEW_SESSION).expect("a New Session submenu");
-    assert_eq!(menu[at + 1..at + 3], [ALPHA, BETA], "one entry per registered type, in registration order");
+    // The macOS layout is what the native menu bar shows.
+    for os in [OperatingSystem::Mac, OperatingSystem::Windows, OperatingSystem::Nix] {
+        let menu = session_menu_on(&harness, os);
+        let at = menu.iter().position(|label| label == NEW_SESSION).unwrap_or_else(|| panic!("a New Session submenu on {os:?}"));
+        assert_eq!(menu[at + 1..at + 3], [ALPHA, BETA], "one entry per registered type, in registration order, on {os:?}");
+    }
 
     run_from_session_menu(&mut harness, &[NEW_SESSION, BETA]);
     assert_eq!(tab_names(&harness), [HOME, BETA], "a new tab");
@@ -225,6 +233,7 @@ fn clear_session_on_an_unsaved_view_asks_first_and_cancel_keeps_it() {
     press(&mut harness, Modifiers::NONE, Key::Escape);
     assert!(!prompt_open(&harness));
     assert_eq!(description(&mut harness).as_deref(), Some("notes"), "Cancel keeps the view");
+    assert_eq!(focused(&harness), Some((Role::Tab, ALPHA.to_owned())), "and focus goes to its tab");
 
     run_from_session_menu(&mut harness, &[CLEAR_SESSION]);
     for _ in 0..10 {

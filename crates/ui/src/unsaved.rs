@@ -32,8 +32,8 @@ pub(crate) struct Prompt {
     error: Option<String>,
     /// Focus moves into the dialog on its next draw.
     focus: bool,
-    /// What had focus when a Close Tab prompt opened, to give it back on Cancel. Exit gives it to
-    /// the selected tab, since it may have selected another.
+    /// What had focus when a Close Tab prompt opened, to give it back on Cancel. Exit and Clear
+    /// Session give it to the selected tab.
     return_to: Option<Id>,
 }
 
@@ -122,7 +122,8 @@ impl Shell {
         let Some(prompt) = &mut self.prompt else { return };
         let index = prompt.queue[0];
         let focus = std::mem::take(&mut prompt.focus);
-        if focus && !prompt.exit && prompt.return_to.is_none() {
+        // Clear Session runs from the menu, whose row is gone by Cancel: focus goes to the selected tab.
+        if focus && !prompt.exit && prompt.replace.is_none() && prompt.return_to.is_none() {
             prompt.return_to = ctx.memory(|memory| memory.focused());
         }
         let Some(answer) = dialog(ctx, &title(&self.tabs[index]), prompt.error.as_deref(), focus) else { return };
