@@ -50,7 +50,8 @@ OR MIT) with keyboard-types and crossbeam-channel (MIT OR Apache-2.0) for the na
 
 The settings store (otd-settings) uses craft-settings (MIT OR Apache-2.0, storytold/craft-libs),
 with toml and toml_writer (MIT OR Apache-2.0), and finds the per-user folder with dirs and dirs-sys
-(MIT OR Apache-2.0), redox_users (MIT) on Redox only, and option-ext (MPL-2.0, above).
+(MIT OR Apache-2.0), redox_users (MIT) on Redox only, and option-ext (MPL-2.0, above). It writes
+each saved session's file crash-safely with craft-atomic (MIT OR Apache-2.0, storytold/craft-libs).
 
 The path edit (otd-ui) shows the OS file and folder pickers with craft-dialogs (MIT OR Apache-2.0,
 storytold/craft-libs), on rfd (MIT, Copyright (c) 2022 Bartłomiej Maryńczak), which uses pollster

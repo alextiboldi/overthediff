@@ -55,3 +55,23 @@ fn opening_and_reading_a_damaged_settings_file_never_panics_or_hangs() {
         let _ = otd_settings::session_defaults::read(&mut store, &settings, "folder");
     });
 }
+
+#[test]
+fn loading_a_damaged_session_file_never_panics_or_hangs() {
+    use otd_core::session::Setting;
+    let seed = "name = \"x\"\ntype = \"t\"\nspecs = [\"/a\", \"/b\"]\ndescription = \"d\"\n\n[settings.Rules]\nwrap = true\nwidth = 4.5\nunit = \"Words\"\naccent = \"#0a141eff\"\n";
+    let settings: Vec<Setting> =
+        [("wrap", Value::Bool(false)), ("width", Value::Number(4.0)), ("unit", Value::Choice("Lines".into())), ("accent", Value::Colour([0; 4]))]
+            .into_iter()
+            .map(|(id, default)| Setting { session_type: "t", tab: "Rules", id, label: id, default, choices: &["Lines", "Words"] })
+            .collect();
+    hammer(&HammerConfig::new("session file", 300), seed.as_bytes(), move |data| {
+        let Ok(dir) = tempfile::tempdir() else { return };
+        let folder = dir.path().join(otd_settings::sessions::FOLDER);
+        if std::fs::create_dir_all(&folder).and_then(|()| std::fs::write(folder.join("s-x.toml"), data)).is_err() {
+            return;
+        }
+        let (store, _notice) = otd_settings::open(Location::Dir(dir.path().to_path_buf()));
+        let _ = otd_settings::sessions::load(&store, &settings);
+    });
+}

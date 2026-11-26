@@ -29,6 +29,7 @@
 
 pub mod options;
 pub mod session_defaults;
+pub mod sessions;
 
 use std::collections::BTreeSet;
 use std::ops::{Deref, DerefMut};
