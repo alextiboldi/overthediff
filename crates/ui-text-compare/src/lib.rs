@@ -8,6 +8,8 @@
 //! *File > Open File* and the hidden *Open File on File System*, and [`OpenFiles`] opens two files
 //! given on the command line (E07-S1-T2).
 //!
+//! `edited.rs` holds *Search > Next Edit* and *Previous Edit* (E07-S2-T3).
+//!
 //! Below the headers, [`aligned`] draws the two files aligned row by row, with their differences
 //! highlighted, scrolling together (E07-S1-T4). Each pane body is also an editor, compared again as
 //! the user types, with the Edit menu's commands (E07-S1-T5, `edit.rs`).
@@ -39,6 +41,7 @@ mod edit;
 mod font_size;
 mod go_to;
 mod layout;
+mod edited;
 mod open;
 mod save;
 
@@ -56,6 +59,7 @@ pub use edit::{COPY, CUT, DELETE, INSERT_TEXT, PASTE, REDO, SELECT_ALL, UNDO};
 pub use font_size::{DECREASE_FONT_SIZE, INCREASE_FONT_SIZE, RESET_FONT_SIZE};
 pub use go_to::{COLUMN, GO_TO, GO_TO_LINE, LINE, NOT_A_NUMBER};
 pub use layout::{Layout, SIDE_BY_SIDE, TOP_AND_BOTTOM};
+pub use edited::{NEXT_EDIT, PREVIOUS_EDIT};
 pub use open::{OPEN_FILE, OPEN_FILE_ON_FILE_SYSTEM, OpenFiles, commands};
 
 pub use read_only::{COMPARISON_CANCELLED, COMPARISON_FAILED, ENCODING_LOSSY, FILE_READ_ONLY, LOCATION};

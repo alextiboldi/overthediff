@@ -23,7 +23,8 @@ const PARAMS: &[Param] = &[Param::optional("side", Kind::Choice(&[LEFT, RIGHT]))
 
 /// Text Compare's commands, for `apps/otd/src/commands.rs`: these two, the File menu's save
 /// commands (`save.rs`), then the Session menu's ([`crate::session`]), the Edit menu's, the hidden font size
-/// commands (`font_size.rs`), the Search menu's bookmarks and the View menu's layouts.
+/// commands (`font_size.rs`), the Search menu's Go To (`go_to.rs`), bookmarks and Next and Previous Edit
+/// (`edited.rs`), and the View menu's layouts.
 // ponytail: both open the OS picker on the local file system, the one data source with a picker so
 // far; Open File browses other sources once they have one.
 pub fn commands() -> Vec<Command<Shell>> {
@@ -40,6 +41,7 @@ pub fn commands() -> Vec<Command<Shell>> {
         .chain(crate::go_to::commands())
         .chain(crate::bookmarks::commands())
         .chain(crate::layout::commands())
+        .chain(crate::edited::commands())
         .collect()
 }
 

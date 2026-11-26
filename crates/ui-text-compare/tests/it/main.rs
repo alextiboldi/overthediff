@@ -5,6 +5,7 @@ mod bookmarks;
 mod edit;
 mod font_size;
 mod go_to;
+mod edited;
 mod header;
 mod layout;
 mod open;

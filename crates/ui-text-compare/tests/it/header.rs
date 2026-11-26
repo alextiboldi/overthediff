@@ -50,6 +50,7 @@ fn a_modified_time_past_the_calendar_shows_as_unknown_instead_of_panicking() {
         selection: Default::default(),
         history: Default::default(),
         bookmarks: Default::default(),
+        edited: Vec::new(),
     };
     assert!(pane.modified.is_some());
     let mut harness = Harness::builder().build_ui_state(|ui, pane: &mut Pane| otd_ui_text_compare::file_info_header(ui, pane), pane);
