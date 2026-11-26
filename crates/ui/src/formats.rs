@@ -4,9 +4,11 @@
 //! The shell holds the app's file-format registry (`otd-format`), [`Shell::formats`]. The manager
 //! is a dialog listing its single ordered list, top first: a row per format with a checkbox named
 //! by the format that enables or disables it, its kind and its mask. It changes the registry
-//! itself, so resolution follows at once. Move Up and Move Down move the selected row, the one
-//! whose checkbox last had focus or whose row was last clicked; each move is announced. Close and
-//! Esc close it and give focus back to the window. [`commands`] has the menu command and the same
+//! itself, so resolution follows at once. The list is one Tab stop, as a grid is: focus sits on the
+//! selected row's checkbox, Up and Down select and focus the row above or below, and Tab and
+//! Shift+Tab leave the list, so reaching the buttons keeps the selection. A click selects a row.
+//! Move Up and Move Down move the selected row; each move is announced. Close and Esc close it and
+//! give focus back to the window. [`commands`] has the menu command and the same
 //! changes by format name, for scripts and the automation interface.
 //!
 //! Not here yet: the shadowed and disabled cues (E10-S1-T2); New, Duplicate, Edit and Delete
@@ -14,7 +16,7 @@
 //! place in the order.
 
 use egui::accesskit::{Live, Role};
-use egui::{Align, Context, Id, Key, Layout, Modifiers, Sense, Shape, TextStyle, TextWrapMode, Ui, Vec2, WidgetText};
+use egui::{Align, Context, FocusDirection, Id, Key, Layout, Modifiers, Sense, Shape, TextStyle, TextWrapMode, Ui, Vec2, WidgetText};
 use otd_core::command::{Args, Command, CommandError, Kind as ParamKind, Outcome, Param};
 use otd_core::i18n::{fmt, t, trn};
 use otd_format::{CATCH_ALL, Kind, Registry};
@@ -64,12 +66,22 @@ pub(crate) struct Formats {
 pub(crate) struct Dialog {
     /// The selected format, by name: the one Move Up and Move Down move.
     selected: Option<String>,
-    /// The format whose checkbox takes focus on the next draw.
-    focus: Option<String>,
-    /// Close takes focus on the next draw: the list is empty.
-    focus_close: bool,
+    /// What takes focus on the next draw.
+    focus: Option<Target>,
+    /// A row's checkbox had focus at the end of the last draw.
+    row_focused: bool,
     /// The last move, announced.
     moved: Option<String>,
+}
+
+/// Where focus goes on the next draw.
+#[derive(PartialEq)]
+enum Target {
+    /// A format's checkbox, by name.
+    Row(String),
+    /// The first enabled button after the list: Move Up, Move Down or Close.
+    Buttons,
+    Close,
 }
 
 impl Dialog {
@@ -81,7 +93,7 @@ impl Dialog {
         let template = if up { MOVED_UP } else { MOVED_DOWN };
         self.moved = Some(fmt(&trn(at as u64 + 1, template, template), &[("format", &name)]));
         if (up && at == 0) || (!up && at + 1 == registry.formats().len()) {
-            self.focus = Some(name);
+            self.focus = Some(Target::Row(name));
         }
     }
 }
@@ -126,8 +138,8 @@ impl Shell {
     /// Tools > File Formats: opens the manager with the top format selected and focused.
     pub fn open_file_formats(&mut self) {
         let first = self.formats.registry.formats().first().map(|f| f.name.clone());
-        let focus_close = first.is_none();
-        self.formats.dialog = Some(Dialog { selected: first.clone(), focus: first, focus_close, moved: None });
+        let focus = Some(first.clone().map_or(Target::Buttons, Target::Row));
+        self.formats.dialog = Some(Dialog { selected: first, focus, row_focused: false, moved: None });
     }
 
     /// Draws the File Formats manager, if open, over the window.
@@ -148,14 +160,21 @@ impl Shell {
             ui.horizontal(|ui| {
                 let at = dialog.selected.as_deref().and_then(|name| registry.formats().iter().position(|f| f.name == name));
                 let last = registry.formats().len().saturating_sub(1);
+                let mut focus_first = dialog.focus == Some(Target::Buttons);
                 for (caption, up, can) in [(MOVE_UP, true, at.is_some_and(|at| at > 0)), (MOVE_DOWN, false, at.is_some_and(|at| at < last))] {
-                    if ui.add_enabled(can, egui::Button::new(t(caption))).clicked() {
+                    let button = ui.add_enabled(can, egui::Button::new(t(caption)));
+                    if can && std::mem::take(&mut focus_first) {
+                        button.request_focus();
+                        dialog.focus = None;
+                    }
+                    if button.clicked() {
                         dialog.move_selected(registry, up);
                     }
                 }
                 let close_button = ui.button(t(CLOSE));
-                if std::mem::take(&mut dialog.focus_close) {
+                if matches!(dialog.focus, Some(Target::Buttons | Target::Close)) {
                     close_button.request_focus();
+                    dialog.focus = None;
                 }
                 close = close_button.clicked();
             });
@@ -199,6 +218,28 @@ fn list_ui(ui: &mut Ui, registry: &mut Registry, dialog: &mut Dialog) {
         .inner
     };
     let mut toggled = None;
+    // The list is one Tab stop. These keys, pressed on a row, are the list's: egui's own focus move
+    // is cancelled before any row registers for focus.
+    if dialog.row_focused {
+        let keys = [(Modifiers::SHIFT, Key::Tab), (Modifiers::NONE, Key::Tab), (Modifiers::NONE, Key::ArrowUp), (Modifiers::NONE, Key::ArrowDown)];
+        if let Some((modifiers, key)) = ui.input_mut(|i| keys.into_iter().find(|&(modifiers, key)| i.consume_key(modifiers, key))) {
+            ui.memory_mut(|m| m.move_focus(FocusDirection::None));
+            dialog.focus = match key {
+                Key::Tab if modifiers.shift => Some(Target::Close),
+                Key::Tab => Some(Target::Buttons),
+                _ => {
+                    let at = dialog.selected.as_deref().and_then(|name| formats.iter().position(|f| f.name == name));
+                    let to = at.and_then(|at| if key == Key::ArrowUp { at.checked_sub(1) } else { Some(at + 1) });
+                    // Past either end, the selection and focus stay.
+                    if let Some(format) = to.and_then(|to| formats.get(to)) {
+                        dialog.selected = Some(format.name.clone());
+                    }
+                    dialog.selected.clone().map(Target::Row)
+                }
+            };
+        }
+    }
+    let mut row_focused = false;
     ui.scope(|ui| {
         ui.ctx().accesskit_node_builder(ui.unique_id(), |node| {
             node.set_role(Role::Table);
@@ -230,18 +271,25 @@ fn list_ui(ui: &mut Ui, registry: &mut Registry, dialog: &mut Dialog) {
                         if enabled != format.enabled {
                             toggled = Some((name.to_owned(), enabled));
                         }
-                        if dialog.focus.as_deref() == Some(name) {
+                        if matches!(&dialog.focus, Some(Target::Row(row)) if row == name) {
                             check.request_focus();
                             check.scroll_to_me(None);
                             dialog.focus = None;
                         }
                         let kind = cell(ui, 1, &mut |ui| ui.add(egui::Label::new(t(kind_caption(format.kind))).sense(Sense::CLICK)));
                         let mask = cell(ui, 2, &mut |ui| ui.add(egui::Label::new(format.masks()).sense(Sense::CLICK)));
-                        check.has_focus() || check.clicked() || kind.clicked() || mask.clicked()
+                        (check.has_focus(), check.clicked() || kind.clicked() || mask.clicked())
                     });
-                    if row.inner {
+                    let (focused, clicked) = row.inner;
+                    if clicked {
                         dialog.selected = Some(name.to_owned());
                     }
+                    if focused && dialog.selected.as_deref() != Some(name) {
+                        // Tab or Shift+Tab came into the list at another row: the selected row is its stop.
+                        dialog.focus = dialog.selected.clone().map(Target::Row);
+                        ui.ctx().request_repaint();
+                    }
+                    row_focused |= focused;
                     if selected {
                         let fill = Shape::rect_filled(row.response.rect, 0.0, ui.visuals().selection.bg_fill);
                         ui.painter().set(background, fill);
@@ -250,6 +298,7 @@ fn list_ui(ui: &mut Ui, registry: &mut Registry, dialog: &mut Dialog) {
             }
         });
     });
+    dialog.row_focused = row_focused;
     if let Some((name, enabled)) = toggled {
         registry.set_enabled(&name, enabled);
     }
