@@ -11,6 +11,7 @@
 //! the columns each pane shows after the name are [`COLUMNS`]; the rows drawn, in order, come from
 //! [`FolderCompare::shown`] (the base folders' rows and those of each open folder, see [`expand`]);
 //! commands are the view's [`commands`], in the app's command list for the view type [`ID`].
+//! With the flat list on (`flat.rs`), `shown` gives one row per aligned file instead of the tree.
 //!
 //! The row area is a tree grid: Tab reaches it once, on the current name cell, and the arrow keys
 //! move focus between rows (Up, Down) and sides (Left, Right). Each row and cell is a node, and a
@@ -49,12 +50,14 @@ use otd_ui::colour::{ColourRole, SELECTION, SELECTION_TEXT, colour};
 use otd_ui::{Browse, PathEdit, Session, SessionType, Shell, Status, View, paint_lucide};
 
 pub mod expand;
+mod flat;
 mod info;
 pub mod look;
 mod refresh;
 
+use expand::Expansion;
 pub use expand::Shown;
-use expand::{Expansion, flatten};
+pub use flat::FLAT_LIST;
 pub use info::{
     COUNT_DIFFERENT, COUNT_ERRORS, COUNT_LEFT_NEWER, COUNT_LEFT_ORPHANS, COUNT_RIGHT_NEWER, COUNT_RIGHT_ORPHANS, COUNT_SAME, COUNT_UNKNOWN, Entry,
     FOLDER_COMPARE_INFO, FOLDERS_LISTED, Info, LEGEND, LEGEND_ENTRIES, NO_RESULT, NOT_FULLY_COMPARED, RESULT, SCAN, STILL_SCANNING, Swatch,
@@ -66,6 +69,7 @@ pub use refresh::{FULL_REFRESH, REFRESH, REFRESH_SELECTION, SWAP_SIDES};
 pub fn commands() -> Vec<otd_core::command::Command<Shell>> {
     let mut commands = refresh::commands();
     commands.extend(expand::commands());
+    commands.extend(flat::commands());
     commands
 }
 
@@ -158,6 +162,7 @@ pub struct FolderCompare {
     errors: [Option<String>; 2],
     rows: Vec<Row>,
     expansion: Expansion,
+    flat: flat::Flat,
     /// The name cell that Tab reaches in the row area: a row's key (see [`Shown::key`]) and a side.
     /// When that row isn't shown, the nearest shown folder above it is current.
     current: (PathBuf, usize),
@@ -197,6 +202,7 @@ impl FolderCompare {
             errors: [None, None],
             rows: Vec::new(),
             expansion: Expansion::default(),
+            flat: flat::Flat::default(),
             current: (PathBuf::new(), 0),
             refocus: false,
             selected: Default::default(),
@@ -299,6 +305,7 @@ impl FolderCompare {
                 Err(err) => self.errors[side] = Some(err.to_string()),
             }
         }
+        self.update_flat();
     }
 
     /// Takes in what the scans listed since the last draw.
@@ -334,6 +341,7 @@ impl FolderCompare {
             _ => Vec::new(),
         };
         self.open_deep();
+        self.update_flat();
     }
 
     /// The label, path edit and any error of one side. Returns the path edit's response.
@@ -380,7 +388,7 @@ impl FolderCompare {
             }
         });
         ui.ctx().accesskit_node_builder(grid, |node| node.set_multiselectable());
-        let shown = flatten(&self.rows, &|key| self.expansion.is_open(key));
+        let shown = flat::shown(&self.rows, &self.flat, &self.expansion);
         // The current row, or the nearest shown folder above it once a close hides it.
         let at = expand::current(&shown, &self.current.0);
         if let Some(row) = shown.get(at)

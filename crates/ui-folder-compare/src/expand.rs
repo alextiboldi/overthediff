@@ -100,7 +100,7 @@ pub(crate) fn current(shown: &[Shown<'_>], key: &Path) -> usize {
 impl FolderCompare {
     /// The rows drawn, in order: the base folders' rows and the rows of every open folder.
     pub fn shown(&self) -> Vec<Shown<'_>> {
-        flatten(&self.rows, &|key| self.expansion.is_open(key))
+        crate::flat::shown(&self.rows, &self.flat, &self.expansion)
     }
 
     /// The row the expansion commands act on: the current cell's row, on either side.
@@ -226,9 +226,9 @@ pub(crate) fn commands() -> Vec<Command<Shell>> {
         Command::new("folder-compare.close_subfolders", CLOSE_SUBFOLDERS, |shell| with(shell, FolderCompare::close_subfolders))
             .state(|shell| enabled(shell, |view| view.current_folder().is_some())),
         Command::new("folder-compare.expand_all", EXPAND_ALL, |shell| with(shell, FolderCompare::expand_all))
-            .state(|shell| enabled(shell, |view| !view.rows.is_empty())),
+            .state(|shell| enabled(shell, |view| !view.flat.on && !view.rows.is_empty())),
         Command::new("folder-compare.collapse_all", COLLAPSE_ALL, |shell| with(shell, FolderCompare::collapse_all))
-            .state(|shell| enabled(shell, |view| !view.expansion.open.is_empty() || !view.expansion.deep.is_empty())),
+            .state(|shell| enabled(shell, |view| !view.flat.on && (!view.expansion.open.is_empty() || !view.expansion.deep.is_empty()))),
     ]
     .into_iter()
     .map(|command| command.views(&[ID]).menu(&["View"]))

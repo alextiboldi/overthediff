@@ -30,7 +30,8 @@ pub(crate) fn commands() -> Vec<Command<Shell>> {
         Command::new("folder-compare.refresh_selection", REFRESH_SELECTION, |shell| with_view(shell, FolderCompare::refresh_selection))
             .icon("list-restart")
             .menu(&["View"])
-            .state(|shell| State::enabled(shell.view::<FolderCompare>().is_some_and(|view| !view.shown().is_empty()))),
+            // ponytail: not in the flat list, whose rows have no folder rows to find each side's folder by.
+            .state(|shell| State::enabled(shell.view::<FolderCompare>().is_some_and(|view| !view.is_flat() && !view.shown().is_empty()))),
         Command::new("folder-compare.swap_sides", SWAP_SIDES, |shell| with_view(shell, FolderCompare::swap_sides))
             .icon("arrow-left-right")
             .menu(&["Session"]),

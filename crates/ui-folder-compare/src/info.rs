@@ -212,7 +212,7 @@ impl FolderCompare {
     /// Folder Compare Info's counts, while there is a comparison. They can still change while
     /// [`FolderCompare::scanning`].
     pub fn info(&self) -> Option<Info> {
-        self.compared().then(|| Info::of(&self.rows))
+        self.compared().then(|| Info::of(self.flat.rows(&self.rows)))
     }
 
     /// Info's lines, with a last one while a scan runs.
