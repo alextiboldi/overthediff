@@ -316,9 +316,16 @@ impl Shell {
             .map(|c| {
                 let state = (c.state)(self);
                 let shortcut = keymap.bindings(&CommandRef::new(c.id)).first().map(|b| b.trigger.display(platform));
-                (c.id, state.caption.unwrap_or_else(|| t(c.caption).to_owned()), state.icon.or(c.icon), state.enabled, state.mark.map(|mark| match mark {
-                    Mark::Check(on) | Mark::Radio(on) => on,
-                }), shortcut)
+                (
+                    c.id,
+                    state.caption.unwrap_or_else(|| t(c.caption).to_owned()),
+                    state.icon.or(c.icon),
+                    state.enabled,
+                    state.mark.map(|mark| match mark {
+                        Mark::Check(on) | Mark::Radio(on) => on,
+                    }),
+                    shortcut,
+                )
             })
             .collect();
         if buttons.is_empty() {

@@ -18,7 +18,10 @@ const PARAMS: &[Param] = &[Param::optional("on", Kind::Bool)];
 pub(crate) fn commands() -> Vec<Command<Shell>> {
     vec![
         Command::typed("text-compare.word_wrap", WORD_WRAP, PARAMS, word_wrap)
-            .state(|shell: &Shell| State { mark: Some(Mark::Check(shell.view::<TextCompareView>().is_some_and(|view| view.wrap))), ..State::default() })
+            .state(|shell: &Shell| State {
+                mark: Some(Mark::Check(shell.view::<TextCompareView>().is_some_and(|view| view.wrap))),
+                ..State::default()
+            })
             .icon("wrap-text")
             .menu(&["View"])
             .toolbar()
