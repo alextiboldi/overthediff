@@ -180,3 +180,45 @@ fn with_the_normalization_switch_on_an_nfd_folder_and_its_nfc_twin_compare_their
     let folder = row(&rows, "caf\u{e9}");
     assert_eq!(row(&folder.children, "a.txt").status, Status::Same);
 }
+
+/// `d` holds two files and `d/sub` a third, on the left only.
+fn sized() -> MemorySource {
+    MemorySource::new(caps(true)).file("d/a.txt", "abc", at(1)).file("d/b.txt", "defgh", at(1)).file("d/sub/c.txt", "ij", at(1))
+}
+
+#[test]
+fn a_folder_s_total_size_is_the_sum_of_every_file_below_it_on_that_side() {
+    let rows = rows(sized(), MemorySource::new(caps(true)), &all);
+    let d = row(&rows, "d");
+    let files: u64 = ["abc", "defgh", "ij"].iter().map(|text| text.len() as u64).sum();
+    assert_eq!(d.total_size(TreeSide::Left), Some(files));
+    assert_eq!(d.total_size(TreeSide::Right), None, "the right side has no folder here");
+}
+
+/// `d` is listed but `d/sub` is not: its size would be a partial sum.
+#[test]
+fn a_folder_s_total_size_is_unknown_until_every_folder_below_it_is_listed() {
+    let (left, _events) = TreeScan::new(Arc::new(sized()), "", false);
+    let (right, _events) = TreeScan::new(Arc::new(MemorySource::new(caps(true))), "", false);
+    left.open(Path::new("d"));
+    while left.step() || right.step() {}
+    let total = |left: &TreeScan| row(&compare_trees(left, &right, &CRITERIA, Alignment::new(true), &all), "d").total_size(TreeSide::Left);
+    assert_eq!(total(&left), None);
+    left.open(&path(&["d", "sub"]));
+    while left.step() {}
+    assert!(total(&left).is_some());
+}
+
+#[test]
+fn a_folder_with_an_unreadable_item_below_it_has_no_total_size() {
+    let left = sized().unreadable("d/sub/c.txt");
+    assert_eq!(row(&rows(left, MemorySource::new(caps(true)), &all), "d").total_size(TreeSide::Left), None);
+}
+
+#[test]
+fn a_folder_s_total_size_leaves_out_what_is_hidden_on_that_side() {
+    let all_rows = rows(sized(), MemorySource::new(caps(true)), &all);
+    let hidden = rows(sized(), MemorySource::new(caps(true)), &|_, at: &Path, _: &Item| at != path(&["d", "sub"]));
+    let total = |rows: &[Row]| row(rows, "d").total_size(TreeSide::Left).expect("listed");
+    assert!(total(&hidden) < total(&all_rows));
+}

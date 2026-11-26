@@ -32,18 +32,18 @@ pub(crate) fn harness(view: FolderCompare) -> Harness<'static, Shell> {
     harness
 }
 
-/// Draws until the view's scans have nothing left to list.
+/// Draws until the view's scans have nothing left to list and no CRC cell waits for a read.
 pub(crate) fn settle(harness: &mut Harness<'_, Shell>) {
     // The scans run on worker threads; the limit only stops a test that would hang.
     for _ in 0..1000 {
         harness.run();
-        if !harness.state().view::<FolderCompare>().is_some_and(FolderCompare::scanning) {
+        if !harness.state().view::<FolderCompare>().is_some_and(|view| view.scanning() || view.reading()) {
             harness.run();
             return;
         }
         std::thread::sleep(Duration::from_millis(5));
     }
-    panic!("the scans never finished");
+    panic!("the scans or CRC reads never finished");
 }
 
 /// Each item row's cell names, in row order. The column headers' row has no cells.
@@ -53,6 +53,13 @@ pub(crate) fn rows(harness: &Harness<'_, Shell>) -> Vec<Vec<String>> {
         .map(|row| row.query_all_by_role(Role::Cell).filter_map(|cell| cell.accesskit_node().label()).collect::<Vec<_>>())
         .filter(|cells| !cells.is_empty())
         .collect()
+}
+
+/// Each item row's name, in row order: which rows show, whatever their cells say. A folder's Size
+/// fills in once it is listed, so a comparison of the rows shown before and after a listing goes
+/// by these.
+pub(crate) fn row_names(harness: &Harness<'_, Shell>) -> Vec<String> {
+    harness.query_all_by_role(Role::Row).filter_map(|row| row.accesskit_node().label()).collect()
 }
 
 /// Where each node of `role` under `node` starts, left to right.
