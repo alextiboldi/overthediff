@@ -509,15 +509,26 @@ fn icon_button(ui: &mut Ui, name: &str, icon: &[[(f32, f32); 2]]) -> Response {
 }
 
 /// A toolbar button: the command's icon, when there is one, then its caption, which is also its
-/// name for screen readers. A disabled one is greyed, can't take focus and doesn't click.
-fn tool_button(ui: &mut Ui, caption: &str, icon: Option<&[[(f32, f32); 2]]>, enabled: bool) -> Response {
+/// name for screen readers. A disabled one is greyed, can't take focus and doesn't click. A toggle
+/// (`checked` set) reports whether it is on, and when on it is drawn pressed: framed, with a bar
+/// along its bottom edge, so colour isn't the only signal.
+fn tool_button(ui: &mut Ui, caption: &str, icon: Option<&[[(f32, f32); 2]]>, enabled: bool, checked: Option<bool>) -> Response {
     let galley = WidgetText::from(caption).into_galley(ui, Some(TextWrapMode::Extend), f32::INFINITY, TextStyle::Button);
     let padding = ui.spacing().button_padding;
     let icon_width = if icon.is_some() { ICON + ui.spacing().icon_spacing } else { 0.0 };
     let size = Vec2::new(2.0 * padding.x + icon_width + galley.size().x, (2.0 * padding.y + galley.size().y).max(24.0));
     let (rect, response) = ui.allocate_exact_size(size, if enabled { Sense::click() } else { Sense::hover() });
-    response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, caption));
+    response.widget_info(|| WidgetInfo { selected: checked, ..WidgetInfo::labeled(Role::Button, enabled, caption) });
+    let pressed = checked == Some(true);
+    if pressed {
+        let visuals = ui.style().interact(&response);
+        ui.painter().rect(rect, visuals.corner_radius, visuals.weak_bg_fill, visuals.bg_stroke, egui::StrokeKind::Inside);
+    }
     paint_button(ui, rect, &response);
+    // After the hover and focus fill, which would hide it, and inside the focus ring.
+    if pressed {
+        ui.painter().hline(rect.x_range().shrink(4.0), rect.bottom() - 3.5, Stroke::new(2.0, ui.visuals().selection.stroke.color));
+    }
     // A hover-only response gets egui's non-interactive, greyed colours.
     let color = ui.style().interact(&response).fg_stroke.color;
     let left = rect.left() + padding.x;

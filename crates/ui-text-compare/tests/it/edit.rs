@@ -430,3 +430,16 @@ fn the_published_selection_names_drawn_text_wherever_the_caret_stands() {
     assert!(view(&harness).pane(0).unwrap().lines.is_empty());
     assert_eq!(published(&harness), None, "an empty pane has no text to select in");
 }
+
+#[test]
+fn the_caret_on_a_blank_line_is_as_tall_as_on_a_line_of_text() {
+    let folder = tempfile::tempdir().unwrap();
+    let mut harness = harness(&folder, "one\n\nthree\n", "one\n\nthree\n");
+    tab_to_editor(&mut harness, LEFT);
+    let caret = |harness: &Harness<'_, Shell>| harness.output().platform_output.ime.as_ref().expect("the editor asks for input methods").cursor_rect;
+    let on_text = caret(&harness);
+    key(&mut harness, Modifiers::NONE, Key::ArrowDown);
+    let on_blank = caret(&harness);
+    assert!(on_blank.top() > on_text.top(), "the caret moved down to the blank line");
+    assert_eq!(on_blank.height(), on_text.height(), "and is as tall there");
+}

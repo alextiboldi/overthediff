@@ -40,6 +40,9 @@
 //!
 //! [`encoding`] adds each side's encoding override to the Session Settings dialog's Format tab
 //! (E07-S10-T2).
+//!
+//! `wrap.rs` holds *View > Word Wrap*, which wraps both panes' lines with their rows aligned
+//! (E07-S9-T2).
 
 mod read_only;
 pub mod session;
@@ -60,6 +63,7 @@ mod load;
 mod open;
 mod save;
 mod whitespace;
+mod wrap;
 
 use aligned::Aligned;
 use egui::accesskit::{Live, Role};
@@ -83,6 +87,7 @@ pub use read_only::{COMPARISON_CANCELLED, COMPARISON_FAILED, ENCODING_LOSSY, FIL
 pub use save::{SAVE_FAILED, SAVE_FILE, SAVE_FILE_AS, SAVE_FILE_ON_FILE_SYSTEM_AS, UNSAVED_CHANGES};
 pub use session::{Info, NO_RESULT, RECOMPARE_FILES, RELOAD_FILES, SWAP_SIDES, TEXT_COMPARE_INFO};
 pub use whitespace::SHOW_WHITESPACE;
+pub use wrap::WORD_WRAP;
 
 /// The session type's and the view type's id.
 pub const TEXT_COMPARE: &str = "text-compare";
@@ -183,6 +188,8 @@ pub struct TextCompareView {
     whitespace: bool,
     /// Per side, the encoding override its pane was read in, so a changed override reads it again.
     decoded_as: [Option<Encoding>; 2],
+    /// Whether Word Wrap wraps the panes' lines to their width.
+    wrap: bool,
 }
 
 impl Drop for TextCompareView {
@@ -236,6 +243,7 @@ impl TextCompareView {
             pending: None,
             whitespace: false,
             decoded_as: Default::default(),
+            wrap: false,
         }
     }
 
