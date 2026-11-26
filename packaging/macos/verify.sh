@@ -5,7 +5,7 @@
 #   - NOTICE ships in the bundle;
 #   - each slice this Mac can run starts and answers: natively for this Mac's own architecture,
 #     and the Intel slice under Rosetta on Apple silicon when Rosetta is installed;
-#   - with a Developer ID signature, Gatekeeper accepts the app and the image and both carry a
+#   - unless the signature is ad-hoc, Gatekeeper accepts the app and the image and both carry a
 #     notarisation ticket. An ad-hoc build skips this and says so: Gatekeeper rejects it.
 #
 # Usage: packaging/macos/verify.sh [--arch universal|aarch64|x86_64] [path/to/image.dmg]
@@ -73,12 +73,14 @@ for a in "${WANT[@]}"; do
 done
 [[ "$ran_native" = 1 ]] || warn "this Mac is $native, so no slice was checked natively"
 
-if codesign -dv "$APP" 2>&1 | grep -q '^Authority=Developer ID Application'; then
+# Only an ad-hoc signature skips Gatekeeper's check; any other signature must pass it.
+signature="$(codesign -dv "$APP" 2>&1)"
+if [[ "$signature" == *"Signature=adhoc"* ]]; then
+  warn "ad-hoc signature: Gatekeeper's check is skipped, and on another Mac the app opens only after a warning"
+else
   spctl --assess --type execute -vv "$APP"
   spctl --assess --type open --context context:primary-signature -vv "$DMG"
   xcrun stapler validate "$APP"
   xcrun stapler validate "$DMG"
   echo "ok: Gatekeeper accepts the app and the image, and both are notarised"
-else
-  warn "ad-hoc signature: Gatekeeper's check is skipped, and on another Mac the app opens only after a warning"
 fi
