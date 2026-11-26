@@ -53,12 +53,18 @@ fn other_bytes_decode_in_the_code_page_given() {
 }
 
 #[test]
-fn a_code_page_with_no_single_byte_table_falls_back_to_one_that_has_and_names_it() {
-    // 65001 is UTF-8 as a code page and 932 Shift-JIS, which have no byte table.
-    for page in [65001, 932] {
-        let decoded = decode(b"caf\xE9", page);
-        assert!(matches!(decoded.encoding, Encoding::CodePage(used) if used != page), "{page}: {:?}", decoded.encoding);
-    }
+fn a_code_page_with_no_table_falls_back_to_one_that_has_and_names_it() {
+    // 65001 is UTF-8 as a code page, which has no byte table.
+    let decoded = decode(b"caf\xE9", 65001);
+    assert!(matches!(decoded.encoding, Encoding::CodePage(used) if used != 65001), "{:?}", decoded.encoding);
+}
+
+#[test]
+fn an_east_asian_code_page_decodes_lead_and_trail_bytes_together() {
+    // "日本" in Shift-JIS (932): two two-byte characters, neither UTF-8 nor UTF-16.
+    let decoded = decode(b"\x93\xFA\x96\x7B", 932);
+    assert_eq!(decoded.encoding, Encoding::CodePage(932));
+    assert_eq!(decoded.lines.iter().map(|l| l.text.as_str()).collect::<Vec<_>>(), ["日本"]);
 }
 
 #[test]

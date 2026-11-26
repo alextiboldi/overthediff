@@ -1,10 +1,11 @@
 //! Encoding and line-ending detection (E07-S1-T3): a byte-order mark first, then valid UTF-8, then
 //! UTF-16 without a mark, and otherwise the system code page.
 
-use craft_codepage::{SINGLE_BYTE_CODE_PAGES, windows_byte};
+use craft_codepage::{SINGLE_BYTE_CODE_PAGES, multibyte_encoding_name, windows_byte};
 use otd_text_engine::{Line, LineEnding};
 
-/// The code page used when the one asked for isn't a single-byte Windows code page.
+/// The code page used when the one asked for is neither a single-byte Windows code page nor an
+/// East Asian multibyte one.
 pub const WESTERN: u16 = 1252;
 
 /// How a file's bytes became text. Whether it had a byte-order mark is kept, so a save can write
@@ -20,7 +21,8 @@ pub enum Encoding {
     Utf16Be {
         bom: bool,
     },
-    /// A single-byte Windows code page ([`SINGLE_BYTE_CODE_PAGES`]), by number.
+    /// A Windows code page by number: a single-byte one ([`SINGLE_BYTE_CODE_PAGES`]) or an East Asian
+    /// multibyte one ([`craft_codepage::MULTIBYTE_CODE_PAGES`]: 932, 936, 949, 950).
     CodePage(u16),
 }
 
@@ -50,8 +52,9 @@ pub struct Decoded {
 }
 
 /// Decodes `bytes`, falling back to `code_page` when they are neither UTF-8 nor UTF-16. A code page
-/// other than a single-byte Windows one falls back to [`WESTERN`], and the result names the page
-/// actually used. Never fails: bytes a mark claims but that don't decode become U+FFFD.
+/// other than a single-byte Windows one or an East Asian multibyte one falls back to [`WESTERN`],
+/// and the result names the page actually used. Never fails: bytes a mark or code page claims but
+/// that don't decode become U+FFFD.
 pub fn decode(bytes: &[u8], code_page: u16) -> Decoded {
     let (encoding, text) = detect(bytes, code_page);
     let lines = split(&text);
@@ -79,6 +82,9 @@ fn detect(bytes: &[u8], code_page: u16) -> (Encoding, String) {
     }
     if let Some(text) = utf8 {
         return (Encoding::Utf8 { bom: false }, text.to_owned());
+    }
+    if let Some(multibyte) = multibyte_encoding_name(code_page).and_then(|name| encoding_rs::Encoding::for_label(name.as_bytes())) {
+        return (Encoding::CodePage(code_page), multibyte.decode_without_bom_handling(bytes).0.into_owned());
     }
     let page = if SINGLE_BYTE_CODE_PAGES.contains(&code_page) { code_page } else { WESTERN };
     (Encoding::CodePage(page), bytes.iter().map(|&b| windows_byte(page, b)).collect())

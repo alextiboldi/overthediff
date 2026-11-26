@@ -15,6 +15,7 @@ fn decoding_never_panics_or_hangs_on_truncated_or_damaged_bytes() {
     {
         hammer(&HammerConfig::new(name, 2_000), &seed, |data| {
             let _ = decode(data, 1252);
+            let _ = decode(data, 932);
         });
     }
 }

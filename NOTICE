@@ -69,7 +69,10 @@ cobs, displaydoc, postcard, stable_deref_trait, sys-locale, utf8_iter, utf16_ite
 write16, and windows-registry on Windows (each MIT OR Apache-2.0).
 
 Text Compare (otd-text-compare, otd-ui-text-compare) decodes legacy code-page text with
-craft-codepage (MIT OR Apache-2.0, storytold/craft-libs), reads the Windows code page with
+craft-codepage (MIT OR Apache-2.0, storytold/craft-libs) and the East Asian code pages with
+encoding_rs ((Apache-2.0 OR MIT) AND BSD-3-Clause, copyright Mozilla Foundation; its WHATWG
+Encoding Standard data's notice is below) and its dependencies cfg-if, multiversion_no_op,
+scopeguard, simdutf8 and, on x86, core_detect (each MIT OR Apache-2.0), reads the Windows code page with
 windows-registry (MIT OR Apache-2.0), and writes a file's modified time in the local time zone with
 chrono (MIT OR Apache-2.0) and its `clock` dependencies iana-time-zone, iana-time-zone-haiku,
 core-foundation-sys on macOS, windows-core on Windows and android_system_properties on Android
@@ -126,6 +129,37 @@ SPDX-License-Identifier: Unicode-3.0
 
 Portions of ICU4X may have been adapted from ICU4C and/or ICU4J.
 ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation and others.
+
+encoding_rs's WHATWG Encoding Standard data: BSD 3-Clause License
+
+Copyright © WHATWG (Apple, Google, Mozilla, Microsoft).
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its
+   contributors may be used to endorse or promote products derived from
+   this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+SPDX-License-Identifier: BSD-3-Clause
 
 Fonts
 

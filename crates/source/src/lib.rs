@@ -5,7 +5,7 @@
 //! - [`DataSource`] is the contract, and [`copy`] copies within one source or across two.
 //! - [`MemorySource`] is the in-memory reference source, and the fixture other crates' tests use.
 //! - [`LocalSource`] is the local provider: local disks and mounted network shares, opened by an
-//!   OS path, `~/…` or `smb://…`.
+//!   OS path, `~/…` or `smb://…`; [`resolve`] gives the OS path for one.
 //! - [`suite`] is the contract test suite. Every provider runs it.
 //!
 //! Paths are relative to the source's root, with `/` between names (`docs/readme.txt`); the empty

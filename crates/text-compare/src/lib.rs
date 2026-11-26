@@ -66,9 +66,9 @@ pub fn load(source: &dyn DataSource, path: &Path, spec: &str, formats: &Registry
 /// Reads the file `spec` names on this machine (an OS path, `~/…` or `smb://…` for a mounted
 /// share), in the system code page when it isn't Unicode.
 pub fn open(spec: &str, formats: &Registry) -> Result<Pane, SourceError> {
-    let path = Path::new(spec);
+    // Resolved whole, so an `smb://` spec's file name is percent-decoded like its folders.
+    let path = otd_source::resolve(spec)?;
     let name = path.file_name().ok_or_else(|| SourceError::new(ErrorKind::NotFound, format!("{spec} doesn't name a file")))?;
-    let folder = path.parent().and_then(Path::to_str).unwrap_or_default();
-    let source = LocalSource::open(if folder.is_empty() { "." } else { folder })?;
-    load(&source, Path::new(name), spec, formats, system_code_page())
+    let folder = path.parent().filter(|folder| !folder.as_os_str().is_empty()).unwrap_or(Path::new("."));
+    load(&LocalSource::new(folder), Path::new(name), spec, formats, system_code_page())
 }
