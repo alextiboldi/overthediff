@@ -24,8 +24,8 @@ pub(crate) fn fixture(root: &Path) {
 }
 
 /// The shell showing `view`, once its scans have nothing left to list.
-fn harness(view: FolderCompare) -> Harness<'static, Shell> {
-    let mut shell = Shell::new(vec![session_type()]);
+pub(crate) fn harness(view: FolderCompare) -> Harness<'static, Shell> {
+    let mut shell = Shell::new(vec![session_type()]).with_commands(otd_ui_folder_compare::commands());
     shell.open(Box::new(view));
     let mut harness = Harness::builder().build_ui_state(|ui, shell: &mut Shell| shell.ui(ui), shell);
     settle(&mut harness);
@@ -64,13 +64,13 @@ pub(crate) fn on(template: &str, name: &str) -> String {
     fmt(template, &[("name", name)])
 }
 
-fn focused(harness: &Harness<'_, Shell>) -> Option<(Role, String)> {
+pub(crate) fn focused(harness: &Harness<'_, Shell>) -> Option<(Role, String)> {
     let node = harness.query_by(|node| node.is_focused())?;
     let node = node.accesskit_node();
     Some((node.role(), node.label().or_else(|| node.value()).unwrap_or_default()))
 }
 
-fn press(harness: &mut Harness<'_, Shell>, key: Key) {
+pub(crate) fn press(harness: &mut Harness<'_, Shell>, key: Key) {
     harness.key_press_modifiers(Modifiers::NONE, key);
     harness.run();
 }

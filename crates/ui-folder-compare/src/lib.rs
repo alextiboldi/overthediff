@@ -9,12 +9,14 @@
 //! The scans and the comparison are the folder engine's (E03-S2): each side is a [`TreeScan`] of a
 //! [`LocalSource`], and the rows are [`compare_trees`]' rows. Where later stories extend the view:
 //! the columns each pane shows after the name are [`COLUMNS`]; the rows drawn, in order, come from
-//! [`FolderCompare::shown`]; commands go in [`commands`], which the app's command list holds, for
-//! the view type [`ID`].
+//! [`FolderCompare::shown`] (the base folders' rows and those of each open folder, see [`expand`]);
+//! commands are the view's [`commands`], in the app's command list for the view type [`ID`].
 //!
 //! The row area is a tree grid: Tab reaches it once, on the current name cell, and the arrow keys
 //! move focus between rows (Up, Down) and sides (Left, Right). Each row and cell is a node, and a
-//! gap is a cell named for what is missing, so a screen reader hears the gap that the eye sees.
+//! gap is a cell named for what is missing, so a screen reader hears the gap that the eye sees. A
+//! row has its tree level, and a folder's row whether it is open; a folder's name shows Lucide's
+//! chevron, pointing right when closed and down when open.
 //! A craft-libs candidate (alextiboldi/overthediff#84): it stays here until craft-libs has a tree grid.
 //!
 //! Each side has a selection of its own (E08-S1-T5): a click on a row's left or right cells selects
@@ -36,7 +38,8 @@ use std::time::Duration;
 
 use egui::accesskit::{Action, Live, Role};
 use egui::{
-    Color32, EventFilter, Key, Modifiers, PointerButton, Rect, Response, Sense, StrokeKind, TextStyle, TextWrapMode, Ui, Vec2, WidgetInfo, WidgetText,
+    Color32, EventFilter, Key, Modifiers, PointerButton, Pos2, Rect, Response, Sense, Stroke, StrokeKind, TextStyle, TextWrapMode, Ui, Vec2,
+    WidgetInfo, WidgetText,
 };
 use otd_core::i18n::{fmt, t, trn};
 use otd_folder_engine::{Criteria, DEFAULT_TOLERANCE, Row, ScanEvent, TreeScan, TreeSide, case_sensitive, compare_trees};
@@ -45,16 +48,26 @@ use otd_source::{Capabilities, DataSource, Item, ItemKind, LocalSource};
 use otd_ui::colour::{ColourRole, SELECTION, SELECTION_TEXT, colour};
 use otd_ui::{Browse, PathEdit, Session, SessionType, Shell, Status, View, paint_lucide};
 
+pub mod expand;
 mod info;
 pub mod look;
 mod refresh;
 
+pub use expand::Shown;
+use expand::{Expansion, flatten};
 pub use info::{
     COUNT_DIFFERENT, COUNT_ERRORS, COUNT_LEFT_NEWER, COUNT_LEFT_ORPHANS, COUNT_RIGHT_NEWER, COUNT_RIGHT_ORPHANS, COUNT_SAME, COUNT_UNKNOWN, Entry,
     FOLDER_COMPARE_INFO, FOLDERS_LISTED, Info, LEGEND, LEGEND_ENTRIES, NO_RESULT, NOT_FULLY_COMPARED, RESULT, SCAN, STILL_SCANNING, Swatch,
 };
 pub use look::{COLOUR_ROLES, CONTRAST, Look, look};
-pub use refresh::{FULL_REFRESH, REFRESH, REFRESH_SELECTION, SWAP_SIDES, commands};
+pub use refresh::{FULL_REFRESH, REFRESH, REFRESH_SELECTION, SWAP_SIDES};
+
+/// Folder Compare's commands, for `apps/otd/src/commands.rs`.
+pub fn commands() -> Vec<otd_core::command::Command<Shell>> {
+    let mut commands = refresh::commands();
+    commands.extend(expand::commands());
+    commands
+}
 
 /// The session type's id, which is also the view type its commands name.
 pub const ID: &str = "folder-compare";
@@ -118,7 +131,7 @@ struct Scan {
     scan: TreeScan,
     events: Receiver<ScanEvent>,
     capabilities: Capabilities,
-    /// The last event said nothing was left to list.
+    /// Nothing was left to list when the view last took in the events.
     idle: bool,
     /// Folders listed so far and still to list, for the status bar: the last event's counts, or what
     /// the view queued since.
@@ -136,8 +149,10 @@ pub struct FolderCompare {
     /// Why a side can't be shown.
     errors: [Option<String>; 2],
     rows: Vec<Row>,
-    /// The name cell that Tab reaches in the row area: a row of [`FolderCompare::shown`] and a side.
-    current: (usize, usize),
+    expansion: Expansion,
+    /// The name cell that Tab reaches in the row area: a row's key (see [`Shown::key`]) and a side.
+    /// When that row isn't shown, the nearest shown folder above it is current.
+    current: (PathBuf, usize),
     /// Move focus to `current` on the next draw.
     refocus: bool,
     /// Each side's selected rows, as row-name paths from the base: the shape
@@ -152,6 +167,8 @@ pub struct FolderCompare {
     dialog: Option<info::Dialog>,
     /// Gets focus on the next draw: what had it before a dialog opened.
     focus_back: Option<egui::Id>,
+    /// The current cell had focus on the last draw.
+    grid_focus: bool,
     /// Reports the close to a launcher waiting for this view.
     done: Option<Completion>,
 }
@@ -171,13 +188,15 @@ impl FolderCompare {
             scans: [None, None],
             errors: [None, None],
             rows: Vec::new(),
-            current: (0, 0),
+            expansion: Expansion::default(),
+            current: (PathBuf::new(), 0),
             refocus: false,
             selected: Default::default(),
             anchor: [None, None],
             quiet: false,
             dialog: None,
             focus_back: None,
+            grid_focus: false,
             done: None,
         }
     }
@@ -195,14 +214,9 @@ impl FolderCompare {
         self.scans.iter().flatten().any(|scan| !scan.idle)
     }
 
-    /// The rows drawn, in order.
-    // ponytail: the base folders' rows only; expanding a folder to show its rows is E08-S1-T3.
-    pub fn shown(&self) -> &[Row] {
-        &self.rows
-    }
-
-    /// The rows selected on `side` (0 left, 1 right), as row-name paths from the base, in tree order.
-    /// A path whose row has since gone stays until the next click; `resolve_selection` ignores it.
+    /// The rows selected on `side` (0 left, 1 right), as row keys (see [`Shown::key`]), in tree order.
+    /// A close drops the rows it hides. A path whose row has since gone stays until the next click;
+    /// `resolve_selection` ignores it.
     pub fn selected(&self, side: usize) -> Vec<&Path> {
         self.selected.get(side).into_iter().flatten().map(PathBuf::as_path).collect()
     }
@@ -211,31 +225,36 @@ impl FolderCompare {
     /// to select, so a click there only clears (plain) or keeps (Ctrl) the side's selection and moves
     /// the anchor, and a range takes only the items in it (*unspecified*, decided here).
     fn pick(&mut self, index: usize, side: usize, pick: Pick) {
-        let has = |row: &Row| if side == 0 { row.left.is_some() } else { row.right.is_some() };
-        let Some(row) = self.shown().get(index) else { return };
-        let (path, item) = (row_path(row), has(row));
-        let selected = &mut self.selected[side];
+        let has = |shown: &Shown<'_>| if side == 0 { shown.row.left.is_some() } else { shown.row.right.is_some() };
+        let shown = self.shown();
+        let Some(row) = shown.get(index) else { return };
+        let (path, item) = (row.key.clone(), has(row));
         match pick {
             Pick::Only => {
+                let selected = &mut self.selected[side];
                 selected.clear();
                 if item {
                     selected.insert(path.clone());
                 }
             }
             Pick::Toggle => {
+                let selected = &mut self.selected[side];
                 if item && !selected.remove(&path) {
                     selected.insert(path.clone());
                 }
             }
             Pick::Range => {
-                let anchor = self.anchor[side].as_ref().and_then(|anchor| self.rows.iter().position(|row| row_path(row) == *anchor));
+                let anchor = self.anchor[side].as_ref().and_then(|anchor| shown.iter().position(|shown| shown.key == *anchor));
                 // With no anchor yet, the range starts at the focused cell on this side, so Shift+Down
                 // after Tab takes the focused item too.
-                let from = anchor.or((self.current.1 == side).then_some(self.current.0)).unwrap_or(index).min(self.rows.len().saturating_sub(1));
-                let range = &self.rows[from.min(index)..=from.max(index)];
-                *selected = range.iter().filter(|row| has(row)).map(row_path).collect();
-                if anchor.is_none() {
-                    self.anchor[side] = Some(row_path(&self.rows[from]));
+                let focused = (self.current.1 == side).then(|| expand::current(&shown, &self.current.0));
+                let from = anchor.or(focused).unwrap_or(index).min(shown.len().saturating_sub(1));
+                let range = &shown[from.min(index)..=from.max(index)];
+                let selected = range.iter().filter(|shown| has(shown)).map(|shown| shown.key.clone()).collect();
+                let start = anchor.is_none().then(|| shown[from].key.clone());
+                self.selected[side] = selected;
+                if start.is_some() {
+                    self.anchor[side] = start;
                 }
                 return;
             }
@@ -246,6 +265,7 @@ impl FolderCompare {
     fn rescan(&mut self) {
         self.scanned = Some(self.session.specs.clone());
         self.rows.clear();
+        self.expansion = Expansion::default();
         self.selected = Default::default();
         self.anchor = [None, None];
         self.errors = [None, None];
@@ -258,9 +278,9 @@ impl FolderCompare {
             match LocalSource::open(spec) {
                 Ok(source) => {
                     let capabilities = source.capabilities();
-                    // Background scanning off: T2 draws only the base folders' rows, and with it on each
-                    // batch of listings would compare the whole tree listed so far on this thread.
-                    // ponytail: the Handling tab makes it a setting (E08-S11); expanding opens folders (T3).
+                    // Background scanning off: a folder is listed when it is opened (`expand`), and with it
+                    // on each batch of listings would compare the whole tree listed so far on this thread.
+                    // ponytail: the Handling tab makes it a setting (E08-S11).
                     let (scan, events) = TreeScan::new(Arc::new(source), "", false);
                     match scan.start() {
                         // `TreeScan::new` has queued the base folder, so it is pending before any event says so.
@@ -277,8 +297,10 @@ impl FolderCompare {
     fn update(&mut self) {
         let mut listed = false;
         for scan in self.scans.iter_mut().flatten() {
+            // The live count, read before the events: an event's own count predates any folder opened
+            // since it was sent, and a zero read here means no event comes after these.
+            scan.idle = scan.scan.pending() == 0;
             while let Ok(event) = scan.events.try_recv() {
-                scan.idle = event.pending == 0;
                 (scan.done, scan.pending) = (event.done, event.pending);
                 listed = true;
             }
@@ -292,8 +314,8 @@ impl FolderCompare {
                 self.errors[side] = scan.scan.folder(Path::new("")).and_then(|folder| folder.error).map(|error| error.to_string());
             }
         }
-        // ponytail: compares everything listed so far again after each batch of listings, which is the
-        // base folders until expansion (T3); update only the listed folders' rows if that gets slow.
+        // ponytail: compares everything listed so far again after each batch of listings, which after
+        // Expand All is the whole tree; update only the listed folders' rows if that gets slow.
         // A side that can't be listed has unknown contents, so nothing on the other faces a gap,
         // even when the other side was listed first.
         self.rows = match (&self.scans, &self.errors) {
@@ -303,7 +325,7 @@ impl FolderCompare {
             }
             _ => Vec::new(),
         };
-        self.current.0 = self.current.0.min(self.rows.len().saturating_sub(1));
+        self.open_deep();
     }
 
     /// The label, path edit and any error of one side. Returns the path edit's response.
@@ -350,24 +372,43 @@ impl FolderCompare {
             }
         });
         ui.ctx().accesskit_node_builder(grid, |node| node.set_multiselectable());
+        let shown = flatten(&self.rows, &|key| self.expansion.is_open(key));
+        // The current row, or the nearest shown folder above it once a close hides it.
+        let at = expand::current(&shown, &self.current.0);
+        if let Some(row) = shown.get(at)
+            && row.key != self.current.0
+        {
+            self.current.0 = row.key.clone();
+            // The focused cell's row is gone, so focus follows the current cell.
+            self.refocus |= self.grid_focus;
+        }
+        let mut focused = false;
         let mut moved = None;
         let mut picked = None;
         egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
-            for (index, row) in self.rows.iter().enumerate() {
-                ui.push_id(index, |ui| {
+            for (index, shown_row) in shown.iter().enumerate() {
+                let row = shown_row.row;
+                let open = shown_row.is_folder().then(|| self.expansion.is_open(&shown_row.key));
+                // By key, so a cell keeps its id, and its focus, as rows open and close above it.
+                ui.push_id(&shown_row.key, |ui| {
                     ui.horizontal(|ui| {
                         ui.ctx().accesskit_node_builder(ui.unique_id(), |node| {
                             node.set_role(Role::Row);
                             node.set_label(row.name.as_str());
+                            node.set_level(shown_row.depth + 1);
+                            if let Some(open) = open {
+                                node.set_expanded(open);
+                            }
                         });
                         for (side, item) in [&row.left, &row.right].into_iter().enumerate() {
-                            let current = self.current == (index, side);
-                            let selected = item.is_some().then(|| self.selected[side].contains(&row_path(row)));
+                            let current = index == at && self.current.1 == side;
+                            let selected = item.is_some().then(|| self.selected[side].contains(&shown_row.key));
                             // ponytail: `look` walks a folder's listed subtree (`Row::cues`) every frame; work the
-                            // looks out in `update` when the rows change if expanded trees (T3, E08-S11) make it slow.
+                            // looks out in `update` when the rows change if expanded trees (E08-S11) make it slow.
                             let look = look(row, [TreeSide::Left, TreeSide::Right][side]);
+                            let tree = (shown_row.depth, open.filter(|_| shown_row.folders[side].is_some()));
                             let size = Vec2::new(name_width, height);
-                            let response = name_cell(ui, item.as_ref(), look.as_ref(), side, current, selected, size);
+                            let response = name_cell(ui, item.as_ref().zip(look.as_ref()), side, current, selected, size, tree);
                             if current && std::mem::take(&mut self.refocus) {
                                 response.request_focus();
                                 response.scroll_to_me(None);
@@ -376,7 +417,8 @@ impl FolderCompare {
                                 if response.gained_focus() {
                                     self.quiet = false;
                                 }
-                                moved = moved.or_else(|| arrow(ui, &response, index, side, self.rows.len()));
+                                focused = true;
+                                moved = moved.or_else(|| arrow(ui, &response, index, side, shown.len()));
                                 self.quiet |= ui.input_mut(|input| input.consume_key(Modifiers::NONE, Key::Escape));
                                 // The status in words on keyboard focus too, while the cell is in view. It covers
                                 // the row below, so Esc hides it without moving focus (WCAG 1.4.13).
@@ -406,11 +448,14 @@ impl FolderCompare {
                 });
             }
         });
-        if let Some((current, pick)) = picked.or(moved) {
+        self.grid_focus = focused;
+        if let Some(((index, side), pick)) = picked.or(moved) {
+            let key = shown[index].key.clone();
+            // Before the move: a range with no anchor yet starts at the cell focused until now.
             if let Some(pick) = pick {
-                self.pick(current.0, current.1, pick);
+                self.pick(index, side, pick);
             }
-            self.current = current;
+            self.current = (key, side);
             self.refocus = true;
             ui.ctx().request_repaint();
         }
@@ -445,13 +490,6 @@ impl Pick {
             Self::Only
         }
     }
-}
-
-/// A shown row's path of row names from the base.
-// ponytail: the base folders' rows only, so the path is the row's name; T3's expansion makes it
-// the path through the open folders.
-fn row_path(row: &Row) -> PathBuf {
-    PathBuf::from(&row.name)
 }
 
 impl Drop for FolderCompare {
@@ -537,27 +575,50 @@ fn paint_text(ui: &Ui, rect: Rect, text: &str, colour: Color32) -> f32 {
 const SPOT: f32 = 10.0;
 const GLYPH: f32 = 12.0;
 
-/// A row's name on one side, in its status colour after its colour spot, or the gap where the
-/// other side's item has no partner. Only the current cell takes focus, so Tab stops once in the
-/// row area; every cell takes clicks. `selected` is `None` for a gap, which has nothing to select.
-fn name_cell(ui: &mut Ui, item: Option<&Item>, look: Option<&Look>, side: usize, current: bool, selected: Option<bool>, size: Vec2) -> Response {
-    let (rect, mut response) = ui.allocate_exact_size(size, if current { Sense::click() } else { Sense::CLICK });
+/// A row's name on one side, with its look (see [`look`]): in its status colour after its colour
+/// spot, or the gap where the other side's item has no partner. Only the current cell takes focus,
+/// so Tab stops once in the row area; every cell takes clicks. `selected` is `None` for a gap, which
+/// has nothing to select. `tree` is the row's depth, which indents the name, and, for a folder on
+/// this side, whether it is open, which its chevron shows.
+fn name_cell(
+    ui: &mut Ui,
+    item: Option<(&Item, &Look)>,
+    side: usize,
+    current: bool,
+    selected: Option<bool>,
+    size: Vec2,
+    (depth, open): (usize, Option<bool>),
+) -> Response {
+    let (_, rect) = ui.allocate_space(size);
+    // An id of the row's own (the caller's `push_id`) rather than an automatic one, which counts
+    // the rows above: focus stays with the cell as rows open and close above it.
+    let mut response = ui.interact(rect, ui.scope_id().with(("name", side)), if current { Sense::click() } else { Sense::CLICK });
     let name = match item {
-        Some(item) => fmt(t([ON_LEFT, ON_RIGHT][side]), &[("name", &item.name)]),
+        Some((item, _)) => fmt(t([ON_LEFT, ON_RIGHT][side]), &[("name", &item.name)]),
         None => t([NOT_ON_LEFT, NOT_ON_RIGHT][side]).to_owned(),
     };
     response.widget_info(|| WidgetInfo::labeled(Role::Cell, true, &name));
     if let Some(selected) = selected {
         ui.ctx().accesskit_node_builder(response.id, |node| node.set_selected(selected));
     }
-    let status = look.map_or(ui.visuals().text_color(), |look| colour(ui.ctx(), look.colour()));
+    let status = item.map_or(ui.visuals().text_color(), |(_, look)| colour(ui.ctx(), look.colour()));
     let text_colour = paint_selection(ui, rect, selected == Some(true), status);
-    if let (Some(item), Some(look)) = (item, look) {
-        paint_spot(ui, rect, &look.spot());
+    let indent = ui.spacing().indent;
+    // At most half the cell, so a deep row still shows its chevron and part of its name; the row's
+    // level is still in the accessibility tree.
+    let offset = (depth as f32 * indent).min(rect.width() / 2.0);
+    let chevron = Rect::from_min_size(rect.min + Vec2::new(offset, 0.0), Vec2::new(indent, rect.height()));
+    if let Some(open) = open {
+        // Clipped to the cell, which a very narrow one is narrower than.
+        paint_chevron(ui, &ui.painter_at(rect), chevron.center(), open, text_colour);
+    }
+    if let Some((item, look)) = item {
+        let body = rect.with_min_x(chevron.right().min(rect.right()));
+        paint_spot(ui, body, &look.spot());
         let glyphs = [(look.link, look::LINK_ICON, look.colour()), (look.error.is_some(), look::ERROR_ICON, &look::ERROR_GLYPH)];
         let glyphs: Vec<_> = glyphs.into_iter().filter(|(on, ..)| *on).collect();
         let text =
-            Rect::from_min_max(rect.min + Vec2::new(SPOT + ui.spacing().icon_spacing, 0.0), rect.max - Vec2::new(GLYPH * glyphs.len() as f32, 0.0));
+            Rect::from_min_max(body.min + Vec2::new(SPOT + ui.spacing().icon_spacing, 0.0), rect.max - Vec2::new(GLYPH * glyphs.len() as f32, 0.0));
         let width = paint_text(ui, text, &item.name, text_colour);
         for (at, (_, icon, role)) in glyphs.into_iter().enumerate() {
             let center = egui::pos2(text.left() + width + GLYPH * (at as f32 + 0.5), rect.center().y);
@@ -581,6 +642,20 @@ fn paint_spot(ui: &Ui, cell: Rect, colours: &[&ColourRole]) {
         let rect = Rect::from_min_max(egui::pos2(left, spot.top()), egui::pos2(left + part, spot.bottom()));
         ui.painter().rect_filled(rect, 0.0, colour(ui.ctx(), role));
     }
+}
+
+/// Lucide's `chevron-right` and `chevron-down` (ISC; both from Feather, MIT; see ATTRIBUTION.md):
+/// their path points on the icons' 24-unit grid.
+const CHEVRON_RIGHT: [(f32, f32); 3] = [(9.0, 18.0), (15.0, 12.0), (9.0, 6.0)];
+const CHEVRON_DOWN: [(f32, f32); 3] = [(6.0, 9.0), (12.0, 15.0), (18.0, 9.0)];
+
+/// A folder's chevron, a line's height wide, centred on `center`, with Lucide's stroke width of 2,
+/// in the colour of the name beside it.
+fn paint_chevron(ui: &Ui, painter: &egui::Painter, center: Pos2, open: bool, colour: Color32) {
+    let scale = ui.text_style_height(&TextStyle::Body) / 24.0;
+    let at = |(x, y): (f32, f32)| center + Vec2::new(x - 12.0, y - 12.0) * scale;
+    let points = if open { CHEVRON_DOWN } else { CHEVRON_RIGHT };
+    painter.add(egui::Shape::line(points.map(at).to_vec(), Stroke::new(2.0 * scale, colour)));
 }
 
 /// The cell a key pressed in the focused name cell moves to, and what it does to that side's
@@ -635,5 +710,48 @@ impl Handler<Shell> for OpenFolders {
         let mut view = FolderCompare::of_folders(&request.args, &request.cwd);
         view.done = Some(done);
         shell.open(Box::new(view));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A scan of `dir` that lists only when the test steps it.
+    fn scan(dir: &Path) -> Scan {
+        let source = LocalSource::open(dir.to_str().unwrap()).unwrap();
+        let capabilities = source.capabilities();
+        let (scan, events) = TreeScan::new(Arc::new(source), "", false);
+        Scan { scan, events, capabilities, idle: false, done: 0, pending: 1 }
+    }
+
+    fn step(view: &FolderCompare) {
+        for scan in view.scans.iter().flatten() {
+            while scan.scan.step() {}
+        }
+    }
+
+    fn open(view: &mut FolderCompare, name: &str) {
+        view.current = (PathBuf::from(name), 0);
+        view.open_folder();
+    }
+
+    /// A folder opened while an earlier listing's event is still unread keeps the view waiting:
+    /// that event's count predates the open.
+    #[test]
+    fn an_unread_listing_does_not_end_the_wait_for_a_later_open() {
+        let root = tempfile::tempdir().unwrap();
+        for name in ["a", "b"] {
+            std::fs::create_dir(root.path().join(name)).unwrap();
+        }
+        let mut view = FolderCompare::new();
+        view.scans = [Some(scan(root.path())), Some(scan(root.path()))];
+        step(&view);
+        view.update();
+        open(&mut view, "a");
+        step(&view);
+        open(&mut view, "b");
+        view.update();
+        assert!(view.scanning(), "b is not listed yet");
     }
 }
