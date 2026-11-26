@@ -38,6 +38,9 @@ use crate::{Attributes, Capabilities, DataSource, Delete, ErrorKind, Item, ItemK
 /// Most entries an archive may declare, checked before the directory is indexed so a small file
 /// can't make the index hold millions. ponytail: a fixed number; an option if real archives need more.
 const MAX_ENTRIES: u64 = 1 << 20;
+/// Most files and folders the index may hold, folders it makes for entry names included, so names
+/// with many folders each can't make it hold millions either.
+const MAX_NODES: usize = 1 << 20;
 /// Most bytes of central directory and end records indexing may read.
 const MAX_METADATA_BYTES: u64 = 256 << 20;
 /// How much of an entry each hand-over between the reading thread and its reader holds.
@@ -61,6 +64,8 @@ pub struct ZipSource {
     metadata: Arc<ZipArchiveMetadata>,
     /// Every file and folder; the root is [`ROOT`].
     nodes: Vec<Node>,
+    /// Most [`ZipSource::nodes`] indexing may make.
+    max_nodes: usize,
 }
 
 struct Node {
@@ -84,7 +89,11 @@ impl ZipSource {
     }
 
     /// An archive held in `reader`, `name` in messages. Folders it holds no entry for get `modified`.
-    pub fn from_reader(name: String, mut reader: impl Read + Seek + Send + 'static, modified: SystemTime) -> Result<Self, SourceError> {
+    pub fn from_reader(name: String, reader: impl Read + Seek + Send + 'static, modified: SystemTime) -> Result<Self, SourceError> {
+        Self::index(name, reader, modified, MAX_NODES)
+    }
+
+    fn index(name: String, mut reader: impl Read + Seek + Send + 'static, modified: SystemTime, max_nodes: usize) -> Result<Self, SourceError> {
         let damaged = |e: &dyn std::fmt::Display| SourceError::new(ErrorKind::Io, format!("{name} isn't a readable zip archive: {e}"));
         craft_zip::check_entry_count_seekable(&mut reader, MAX_ENTRIES).map_err(|e| damaged(&e))?;
         let (bounded, indexing) = craft_zip::MetadataReader::new(reader, MAX_METADATA_BYTES).map_err(|e| damaged(&e))?;
@@ -94,20 +103,21 @@ impl ZipSource {
         let metadata = archive.metadata();
         let storage: Box<dyn Storage> = Box::new(archive.into_inner());
         let root = Node::folder(String::new(), modified);
-        let mut source = Self { name: name.clone(), storage: Arc::new(Mutex::new(storage)), metadata: Arc::clone(&metadata), nodes: vec![root] };
+        let mut source =
+            Self { name: name.clone(), storage: Arc::new(Mutex::new(storage)), metadata: Arc::clone(&metadata), nodes: vec![root], max_nodes };
         for index in 0..metadata.len() {
             let entry = metadata.entry(index).map_err(|e| damaged(&e))?;
-            source.add(index, &entry, modified);
+            source.add(index, &entry, modified)?;
         }
         Ok(source)
     }
 
     /// Puts an entry, and the folders above it, in the index.
-    fn add(&mut self, index: usize, entry: &ZipFileEntry<'_>, fallback: SystemTime) {
+    fn add(&mut self, index: usize, entry: &ZipFileEntry<'_>, fallback: SystemTime) -> Result<(), SourceError> {
         let raw = entry.name().map_or_else(|_| String::from_utf8_lossy(entry.name_raw()).into_owned(), |name| name.into_owned());
         let modified = entry.last_modified().and_then(local_time).unwrap_or(fallback);
         let names: Vec<&str> = raw.split(['/', '\\']).filter(|name| !name.is_empty() && *name != ".").collect();
-        let Some((last, parents)) = names.split_last() else { return };
+        let Some((last, parents)) = names.split_last() else { return Ok(()) };
         let unreachable = if names.contains(&"..") {
             Some("points outside the archive")
         } else if names.len() > MAX_DEPTH {
@@ -118,27 +128,28 @@ impl ZipSource {
         if let Some(why) = unreachable {
             let error = SourceError::new(ErrorKind::NotFound, format!("{raw} in {} {why}", self.name));
             let item = Item { error: Some(error), ..file_item(raw.clone(), entry, modified) };
-            self.insert(ROOT, &raw, Node { item, entry: None, children: BTreeMap::new() });
-            return;
+            self.insert(ROOT, &raw, Node { item, entry: None, children: BTreeMap::new() })?;
+            return Ok(());
         }
         let mut parent = ROOT;
         for name in parents {
-            parent = self.folder(parent, name, fallback);
+            parent = self.folder(parent, name, fallback)?;
         }
         if entry.is_dir() {
-            let at = self.folder(parent, last, modified);
+            let at = self.folder(parent, last, modified)?;
             if let Some(node) = self.nodes.get_mut(at) {
                 node.item.modified = Some(modified);
             }
         } else {
             let node = Node { item: file_item((*last).to_owned(), entry, modified), entry: Some(index), children: BTreeMap::new() };
-            self.insert(parent, last, node);
+            self.insert(parent, last, node)?;
         }
+        Ok(())
     }
 
     /// Folder `name` in `parent`, made if it isn't there. A file in its place becomes the folder,
     /// with an error, so what is inside stays reachable.
-    fn folder(&mut self, parent: usize, name: &str, modified: SystemTime) -> usize {
+    fn folder(&mut self, parent: usize, name: &str, modified: SystemTime) -> Result<usize, SourceError> {
         let Some(&at) = self.nodes.get(parent).and_then(|node| node.children.get(name)) else {
             return self.insert(parent, name, Node::folder(name.to_owned(), modified));
         };
@@ -146,24 +157,28 @@ impl ZipSource {
             *node = Node::folder(name.to_owned(), modified);
             node.item.error = Some(clash(&self.name, name));
         }
-        at
+        Ok(at)
     }
 
     /// Adds `node` as `name` in `parent`. When something is already there, it stays and carries
-    /// the error.
-    fn insert(&mut self, parent: usize, name: &str, node: Node) -> usize {
+    /// the error. Past [`ZipSource::max_nodes`], the archive isn't readable.
+    fn insert(&mut self, parent: usize, name: &str, node: Node) -> Result<usize, SourceError> {
         if let Some(&at) = self.nodes.get(parent).and_then(|folder| folder.children.get(name)) {
             if let Some(existing) = self.nodes.get_mut(at) {
                 existing.item.error = Some(clash(&self.name, name));
             }
-            return at;
+            return Ok(at);
         }
         let at = self.nodes.len();
+        if at >= self.max_nodes {
+            let why = format!("{} isn't a readable zip archive: it holds more than {} files and folders", self.name, self.max_nodes);
+            return Err(SourceError::new(ErrorKind::Io, why));
+        }
         self.nodes.push(node);
         if let Some(folder) = self.nodes.get_mut(parent) {
             folder.children.insert(name.to_owned(), at);
         }
-        at
+        Ok(at)
     }
 
     fn node(&self, path: &Path) -> Result<&Node, SourceError> {
@@ -366,5 +381,33 @@ impl Read for EntryReader {
         buf[..n].copy_from_slice(&self.chunk[self.at..self.at + n]);
         self.at += n;
         Ok(n)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::{Cursor, Write};
+
+    use zip::ZipWriter;
+    use zip::write::SimpleFileOptions;
+
+    use super::*;
+
+    /// An archive of `entries` files, each under `depth` folders of its own.
+    fn deep_archive(entries: usize, depth: usize) -> Cursor<Vec<u8>> {
+        let mut zip = ZipWriter::new(Cursor::new(Vec::new()));
+        for i in 0..entries {
+            zip.start_file(format!("{i}/{}x", "a/".repeat(depth - 1)), SimpleFileOptions::default()).unwrap();
+            zip.write_all(b"x").unwrap();
+        }
+        Cursor::new(zip.finish().unwrap().into_inner())
+    }
+
+    #[test]
+    fn folders_made_for_entry_names_count_against_the_index_cap() {
+        // 20 entries but over 2,000 folders: the entry count alone stays far under the cap.
+        let open = |cap| ZipSource::index("deep.zip".to_owned(), deep_archive(20, 100), SystemTime::UNIX_EPOCH, cap).map(|_| ());
+        assert!(open(1_000).is_err());
+        assert!(open(10_000).is_ok());
     }
 }
