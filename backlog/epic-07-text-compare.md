@@ -379,8 +379,9 @@ As a developer comparing a file whose name or bytes mislead detection, I can cho
 - [ ] After an encoding override, saving writes the file in the overridden encoding (*inferred*).
 
 #### Tasks
-- **E07-S10-T1** — Format picker per side, listing every registered format with Detected as the default · size: S · depends: —
+- **E07-S10-T1** — Format picker per side, listing every registered format with Detected as the default · size: S · depends: — · status: done
   - AC: an empty-mask format appears in the list, and once chosen the file info header names it.
+  - Implemented: `crates/ui-text-compare/src/file_format.rs` adds a format picker per side (`left-format`, `right-format`) to the Comparison Settings dialog's new Format tab through E01-S1's session-settings extension point (`otd_ui_text_compare::session_settings`, one line in `apps/otd/src/session_settings.rs`). Each lists Detected (the default, the format resolved by mask) and then every format of the view's registry, the catch-all included, so an empty-mask format can be picked; `TextCompareView::format(side)` is the format in use and the file info header names it. Names checked in `docs/feature-names.md`. Test: `tests/it/file_format.rs` drives the dialog by keyboard, picks an empty-mask format and reads the left header from the accessibility tree. Checks: `cargo xtask ci` on macOS after rebasing onto main, and pull-request CI on Linux and macOS. https://github.com/alextiboldi/overthediff/pull/120
 - **E07-S10-T2** — Encoding override per side with None as the default · size: S · depends: —
   - AC: a Windows-1252 file mis-detected as UTF-8 shows the correct characters after Windows-1252 is chosen.
 - **E07-S10-T3** — Reload with overrides (prompting when there are unsaved edits) and save in the chosen encoding · size: M · depends: E07-S10-T1, E07-S10-T2
