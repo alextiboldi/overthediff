@@ -149,3 +149,60 @@ fn a_text_field_and_a_checkbox_at_rest_are_outlined_with_the_border_role() {
         }
     }
 }
+
+/// A shell following the OS, with the OS reporting `system`.
+fn following(system: Theme) -> Harness<'static, Shell> {
+    let mut harness = harness(&[SWATCH], SWATCH);
+    harness.ctx.set_theme(ThemePreference::System);
+    harness.input_mut().system_theme = Some(system);
+    colour::follow_system(&harness.ctx);
+    harness.run();
+    harness
+}
+
+fn palette_of(theme: Theme) -> Palette {
+    match theme {
+        Theme::Light => Palette::Light,
+        Theme::Dark => Palette::Dark,
+    }
+}
+
+/// The open view and the chrome are in `palette` and not in the other one.
+fn assert_drawn_in(harness: &Harness<'_, Shell>, palette: Palette) {
+    let other = match palette {
+        Palette::Light => Palette::Dark,
+        Palette::Dark => Palette::Light,
+    };
+    let fills = fills(harness);
+    for role in CHROME_FILLS.iter().chain([&SWATCH]) {
+        assert!(fills.contains(&colour32(role.value(palette))), "{} in {palette:?}: {fills:?}", role.id);
+        assert!(!fills.contains(&colour32(role.value(other))), "{} in {palette:?}: {fills:?}", role.id);
+    }
+}
+
+#[test]
+fn following_the_os_recolours_an_open_view_and_the_chrome_each_time_the_os_setting_changes() {
+    for start in [Theme::Light, Theme::Dark] {
+        let mut harness = following(start);
+        assert_drawn_in(&harness, palette_of(start));
+        let flipped = match start {
+            Theme::Light => Theme::Dark,
+            Theme::Dark => Theme::Light,
+        };
+        for system in [flipped, start] {
+            harness.input_mut().system_theme = Some(system);
+            harness.run();
+            assert_drawn_in(&harness, palette_of(system));
+        }
+    }
+}
+
+#[test]
+fn choosing_a_palette_stops_following_the_os() {
+    let mut harness = following(Theme::Dark);
+    colour::set_palette(&harness.ctx, Palette::Light);
+    harness.run();
+    harness.input_mut().system_theme = Some(Theme::Dark);
+    harness.run();
+    assert_drawn_in(&harness, Palette::Light);
+}

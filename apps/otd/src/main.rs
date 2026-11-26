@@ -79,6 +79,9 @@ fn run_window(registry: Registry<Shell>, instance: Instance) -> eframe::Result {
         eframe::NativeOptions::default(),
         Box::new(move |cc| {
             otd_ui::colour::install(&cc.egui_ctx, colour_roles::colour_roles()?);
+            // ponytail: always follows the OS until the Appearance option (E05-S1-T2) chooses
+            // between this and a fixed palette (`set_palette`).
+            otd_ui::colour::follow_system(&cc.egui_ctx);
             // On the UI thread, which draws all the text.
             let catalogs = otd_core::i18n::embedded();
             otd_core::i18n::set_language(catalogs, catalogs.system_lang());
