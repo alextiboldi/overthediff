@@ -147,7 +147,8 @@ fn open(spec: &str, cwd: &Path) -> Result<(LocalSource, Item), String> {
     if let Some(error) = item.error {
         return Err(error.message);
     }
-    if item.kind != ItemKind::File {
+    // otd-source counts pipes, sockets and devices as files; opening a pipe would block forever.
+    if item.kind != ItemKind::File || !std::fs::metadata(&path).is_ok_and(|meta| meta.is_file()) {
         return Err(not_a_file());
     }
     // The size test reads no content, so an unreadable file would otherwise pass it.
@@ -221,6 +222,15 @@ mod tests {
             for (left, right) in [("a", "missing"), ("missing", "a"), ("a", "folder"), ("folder", "folder"), ("a", "..")] {
                 assert_eq!(code(test, left, right, dir.path()), RunHere::Exit(EXIT_ERROR), "{test} {left} {right}");
             }
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_device_exits_with_100_for_every_test() {
+        let dir = files(&[("a", b"")]);
+        for test in ["size", "crc", "binary"] {
+            assert_eq!(code(test, "a", "/dev/null", dir.path()), RunHere::Exit(EXIT_ERROR), "{test}");
         }
     }
 
