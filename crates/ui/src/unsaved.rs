@@ -2,7 +2,8 @@
 //!
 //! A view opts in with [`View::unsaved`] and [`View::save`]. Closing its tab, or exiting, asks
 //! Save / Don't Save / Cancel in a modal dialog over the window, one view at a time. Cancel aborts
-//! the whole close or exit and leaves every view as it was.
+//! the whole close or exit and leaves every view as it was. [`Shell::save_first`] asks the same
+//! before a view acts on itself in a way that loses its changes, such as Reload Files.
 
 use egui::accesskit::{Live, Role};
 use egui::{Context, Id, ViewportCommand};
@@ -27,6 +28,8 @@ pub(crate) struct Prompt {
     exit: bool,
     /// Clear Session: the answered view is replaced with this empty one instead of closed.
     replace: Option<fn() -> Box<dyn View>>,
+    /// Save first: the answered view stays open and this runs on it.
+    then: Option<fn(&mut dyn View)>,
     queue: Vec<usize>,
     /// Why the last Save didn't save, shown in the dialog.
     error: Option<String>,
@@ -39,7 +42,7 @@ pub(crate) struct Prompt {
 
 impl Prompt {
     fn new(exit: bool, queue: Vec<usize>) -> Self {
-        Self { exit, replace: None, queue, error: None, focus: true, return_to: None }
+        Self { exit, replace: None, then: None, queue, error: None, focus: true, return_to: None }
     }
 }
 
@@ -78,6 +81,21 @@ impl Shell {
             self.prompt = Some(Prompt { replace: Some(new), ..Prompt::new(false, vec![index]) });
         } else {
             self.replace(index, new);
+        }
+    }
+
+    /// Runs `then` on the active view (Reload Files), first asking Save / Don't Save / Cancel when
+    /// the view has unsaved changes. Save and Don't Save run it once answered; Cancel doesn't. Does
+    /// nothing while a prompt is open.
+    pub fn save_first(&mut self, then: fn(&mut dyn View)) {
+        if self.prompt.is_some() {
+            return;
+        }
+        let index = self.active;
+        if unsaved(&self.tabs[index]) {
+            self.prompt = Some(Prompt { then: Some(then), ..Prompt::new(false, vec![index]) });
+        } else if let Some(view) = &mut self.tabs[index] {
+            then(view.as_mut());
         }
     }
 
@@ -153,9 +171,19 @@ impl Shell {
     fn answered(&mut self, ctx: &Context) {
         let Some(mut prompt) = self.prompt.take() else { return };
         if !prompt.exit {
-            match prompt.replace {
-                Some(new) => self.replace(prompt.queue[0], new),
-                None => self.close(prompt.queue[0]),
+            let index = prompt.queue[0];
+            match (prompt.replace, prompt.then) {
+                (Some(new), _) => self.replace(index, new),
+                (None, Some(then)) => {
+                    if let Some(view) = &mut self.tabs[index] {
+                        then(view.as_mut());
+                    }
+                    // The view stays: focus goes back where it was, as on Cancel, on the next draw.
+                    self.refocus = prompt.return_to;
+                    self.focus_active = self.refocus.is_none();
+                    ctx.request_repaint();
+                }
+                (None, None) => self.close(index),
             }
             return;
         }

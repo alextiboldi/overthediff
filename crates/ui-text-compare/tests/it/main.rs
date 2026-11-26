@@ -4,3 +4,4 @@ mod aligned;
 mod header;
 mod open;
 mod read_only;
+mod session;
