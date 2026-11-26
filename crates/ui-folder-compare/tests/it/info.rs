@@ -148,3 +148,24 @@ fn info_and_the_legend_take_focus_list_their_content_and_give_focus_back_on_esc_
         }
     }
 }
+
+#[test]
+fn the_status_bar_counts_the_base_folders_as_still_to_list_until_their_listings_are_in() {
+    // Each scan, from scratch or again, is read before a draw takes in any listing, so it is still
+    // running whatever the worker threads have done meanwhile.
+    let progress = |harness: &Harness<'_, Shell>| -> Vec<usize> {
+        let status = view(harness).status();
+        let field = status.fields.iter().find(|field| field.id == "scan").expect("a scan field while scanning");
+        field.value.split_whitespace().filter_map(|word| word.parse().ok()).collect()
+    };
+    let root = tempfile::tempdir().unwrap();
+    fixture(root.path());
+    let mut harness = harness(FolderCompare::of_folders(&["left".into(), "right".into()], root.path()));
+    for id in ["folder-compare.full_refresh", "folder-compare.refresh"] {
+        assert!(harness.state_mut().run(id), "{id} ran");
+        let [done, total] = progress(&harness)[..] else { panic!("{id}: done and total") };
+        assert!(done < total, "{id}: {done} of {total}, the base folders are still to list");
+        settle(&mut harness);
+        assert!(view(&harness).status().fields.iter().all(|field| field.id != "scan"), "{id}: no scan field once listed");
+    }
+}

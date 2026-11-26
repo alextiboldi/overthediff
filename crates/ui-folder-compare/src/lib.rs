@@ -120,7 +120,8 @@ struct Scan {
     capabilities: Capabilities,
     /// The last event said nothing was left to list.
     idle: bool,
-    /// The last event's folders listed so far and still to list, for the status bar.
+    /// Folders listed so far and still to list, for the status bar: the last event's counts, or what
+    /// the view queued since.
     done: usize,
     pending: usize,
 }
@@ -262,7 +263,8 @@ impl FolderCompare {
                     // ponytail: the Handling tab makes it a setting (E08-S11); expanding opens folders (T3).
                     let (scan, events) = TreeScan::new(Arc::new(source), "", false);
                     match scan.start() {
-                        Ok(()) => self.scans[side] = Some(Scan { scan, events, capabilities, idle: false, done: 0, pending: 0 }),
+                        // `TreeScan::new` has queued the base folder, so it is pending before any event says so.
+                        Ok(()) => self.scans[side] = Some(Scan { scan, events, capabilities, idle: false, done: 0, pending: 1 }),
                         Err(err) => self.errors[side] = Some(err.to_string()),
                     }
                 }
