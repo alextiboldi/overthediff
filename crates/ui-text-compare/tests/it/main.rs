@@ -3,9 +3,9 @@
 mod aligned;
 mod bookmarks;
 mod edit;
+mod edited;
 mod font_size;
 mod go_to;
-mod edited;
 mod header;
 mod layout;
 mod open;
