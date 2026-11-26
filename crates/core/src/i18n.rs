@@ -15,7 +15,7 @@
 use std::cell::Cell;
 use std::sync::LazyLock;
 
-pub use craft_i18n::{Embedded, I18n, Lang, fmt};
+pub use craft_i18n::{Embedded, I18n, Lang, fmt, fmt_plain};
 
 include!(concat!(env!("OUT_DIR"), "/craft_i18n.rs"));
 
