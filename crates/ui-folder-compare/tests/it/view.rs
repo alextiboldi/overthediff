@@ -290,6 +290,35 @@ fn shift_down_before_any_pick_selects_from_the_focused_item() {
     assert_eq!(selected(&harness), items(&left[0..=2]), "the range keeps its start");
 }
 
+/// Selects every item on both sides, by click and Shift+click, leaving focus on the left.
+fn select_both_sides(harness: &mut Harness<'_, Shell>, left: &[String], right: &[String]) {
+    for side in [right, left] {
+        click(harness, &side[0], Modifiers::NONE);
+        click(harness, &side[side.len() - 1], Modifiers::SHIFT);
+    }
+}
+
+#[test]
+fn shift_left_and_shift_right_limit_a_both_sides_selection_to_that_side() {
+    let root = tempfile::tempdir().unwrap();
+    fixture(root.path());
+    let mut harness = harness(FolderCompare::of_folders(&["left".into(), "right".into()], root.path()));
+    let rows = rows(&harness);
+    let (left, right) = (names(&rows, "left"), names(&rows, "right"));
+
+    select_both_sides(&mut harness, &left, &right);
+    assert_eq!(selected(&harness).len(), items(&left).len() + items(&right).len(), "both sides selected");
+    harness.key_press_modifiers(Modifiers::SHIFT, Key::ArrowRight);
+    harness.run();
+    assert_eq!(selected(&harness), items(&right), "Shift+Right keeps only the right side's items");
+    assert_eq!(focused(&harness).map(|(_, name)| name).as_ref(), right.last(), "focus moves to the right side");
+
+    select_both_sides(&mut harness, &left, &right);
+    harness.key_press_modifiers(Modifiers::SHIFT, Key::ArrowLeft);
+    harness.run();
+    assert_eq!(selected(&harness), items(&left), "Shift+Left keeps only the left side's items");
+}
+
 #[test]
 fn a_screen_readers_activate_selects_as_a_click_does() {
     let root = tempfile::tempdir().unwrap();
