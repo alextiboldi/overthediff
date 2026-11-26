@@ -40,6 +40,7 @@ pub fn commands() -> Vec<Command<Shell>> {
         .chain(crate::edit::commands())
         .chain(crate::font_size::commands())
         .chain(crate::go_to::commands())
+        .chain(crate::find::commands())
         .chain(crate::bookmarks::commands())
         .chain(crate::layout::commands())
         .chain(crate::edited::commands())

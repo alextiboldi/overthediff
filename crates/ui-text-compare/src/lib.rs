@@ -28,6 +28,8 @@
 //!
 //! `go_to.rs` holds *Search > Go To* and the hidden *Go To Line* (E07-S6-T1).
 //!
+//! `find.rs` holds *Search > Find*, its find panel and the hidden *Find Text* (E07-S5-T2).
+//!
 //! `bookmarks.rs` holds the Search menu's bookmarks 0–9 and their gutter marks (E07-S6-T2).
 //!
 //! `layout.rs` holds the View menu's Side-by-Side and Top and Bottom layouts (E07-S9-T3).
@@ -70,6 +72,7 @@ pub mod encoding;
 pub mod file_format;
 mod filter;
 pub mod filtered;
+mod find;
 mod find_next;
 mod font_size;
 mod go_to;
@@ -95,6 +98,10 @@ pub use edit::{COPY, CUT, DELETE, INSERT_TEXT, PASTE, REDO, SELECT_ALL, UNDO};
 pub use edited::{NEXT_EDIT, PREVIOUS_EDIT};
 pub use file_format::{DETECTED, FORMAT_PICKERS, FORMAT_TAB, formats, session_settings};
 pub use filter::{SHOW_ALL, SHOW_CONTEXT, SHOW_DIFFERENCES, SHOW_NONE, SHOW_SAME};
+pub use find::{
+    BOTH, CLOSE, CLOSE_AUTOMATICALLY, FIND, FIND_TEXT, FIND_WHAT, INVALID_PATTERN, LINES_SELECTED, MATCH_CASE, NEXT, NO_SEARCHES, NOTHING_TO_FIND,
+    REGULAR_EXPRESSION, SEARCH_HISTORY, SEARCH_IN, WHOLE_WORDS, WRAP_SEARCH,
+};
 pub use find_next::{CURRENT_WORD, CURRENT_WORD_LABEL, FIND_NEXT, FIND_PREVIOUS, NOT_FOUND, TEXT_EDITING, options};
 pub use font_size::{DECREASE_FONT_SIZE, INCREASE_FONT_SIZE, RESET_FONT_SIZE};
 pub use go_to::{COLUMN, GO_TO, GO_TO_LINE, LINE, NOT_A_NUMBER};
@@ -193,6 +200,8 @@ pub struct TextCompareView {
     font_step: i8,
     /// The open Go To dialog (E07-S6-T1).
     go_to: Option<go_to::GoToDialog>,
+    /// The find panel and the lines its Select All chose (E07-S5-T2).
+    find: find::Find,
     /// What the last bookmark toggle or clear did, announced (E07-S6-T2).
     bookmark_said: Option<String>,
     /// Side by side or over and under (`layout.rs`).
@@ -209,7 +218,8 @@ pub struct TextCompareView {
     filter: Filter,
     /// The last search, which Find Next and Find Previous repeat (`find_next.rs`).
     search: Option<find_next::Search>,
-    /// Why the last Find Next or Find Previous found nothing, shown and announced.
+    /// Why the last Find Next or Find Previous found nothing, or what a search that closed the find
+    /// panel said, shown in the status bar and announced.
     find_said: Option<String>,
 }
 
@@ -258,6 +268,7 @@ impl TextCompareView {
             save_errors: Default::default(),
             font_step: 0,
             go_to: None,
+            find: find::Find::default(),
             bookmark_said: None,
             layout: Layout::default(),
             headers: [0.0; 2],
@@ -368,6 +379,7 @@ impl TextCompareView {
         let rules = self.importance();
         self.aligned = Aligned::new(self.pane(0).map(|pane| pane.lines.as_slice()), self.pane(1).map(|pane| pane.lines.as_slice()), rules);
         self.load_time = self.aligned.result().map(|_| started.elapsed());
+        self.find.clear_lines();
     }
 }
 
@@ -408,6 +420,8 @@ impl View for TextCompareView {
 
     fn ui(&mut self, ui: &mut Ui) {
         self.reload_if_changed();
+        // Above the panes, which take what room is left.
+        self.find_ui(ui);
         // Each pane's header and body keep their ids in either layout (`layout.rs`), so switching
         // keeps their scroll offset, caret and focus. Side by side, both headers come before both
         // bodies; stacked, each header comes just before its body. Either way the Tab and

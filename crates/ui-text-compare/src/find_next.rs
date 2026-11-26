@@ -20,6 +20,7 @@ use otd_text_compare::{Direction, FindOptions, Finder, Found, Line, RegexError, 
 use otd_ui::{Field, OptionSpec, Shell};
 
 use crate::edit::loaded_mut;
+use crate::find::FIND;
 use crate::open::NOT_TEXT_COMPARE;
 use crate::{TEXT_COMPARE, TextCompareView};
 
@@ -32,16 +33,15 @@ pub const CURRENT_WORD: &str = "text-compare.find_current_word";
 pub const CURRENT_WORD_LABEL: &str = "Initialize \"Text to find\" to be current word";
 /// What the status bar shows, and what is announced, when the search finds nothing.
 pub const NOT_FOUND: &str = "Not found: {text}";
-const FIND: &str = "Find";
 const NO_SEARCH: &str = "There is no search to repeat yet.";
-const TOO_COMPLEX: &str = "The regular expression is too complex to search this text.";
+pub(crate) const TOO_COMPLEX: &str = "The regular expression is too complex to search this text.";
 
 /// The last search, which Find Next and Find Previous repeat.
 pub(crate) struct Search {
-    text: String,
-    finder: Finder,
+    pub(crate) text: String,
+    pub(crate) finder: Finder,
     /// The match it found last, so a match that selects nothing isn't found again at the caret.
-    found: Option<Found>,
+    pub(crate) found: Option<Found>,
 }
 
 /// Find Next and Find Previous, in the Search menu, on each platform's chords (Q24): Cmd+G and

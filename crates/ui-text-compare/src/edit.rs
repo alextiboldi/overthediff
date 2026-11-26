@@ -206,6 +206,7 @@ impl TextCompareView {
     pub(crate) fn recompare(&mut self) {
         let [left, right] = [0, 1].map(|side| loaded(&self.panes, side).map(|pane| pane.lines.as_slice()));
         self.aligned.recompare(left, right);
+        self.find.clear_lines();
     }
 
     /// Side `side`'s pane body: the editor over the aligned rows. Returns whether it has focus.
@@ -278,8 +279,8 @@ impl TextCompareView {
         let lines = panes.map(|pane| pane.map_or(&[][..], |pane| pane.lines.as_slice()));
         let (selection, bookmarks) = panes[side].map(|pane| (pane.selection, pane.bookmarks)).unwrap_or_default();
         self.aligned.filter(self.filter, crate::filtered::context(&ctx), crate::filtered::counts(&ctx));
-        let drawn =
-            aligned::show(ui, side, lines, &mut self.aligned, &Caret { selection, shown: focused, pointer, bookmarks, whitespace: self.whitespace });
+        let caret = Caret { selection, shown: focused, pointer, bookmarks, whitespace: self.whitespace, lines: self.find.lines(side) };
+        let drawn = aligned::show(ui, side, lines, &mut self.aligned, &caret);
         if let (Some(at), Some(pane)) = (drawn.hit, loaded_mut(&mut self.panes, side)) {
             pane.move_caret(at, extend);
             ctx.request_repaint();

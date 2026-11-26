@@ -9,6 +9,7 @@ mod encoding;
 mod file_format;
 mod filter;
 mod filtered;
+mod find;
 mod find_next;
 mod font_size;
 mod go_to;

@@ -17,6 +17,7 @@ otd-launch = { path = "../launch" }
 otd-text-compare = { path = "../text-compare" }
 otd-text-engine = { path = "../text-engine" }
 otd-ui = { path = "../ui" }
+otd-ui-regex = { path = "../ui-regex" }
 # The file info header's modified time, in the local time zone (`clock`).
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 

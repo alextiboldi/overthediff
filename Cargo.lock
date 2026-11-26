@@ -2907,6 +2907,7 @@ dependencies = [
  "otd-text-compare",
  "otd-text-engine",
  "otd-ui",
+ "otd-ui-regex",
  "raw-window-handle",
  "tempfile",
 ]

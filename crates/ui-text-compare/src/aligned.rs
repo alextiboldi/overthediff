@@ -479,7 +479,7 @@ fn dashed_underlines(text: &str, changed: &[CharRange], galley: &Galley, origin:
 }
 
 /// What a pane's editor draws and asks of its rows this frame.
-pub struct Caret {
+pub struct Caret<'a> {
     pub selection: Selection,
     /// Whether the caret is drawn: the editor has focus.
     pub shown: bool,
@@ -489,6 +489,8 @@ pub struct Caret {
     pub bookmarks: Bookmarks,
     /// Whether spaces, tabs and line breaks show as glyphs (*Show Whitespace*).
     pub whitespace: bool,
+    /// Whole lines selected besides `selection`, ascending: the find panel's Select All.
+    pub lines: &'a [usize],
 }
 
 /// What a pane drew this frame, for its editor.
@@ -652,7 +654,9 @@ fn draw_row(ui: &mut Ui, row: usize, lines: [&[Line]; 2], aligned: &mut Aligned,
     let Metrics { font, height, digit, digits, colours, reveal, .. } = metrics;
     // The selected characters of this line, and whether its line break is selected too.
     let (start, end) = caret.selection.range();
+    let whole = index.is_some_and(|index| caret.lines.binary_search(&index).is_ok());
     let (selected, break_selected) = match (index, line) {
+        (Some(_), Some(line)) if whole => (0..line.text.len(), line.ending != LineEnding::None),
         (Some(index), Some(line)) if (start.line..=end.line).contains(&index) && !caret.selection.is_empty() => {
             let from = if index == start.line { byte_at(&line.text, start.column) } else { 0 };
             let to = if index == end.line { byte_at(&line.text, end.column) } else { line.text.len() };
@@ -736,8 +740,15 @@ fn draw_row(ui: &mut Ui, row: usize, lines: [&[Line]; 2], aligned: &mut Aligned,
     }
     let response = ui.interact(text_rect, ui.scope_id().with(("line", row)), Sense::hover());
     response.widget_info(|| WidgetInfo::labeled(Role::Label, true, &name));
-    if let Some(description) = description {
-        ui.ctx().accesskit_node_builder(response.id, |node| node.set_description(t(description)));
+    if description.is_some() || whole {
+        ui.ctx().accesskit_node_builder(response.id, |node| {
+            if let Some(description) = description {
+                node.set_description(t(description));
+            }
+            if whole {
+                node.set_selected(true);
+            }
+        });
     }
     if !exact {
         // Said in text too, since the marked characters then include unchanged ones.
