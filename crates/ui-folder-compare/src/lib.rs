@@ -197,11 +197,15 @@ impl FolderCompare {
         }
         // ponytail: compares the whole tree again after each batch of listings; keep the rows and
         // update the listed folders' if large trees make that slow.
-        // A side that can't be listed has unknown contents, so nothing on the other faces a gap.
-        if let ([Some(left), Some(right)], [None, None]) = (&self.scans, &self.errors) {
-            let case_sensitive = case_sensitive(&left.capabilities, &right.capabilities);
-            self.rows = compare_trees(&left.scan, &right.scan, &CRITERIA, case_sensitive, &|_, _, _| true);
-        }
+        // A side that can't be listed has unknown contents, so nothing on the other faces a gap,
+        // even when the other side was listed first.
+        self.rows = match (&self.scans, &self.errors) {
+            ([Some(left), Some(right)], [None, None]) => {
+                let case_sensitive = case_sensitive(&left.capabilities, &right.capabilities);
+                compare_trees(&left.scan, &right.scan, &CRITERIA, case_sensitive, &|_, _, _| true)
+            }
+            _ => Vec::new(),
+        };
         self.current.0 = self.current.0.min(self.rows.len().saturating_sub(1));
     }
 
