@@ -6,10 +6,9 @@
 use crate::Status;
 
 /// The 13 display filters; a view has exactly one active.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DisplayFilter {
     /// Everything.
-    #[default]
     All,
     /// Hides matches.
     Differences,
@@ -32,28 +31,14 @@ pub enum DisplayFilter {
 }
 
 impl DisplayFilter {
-    /// Every filter, in View-menu order.
-    pub const ALL: [Self; 13] = [
-        Self::All,
-        Self::Differences,
-        Self::Same,
-        Self::NoOrphans,
-        Self::DifferencesNoOrphans,
-        Self::Orphans,
-        Self::LeftNewer,
-        Self::RightNewer,
-        Self::LeftNewerAndLeftOrphans,
-        Self::RightNewerAndRightOrphans,
-        Self::LeftOrphans,
-        Self::RightOrphans,
-        Self::None,
-    ];
-
     /// Whether a row with `status` shows under this filter.
     ///
     /// *Unspecified*, decided here: a filter worded as "hides X" shows unknown and error rows, and
     /// one worded as "X only" hides them. So Show Differences and Show No Orphans keep rows not yet
     /// compared and unreadable ones in view, since neither is a known match or orphan.
+    ///
+    /// This answers for file rows. A folder pair's own status is [`Status::Unknown`], so the "X
+    /// only" filters would hide every folder: folders follow the folder display mode instead.
     pub fn shows(self, status: &Status) -> bool {
         use Status as S;
         let orphan = matches!(status, S::LeftOrphan | S::RightOrphan);

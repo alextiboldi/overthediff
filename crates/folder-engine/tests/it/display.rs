@@ -33,7 +33,6 @@ fn every_filter_shows_exactly_the_specified_statuses() {
         Status::Unknown,
         Status::Error(SourceError::new(ErrorKind::AccessDenied, "locked")),
     ];
-    assert_eq!(F::ALL.to_vec(), TABLE.iter().map(|(filter, _)| *filter).collect::<Vec<_>>(), "ALL lists every filter once, in table order");
     for (filter, cells) in TABLE {
         for (status, cell) in statuses.iter().zip(cells.chars()) {
             assert_eq!(filter.shows(status), cell == 'x', "{filter:?} on {status:?}");
