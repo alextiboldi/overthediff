@@ -14,6 +14,7 @@ use crate::{Comparison, Line, RowKind};
 pub trait Rule {
     /// Byte ranges of `text` that are unimportant. They may overlap and come in any order. The
     /// parts of a range that fall outside `text` are ignored, and a reversed range marks nothing.
+    /// A character counts as marked only when every byte of it is.
     fn unimportant(&self, text: &str) -> Vec<Range<usize>>;
 
     /// Byte ranges of `text` whose letter case doesn't matter, read like [`Rule::unimportant`]'s.

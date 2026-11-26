@@ -11,8 +11,8 @@
 //! them (case folded where a rule says case doesn't matter): what that search changes is
 //! important. The important characters it keeps pair up in order. A kept pair that differs only in
 //! case is an unimportant change, and between two kept pairs a second search over the unimportant
-//! characters alone marks what changes there as unimportant. So a row is unimportant exactly when
-//! none of its ranges is important, a range whose characters all lie in spans the rules mark is
+//! characters alone marks what changes there as unimportant. So, apart from a different line
+//! ending, a row is unimportant exactly when none of its ranges is important, a range whose characters all lie in spans the rules mark is
 //! unimportant, and dropping every marked character still leaves the two lines the same.
 //!
 //! Characters are Unicode scalar values (`char`), so a changed combining mark is marked on its own,

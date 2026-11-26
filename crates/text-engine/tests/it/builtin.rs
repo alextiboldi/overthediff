@@ -105,13 +105,17 @@ fn character_ranges_agree_with_the_row_and_with_the_spans_the_rules_mark() {
         BuiltInRules { everything_else: false, ..ALL },
     ];
     let all = short_strings();
+    let lines: Vec<Vec<Line>> = all.iter().map(|text| line(text)).collect();
     for rules in rule_sets {
-        for left in &all {
-            for right in all.iter().filter(|r| *r != left) {
+        // Each pair once: swapping its sides only swaps the ranges, checked below, so the other
+        // order holds too.
+        for (a, (left, left_line)) in all.iter().zip(&lines).enumerate() {
+            for (right, right_line) in all.iter().zip(&lines).skip(a + 1) {
                 let result = char_differences_with(left, right, &[&rules]);
                 assert!(result.exact, "{rules:?} {left:?} {right:?}: {:?}", result.ranges);
                 // Rows and ranges agree on whether anything here matters.
-                let row_unimportant = outcome(left, right, rules) == Outcome::UnimportantOnly;
+                let row = classify(&compare(left_line, right_line), left_line, right_line, &[&rules]);
+                let row_unimportant = row.outcome == Outcome::UnimportantOnly;
                 assert_eq!(
                     row_unimportant,
                     result.ranges.iter().all(|r| r.importance == Importance::Unimportant),
