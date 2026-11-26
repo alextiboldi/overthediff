@@ -1,0 +1,27 @@
+[package]
+name = "otd-text-compare"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "OverTheDiff's Text Compare pane documents: files loaded through a data source, decoded, with their encoding and line endings"
+
+[lints]
+workspace = true
+
+# No UI dependency (`cargo xtask ui-free`).
+[dependencies]
+craft-codepage = { workspace = true }
+otd-format = { path = "../format" }
+otd-source = { path = "../source" }
+otd-text-engine = { path = "../text-engine" }
+# The East Asian multibyte code pages (932, 936, 949, 950) craft-codepage names but has no tables for.
+encoding_rs = "0.8"
+
+# The system code page, read from the registry with safe calls; already in Cargo.lock through
+# craft-i18n.
+[target.'cfg(windows)'.dependencies]
+windows-registry = "0.6"
+
+[dev-dependencies]
+craft-testkit = { workspace = true }
