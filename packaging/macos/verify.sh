@@ -3,6 +3,8 @@
 #   - the image and the app inside it have valid signatures;
 #   - the executable has a slice for each architecture --arch names;
 #   - NOTICE ships in the bundle;
+#   - the bundle's name and identifier carry its major version, so another major version's app
+#     installs beside it (E01-S2-T5);
 #   - each slice this Mac can run starts and answers: natively for this Mac's own architecture,
 #     and the Intel slice under Rosetta on Apple silicon when Rosetta is installed;
 #   - unless the signature is ad-hoc, Gatekeeper accepts the app and the image and both carry a
@@ -18,7 +20,7 @@ DMG=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --arch) ARCH="${2:?--arch needs a value}"; shift 2 ;;
-    -h | --help) sed -n '2,12p' "$0"; exit 0 ;;
+    -h | --help) sed -n '2,13p' "$0"; exit 0 ;;
     *) DMG="$1"; shift ;;
   esac
 done
@@ -36,10 +38,18 @@ codesign --verify --strict --verbose=2 "$DMG"
 MOUNT="$(mktemp -d "${TMPDIR:-/tmp}/otd-verify.XXXXXXXX")"
 trap 'hdiutil detach "$MOUNT" -quiet || true; rmdir "$MOUNT" 2>/dev/null || true' EXIT
 hdiutil attach "$DMG" -readonly -nobrowse -noautoopen -mountpoint "$MOUNT" -quiet
-APP="$MOUNT/OverTheDiff.app"
+apps=("$MOUNT"/*.app)
+[[ "${#apps[@]}" = 1 && -d "${apps[0]}" ]] || fail "the image holds ${#apps[@]} apps, not one"
+APP="${apps[0]}"
 EXE="$APP/Contents/MacOS/$(plutil -extract CFBundleExecutable raw -o - "$APP/Contents/Info.plist")"
 codesign --verify --strict --deep --verbose=2 "$APP"
 [[ -f "$APP/Contents/Resources/NOTICE" ]] || fail "NOTICE is not in the bundle"
+major="$(plutil -extract CFBundleShortVersionString raw -o - "$APP/Contents/Info.plist")"
+major="${major%%.*}"
+id="$(plutil -extract CFBundleIdentifier raw -o - "$APP/Contents/Info.plist")"
+[[ "$(basename "$APP")" = "OverTheDiff $major.app" ]] || fail "the bundle is $(basename "$APP"), not named after major version $major"
+[[ "$id" = "io.github.alextiboldi.overthediff$major" ]] || fail "the bundle identifier $id doesn't end in major version $major"
+echo "ok: $(basename "$APP") ($id)"
 
 have=" $(lipo -archs "$EXE") "
 for a in "${WANT[@]}"; do
@@ -53,7 +63,7 @@ echo "ok: slices$have"
 run_slice() {
   local slice="$1" how="$2" out code=0
   # Empty keeps settings in memory, so a change to the launch order can't write the real profile.
-  out="$(env "OVERTHEDIFF_${VERSION%%.*}_CONFIG_DIR=" arch "-$slice" "$EXE" -packaging-smoke-test 2>&1)" || code=$?
+  out="$(env "OVERTHEDIFF_${major}_CONFIG_DIR=" arch "-$slice" "$EXE" -packaging-smoke-test 2>&1)" || code=$?
   if [[ "$code" -ge 1 && "$code" -lt 128 && "$out" == otd:* ]]; then
     echo "ok: the $slice slice runs $how"
   else

@@ -18,7 +18,11 @@ set -euo pipefail
 # shellcheck source=../env.sh
 . "$(dirname "${BASH_SOURCE[0]}")/../env.sh"
 HERE="$ROOT/packaging/linux"
-APP_ID=io.github.alextiboldi.overthediff
+# Every installed path names the major version, so two major versions' packages install side by
+# side (E01-S2-T5): /usr/bin/otd-<major>, the desktop entry and icons named after APP_ID, and
+# /usr/share/doc/overthediff-<major>. `otd` itself is an alternative (update-alternatives, in
+# postinst.sh) that points at the newest installed major version.
+PACKAGE="overthediff-$MAJOR"
 
 SKIP_BUILD=0
 while [[ $# -gt 0 ]]; do
@@ -48,18 +52,23 @@ STAGE="$WORK/root"
 rm -rf "$WORK"
 
 # The installed tree, shared by both formats.
-install -Dm755 "$CARGO_TARGET_DIR/release/otd" "$STAGE/usr/bin/otd"
-strip "$STAGE/usr/bin/otd" 2>/dev/null || true
-install -Dm644 "$HERE/$APP_ID.desktop" "$STAGE/usr/share/applications/$APP_ID.desktop"
-mkdir -p "$STAGE/usr/share/icons"
-cp -R "$ROOT/assets/app-icon/hicolor" "$STAGE/usr/share/icons/"
+install -Dm755 "$CARGO_TARGET_DIR/release/otd" "$STAGE/usr/bin/otd-$MAJOR"
+strip "$STAGE/usr/bin/otd-$MAJOR" 2>/dev/null || true
+mkdir -p "$STAGE/usr/share/applications"
+sed -e "s/@APP_ID@/$APP_ID/g" -e "s/@MAJOR@/$MAJOR/g" "$HERE/overthediff.desktop.in" >"$STAGE/usr/share/applications/$APP_ID.desktop"
+# The icons are drawn under the id without the major (icons.sh), and installed under APP_ID.
+for icon in "$ROOT"/assets/app-icon/hicolor/*/apps/io.github.alextiboldi.overthediff.*; do
+  rel="${icon#"$ROOT/assets/app-icon/"}"
+  install -Dm644 "$icon" "$STAGE/usr/share/icons/${rel%/*}/$APP_ID.${icon##*.}"
+done
 # The notices every package carries (E01-S2). The repository has no licence file of its own yet.
-mkdir -p "$STAGE/usr/share/doc/overthediff"
-copy_notices "$STAGE/usr/share/doc/overthediff"
+DOC="$STAGE/usr/share/doc/$PACKAGE"
+mkdir -p "$DOC"
+copy_notices "$DOC"
 # The third-party licence texts NOTICE names, from the locked crates' own sources: the embedded
 # fonts' (epaint_default_fonts) and the MPL-2.0 crate's (option-ext).
 command -v jq >/dev/null || { echo "error: jq not found" >&2; exit 1; }
-LICENCES="$STAGE/usr/share/doc/overthediff/licences"
+LICENCES="$DOC/licences"
 mkdir -p "$LICENCES"
 META="$(cd "$ROOT" && cargo metadata --format-version 1 --locked --filter-platform "$ARCH-unknown-linux-gnu")"
 while read -r crate file dest; do
@@ -88,7 +97,9 @@ echo "wrote $DIST/$BASENAME.tar.gz"
 
 command -v nfpm >/dev/null || { echo "error: nfpm not found (https://nfpm.goreleaser.com/install/)" >&2; exit 1; }
 export NFPM_ARCH="$DEB_ARCH"
-sed "s|\${STAGE}|$STAGE|g" "$HERE/nfpm.yaml" >"$WORK/nfpm.yaml"
+for f in nfpm.yaml postinst.sh prerm.sh; do
+  sed -e "s|\${STAGE}|$STAGE|g" -e "s|\${WORK}|$WORK|g" -e "s/@MAJOR@/$MAJOR/g" "$HERE/$f" >"$WORK/$f"
+done
 (cd "$ROOT" && nfpm package -f "$WORK/nfpm.yaml" -p deb -t "$DIST/$BASENAME.deb")
 echo "==> done"
 ls -lh "$DIST"

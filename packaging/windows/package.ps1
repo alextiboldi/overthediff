@@ -10,7 +10,7 @@
   otd.exe links the C runtime statically, so a clean Windows needs no Visual C++ redistributable.
   Per-monitor DPI awareness (v2) comes from winit, which sets it before the first window opens.
 
-  On GitHub Actions it then runs smoke.ps1 on the new MSI: install, check, uninstall.
+  On GitHub Actions it then runs smoke.ps1 on the new MSI: install, check, uninstall, reinstall.
 
   Needs: Rust with the MSVC toolchain and the target, and WiX v5
   (dotnet tool install --global wix --version 5.0.2).
@@ -33,23 +33,33 @@ function Invoke-Native([string] $What, [scriptblock] $Block) {
 
 # The release workflow exports <PREFIX>_VERSION, with the prefix packaging/env.sh names (OTD) or,
 # without that file, the app name's (OVERTHEDIFF); otherwise [workspace.package] version.
-$Version = if ($env:OTD_VERSION) { $env:OTD_VERSION } else { $env:OVERTHEDIFF_VERSION }
-if (-not $Version) {
-  $inPkg = $false
-  foreach ($line in Get-Content (Join-Path $Root 'Cargo.toml')) {
-    if ($line -match '^\s*\[') { $inPkg = ($line.Trim() -eq '[workspace.package]'); continue }
-    if ($inPkg -and $line -match '^\s*version\s*=\s*"([^"]+)"') { $Version = $Matches[1]; break }
-  }
+$CargoVersion = $null
+$inPkg = $false
+foreach ($line in Get-Content (Join-Path $Root 'Cargo.toml')) {
+  if ($line -match '^\s*\[') { $inPkg = ($line.Trim() -eq '[workspace.package]'); continue }
+  if ($inPkg -and $line -match '^\s*version\s*=\s*"([^"]+)"') { $CargoVersion = $Matches[1]; break }
 }
-if (-not $Version) { throw 'could not read [workspace.package] version from Cargo.toml' }
+if (-not $CargoVersion) { throw 'could not read [workspace.package] version from Cargo.toml' }
+$Version = if ($env:OTD_VERSION) { $env:OTD_VERSION } elseif ($env:OVERTHEDIFF_VERSION) { $env:OVERTHEDIFF_VERSION } else { $CargoVersion }
 # An MSI version is numeric (major.minor.build), so a prerelease tag is dropped there.
 $MsiVersion = ($Version -split '[-+]')[0]
+# Each major version installs side by side with the others (E01-S2-T5), as its settings folder
+# (overthediff-<major>) already keeps it apart. The binary takes that major from Cargo.toml when it
+# is compiled, so a package labelled with another one would install under names it doesn't use.
+$Major = ($Version -split '\.')[0]
+if ($Major -ne ($CargoVersion -split '\.')[0]) {
+  throw "version $Version has another major version than Cargo.toml's $CargoVersion, which otd.exe is built with"
+}
+# A stable UpgradeCode per major version, from the MD5 of a name: builds of one major version
+# replace each other (MajorUpgrade), and other major versions are other products.
+$hash = [Security.Cryptography.MD5]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes("io.github.alextiboldi.overthediff/upgrade-code/$Major"))
+$UpgradeCode = ([guid]::new($hash)).ToString().ToUpperInvariant()
 
 $Target = @{ x64 = 'x86_64-pc-windows-msvc'; arm64 = 'aarch64-pc-windows-msvc' }[$Arch]
 $Dist = if ($env:DIST) { $env:DIST } else { Join-Path $Root 'dist\release' }
 $TargetDir = if ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR } else { Join-Path $Root 'target' }
 New-Item -ItemType Directory -Force -Path $Dist | Out-Null
-Write-Output "OverTheDiff $Version for Windows $Arch ($Target)"
+Write-Output "OverTheDiff $Version for Windows $Arch ($Target), UpgradeCode $UpgradeCode"
 
 if (-not $SkipBuild) {
   # Static CRT, scoped to the target so build scripts and proc-macros are unaffected.
@@ -93,7 +103,7 @@ foreach ($l in @(
 
 $Msi = Join-Path $Dist "overthediff-$Version-windows-$Arch.msi"
 Invoke-Native 'wix build' {
-  wix build (Join-Path $PSScriptRoot 'overthediff.wxs') -arch $Arch -d "Version=$MsiVersion" -d "StageDir=$Stage" -o $Msi
+  wix build (Join-Path $PSScriptRoot 'overthediff.wxs') -arch $Arch -d "Version=$MsiVersion" -d "Major=$Major" -d "UpgradeCode=$UpgradeCode" -d "StageDir=$Stage" -o $Msi
 }
 # wix writes its debug symbols next to the MSI; keep them out of the release assets.
 Remove-Item -Force -ErrorAction SilentlyContinue ([IO.Path]::ChangeExtension($Msi, '.wixpdb'))

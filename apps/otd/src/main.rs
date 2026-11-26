@@ -22,7 +22,9 @@ use otd_launch::{Config, EXIT_FAILED, EXIT_UNCLAIMED, Instance, Launch, Registry
 pub use otd_ui::Shell;
 
 /// The app's reverse-DNS id: the Linux desktop entry's and icon's name, and the window's app id.
-const APP_ID: &str = "io.github.alextiboldi.overthediff";
+/// It ends in the major version, so two major versions install and run side by side (E01-S2-T5);
+/// `APP_ID` in packaging/env.sh is the same.
+const APP_ID: &str = concat!("io.github.alextiboldi.overthediff", env!("CARGO_PKG_VERSION_MAJOR"));
 
 fn main() {
     let args = match std::env::args_os().skip(1).map(|arg| arg.into_string()).collect::<Result<Vec<_>, _>>() {
@@ -196,19 +198,24 @@ mod tests {
     }
 
     /// The launcher shows the Linux desktop entry, starts it and matches its window only when the
-    /// entry is named after the app id and names this executable and an icon that ships.
+    /// entry is named after the app id and names this executable and an icon that ships. The
+    /// entry is a template that packaging/linux/package.sh fills in for each major version.
     #[test]
     fn the_linux_desktop_entry_names_this_executable_and_a_shipped_icon() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let entry = std::fs::read_to_string(root.join(format!("packaging/linux/{}.desktop", super::APP_ID))).expect("the desktop entry");
+        let major = env!("CARGO_PKG_VERSION_MAJOR");
+        let template = std::fs::read_to_string(root.join("packaging/linux/overthediff.desktop.in")).expect("the desktop entry");
+        let entry = template.replace("@APP_ID@", super::APP_ID).replace("@MAJOR@", major);
         let key = |name: &str| entry.lines().find_map(|line| line.strip_prefix(name)?.strip_prefix('=')).unwrap_or_default();
-        let bin = env!("CARGO_BIN_NAME");
-        assert_eq!(key("Exec").split(' ').next(), Some(bin));
+        let bin = format!("{}-{major}", env!("CARGO_BIN_NAME"));
+        assert_eq!(key("Exec").split(' ').next(), Some(bin.as_str()));
         assert_eq!(key("TryExec"), bin);
         assert_eq!(key("StartupWMClass"), super::APP_ID, "egui-winit sets the X11 window class to the app id");
         assert_eq!(key("Icon"), super::APP_ID);
+        // The icons ship under the id without its major; package.sh renames them.
+        let icon = super::APP_ID.strip_suffix(major).expect("the app id ends in the major version");
         let icons = root.join("assets/app-icon/hicolor");
-        assert!(icons.join(format!("256x256/apps/{}.png", super::APP_ID)).is_file());
-        assert!(icons.join(format!("scalable/apps/{}.svg", super::APP_ID)).is_file());
+        assert!(icons.join(format!("256x256/apps/{icon}.png")).is_file());
+        assert!(icons.join(format!("scalable/apps/{icon}.svg")).is_file());
     }
 }

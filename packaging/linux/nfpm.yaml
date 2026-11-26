@@ -1,7 +1,8 @@
 # The .deb (nfpm: https://nfpm.goreleaser.com). package.sh stages the file tree, puts its path in
-# place of ${STAGE} (nfpm expands environment variables in fields, not in `src`) and exports
-# VERSION and NFPM_ARCH.
-name: overthediff
+# place of ${STAGE} and its work folder in place of ${WORK} (nfpm expands environment variables in
+# fields, not in `src`), fills in @MAJOR@ here and in the scripts, and exports VERSION and NFPM_ARCH.
+# The package is named after its major version, so two major versions install side by side.
+name: overthediff-@MAJOR@
 arch: ${NFPM_ARCH}
 platform: linux
 version: ${VERSION}
@@ -16,7 +17,7 @@ description: |-
   Compare and merge files and folders.
   OverTheDiff compares text files and folder trees side by side, then copies,
   synchronises and merges what differs. Start it from the application
-  launcher, or run `otd`.
+  launcher, or run `otd-@MAJOR@`; `otd` runs the newest installed major version.
 
 # `otd` links only glibc and libgcc_s. The window system (Wayland or X11, xkbcommon) and the GPU
 # (Vulkan, or GL through EGL) are loaded at run time, so they are listed here, not in the ELF.
@@ -44,5 +45,6 @@ contents:
     type: tree
 
 scripts:
-  postinstall: packaging/linux/postinst.sh
-  postremove: packaging/linux/postinst.sh
+  postinstall: ${WORK}/postinst.sh
+  preremove: ${WORK}/prerm.sh
+  postremove: ${WORK}/postinst.sh

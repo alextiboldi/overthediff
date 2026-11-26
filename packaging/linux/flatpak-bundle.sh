@@ -13,7 +13,6 @@
 set -euo pipefail
 # shellcheck source=../env.sh
 . "$(dirname "${BASH_SOURCE[0]}")/../env.sh"
-APP_ID=io.github.alextiboldi.overthediff
 FLATHUB=https://dl.flathub.org/repo/flathub.flatpakrepo
 TARBALL="${1:?usage: packaging/linux/flatpak-bundle.sh <overthediff-<version>-linux-<arch>.tar.gz>}"
 [[ -f "$TARBALL" ]] || { echo "error: $TARBALL not found (run packaging/linux/package.sh first)" >&2; exit 1; }
@@ -21,7 +20,7 @@ WORK="$CARGO_TARGET_DIR/flatpak-bundle"
 rm -rf "$WORK"
 mkdir -p "$WORK/stage"
 tar -xzf "$TARBALL" -C "$WORK/stage" --strip-components=1
-cp "$ROOT/packaging/linux/$APP_ID.yml" "$WORK/"
+sed -e "s/@APP_ID@/$APP_ID/g" -e "s/@MAJOR@/$MAJOR/g" "$ROOT/packaging/linux/io.github.alextiboldi.overthediff.yml" >"$WORK/$APP_ID.yml"
 
 flatpak remote-add --user --if-not-exists flathub "$FLATHUB"
 # --disable-rofiles-fuse: containers and CI runners have no FUSE.
