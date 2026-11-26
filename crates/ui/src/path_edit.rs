@@ -16,7 +16,7 @@ use std::sync::Arc;
 
 use craft_dialogs::{Dialogs, FileDialog};
 use egui::accesskit::Live;
-use egui::{Context, Id, Response, TextEdit, Ui};
+use egui::{Context, Id, Key, Response, TextEdit, Ui};
 use otd_core::i18n::{fmt, t};
 use otd_settings::Store;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
@@ -113,7 +113,11 @@ pub struct PathEdits {
 impl PathEdits {
     /// Loads the recent paths from `store` for the edits drawn in `ctx`.
     pub fn open(ctx: &Context, store: &mut Store) -> Self {
-        let recent: RecentPaths = store.section(SECTION);
+        let mut recent: RecentPaths = store.section(SECTION);
+        // A hand-edited file may hold more than an edit would keep.
+        for field in &mut recent.fields {
+            field.paths.truncate(MAX_RECENT);
+        }
         shared(ctx, |shared| shared.recent = recent);
         let wake = ctx.clone();
         Self { dialogs: Dialogs::new(Arc::new(move || wake.request_repaint())) }
@@ -138,9 +142,11 @@ impl PathEdits {
         self.dialogs.show_pending(parent);
         let answers = self.dialogs.take_answers();
         if !answers.is_empty() {
-            shared(ctx, |shared| shared.answers.extend(answers));
             ctx.request_repaint();
         }
+        // Answers posted last frame that no edit took were for an edit no longer drawn (its
+        // dialog or tab closed while the picker was open), so they go rather than fill a later one.
+        shared(ctx, |shared| shared.answers = answers);
         if let Some(recent) = changed {
             // Strings always serialise, so `set` can't fail here.
             store.update(|sections| sections.set(SECTION, &recent).unwrap_or(()));
@@ -218,6 +224,10 @@ impl<'a> PathEdit<'a> {
                     }
                 }
             });
+            // egui drops focus on Esc; closing the list with it puts focus back on the dropdown.
+            if recent.inner.is_some() && ctx.input(|i| i.key_pressed(Key::Escape)) {
+                recent.response.request_focus();
+            }
             ctx.accesskit_node_builder(recent.response.id, |node| node.set_label(t(RECENT_PATHS)));
             recent.response.on_hover_text(t(RECENT_PATHS));
             if let Some(text) = chosen {
@@ -269,16 +279,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_path_used_again_moves_first_once_and_a_field_keeps_at_most_the_limit() {
+    fn a_path_used_again_moves_first_and_is_listed_once() {
         let mut recent = RecentPaths::default();
-        for n in 0..MAX_RECENT + 5 {
-            recent.push("a", &format!("p{n}"));
+        for path in ["p0", "p1", "p2"] {
+            recent.push("a", path);
         }
-        recent.push("a", "p10");
-        let paths = recent.paths("a");
-        assert_eq!(paths.len(), MAX_RECENT);
-        assert_eq!(paths[0], "p10");
-        assert_eq!(paths.iter().filter(|p| *p == "p10").count(), 1);
-        assert!(!paths.contains(&"p0".to_owned()), "the oldest went");
+        recent.push("a", "p1");
+        assert_eq!(recent.paths("a"), ["p1", "p2", "p0"]);
     }
 }

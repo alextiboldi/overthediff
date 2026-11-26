@@ -2735,6 +2735,7 @@ dependencies = [
  "craft-dialogs",
  "craft-keymap",
  "craft-menu",
+ "craft-testkit",
  "egui",
  "egui_kittest",
  "otd-core",

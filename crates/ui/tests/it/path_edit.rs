@@ -3,8 +3,10 @@
 //! the OS picker (`PathEdits::set_override`), so no native dialog opens.
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+use craft_testkit::hostile::{HammerConfig, hammer};
 use egui::accesskit::{Live, Role};
 use egui::{Key, Modifiers};
 use egui_kittest::Harness;
@@ -38,13 +40,18 @@ struct Window {
     store: Store,
     left: String,
     right: String,
+    /// The Left edit isn't drawn, as when the dialog or tab holding it has closed.
+    hide_left: Arc<AtomicBool>,
 }
 
 fn harness(store: Store) -> Harness<'static, Window> {
-    let window = Window { edits: None, store, left: String::new(), right: String::new() };
+    let window = Window { edits: None, store, left: String::new(), right: String::new(), hide_left: Arc::default() };
     let mut harness = Harness::builder().build_ui_state(
         |ui, window: &mut Window| {
             for (label, field, path) in [(LEFT, "test.left", &mut window.left), (RIGHT, "test.right", &mut window.right)] {
+                if window.hide_left.load(Ordering::SeqCst) && label == LEFT {
+                    continue;
+                }
                 ui.horizontal(|ui| {
                     let label = ui.label(label);
                     PathEdit::new(field, path, Browse::Both).show(ui).labelled_by(label.id);
@@ -178,4 +185,50 @@ fn a_picker_that_cant_be_shown_is_announced_and_leaves_the_edit_alone() {
         .collect();
     assert!(announced.iter().any(|text| text.contains("no desktop portal")), "{announced:?}");
     assert_eq!(harness.state().left, "");
+}
+
+#[test]
+fn esc_closes_the_recent_paths_list_and_leaves_focus_on_its_dropdown() {
+    let (store, _) = otd_settings::open(Location::Memory);
+    let mut harness = harness(store);
+    type_path(&mut harness, LEFT, "/left/a.txt");
+    open_left_recent(&mut harness);
+    assert!(harness.query_by_role(Role::ListBox).is_some(), "the list is open");
+    press(&mut harness, Key::Escape);
+    assert!(harness.query_by_role(Role::ListBox).is_none(), "the list closed");
+    assert_eq!(focused(&harness), Some((Role::ComboBox, otd_ui::path_edit::RECENT_PATHS.to_owned())));
+}
+
+#[test]
+fn a_picker_answer_for_an_edit_no_longer_drawn_never_fills_it_later() {
+    let (store, _) = otd_settings::open(Location::Memory);
+    let mut harness = harness(store);
+    let hide_left = harness.state().hide_left.clone();
+    let hide = hide_left.clone();
+    // The picker answers as its edit goes away, so from the next frame on nothing draws the edit.
+    answer_with(
+        &mut harness,
+        Box::new(move |_: &Request| {
+            hide.store(true, Ordering::SeqCst);
+            Answer::Paths(vec![PathBuf::from("/chosen/file.txt")])
+        }),
+    );
+    tab_to(&mut harness, Role::Button, otd_ui::path_edit::BROWSE_FOR_FILE);
+    press(&mut harness, Key::Enter);
+    assert!(hide_left.swap(false, Ordering::SeqCst), "the picker answered");
+    harness.run();
+    assert_eq!(harness.state().left, "", "the answer went with the edit it was for");
+}
+
+#[test]
+fn opening_the_recent_paths_from_a_damaged_settings_file_never_panics_or_hangs() {
+    let seed = "schema_version = 1\n\n[[recent-paths.fields]]\nfield = \"test.left\"\npaths = [\"/a.txt\", \"dir/b.txt\"]\n\n[[recent-paths.fields]]\nfield = \"test.right\"\npaths = []\n";
+    hammer(&HammerConfig::new("recent paths", 300), seed.as_bytes(), |data| {
+        let Ok(dir) = tempfile::tempdir() else { return };
+        if std::fs::write(dir.path().join("config.toml"), data).is_err() {
+            return;
+        }
+        let (mut store, _notice) = otd_settings::open(Location::Dir(dir.path().to_path_buf()));
+        let _ = PathEdits::open(&egui::Context::default(), &mut store);
+    });
 }

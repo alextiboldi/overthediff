@@ -24,5 +24,6 @@ serde = { version = "1", features = ["derive"] }
 [dev-dependencies]
 egui_kittest = { workspace = true }
 tempfile = "3"
+craft-testkit = { workspace = true }
 # `default_fonts` so that the tests lay out text, as the app does.
 egui = { workspace = true, features = ["default_fonts"] }
