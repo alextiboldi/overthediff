@@ -277,7 +277,7 @@ impl fmt::Display for CommandError {
             CommandError::OutOfRange(name) => ("The argument {name} is out of range.", name),
             CommandError::Failed(message) => return f.write_str(message),
         };
-        f.write_str(&t(template).replace("{name}", name))
+        f.write_str(&crate::i18n::fmt(t(template), &[("name", name)]))
     }
 }
 
