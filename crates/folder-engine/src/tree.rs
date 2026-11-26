@@ -104,6 +104,42 @@ impl Row {
         Cues::of(&self.children)
     }
 
+    /// The total size of the files below this row's folder on `side`, counting only what is
+    /// visible on that side. `None` when that side's item isn't a folder, and until every folder
+    /// below it is listed without error and every item below it read: a partial sum would pass for
+    /// the total.
+    ///
+    /// ponytail: a folder pair waits for both sides' listings, as [`Row::scan`] is the less far
+    /// scanned of the two; a per-side scan state on `Row` if one side's total should show sooner.
+    /// Walks the subtree on each call, like [`Row::cues`].
+    pub fn total_size(&self, side: TreeSide) -> Option<u64> {
+        let (item, _) = self.side(side);
+        let folder = item.is_some_and(|item| item.kind == ItemKind::Folder && item.error.is_none());
+        if !folder || self.scan != ScanState::Done || matches!(self.status, Status::Error(_)) {
+            return None;
+        }
+        self.children.iter().try_fold(0u64, |total, child| {
+            let size = match child.side(side) {
+                (None, _) | (_, true) => 0,
+                (Some(item), false) if item.error.is_some() => return None,
+                (Some(item), false) => match item.kind {
+                    ItemKind::File => item.size,
+                    ItemKind::Folder => child.total_size(side)?,
+                    ItemKind::Link => 0,
+                },
+            };
+            Some(total.saturating_add(size))
+        })
+    }
+
+    /// This row's item on `side`, and whether it is hidden there.
+    fn side(&self, side: TreeSide) -> (Option<&Item>, bool) {
+        match side {
+            TreeSide::Left => (self.left.as_ref(), self.left_hidden),
+            TreeSide::Right => (self.right.as_ref(), self.right_hidden),
+        }
+    }
+
     fn folder_pair(&self) -> bool {
         let folder = |item: &Option<Item>| item.as_ref().is_some_and(|item| item.kind == ItemKind::Folder);
         folder(&self.left) && folder(&self.right)

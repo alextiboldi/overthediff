@@ -36,6 +36,9 @@ pub struct Shown<'a> {
     /// Each side's folder of this row, relative to that side's base in that side's spelling;
     /// `None` where that side's item isn't a folder.
     pub folders: [Option<PathBuf>; 2],
+    /// Each side's folder holding this row's item, as [`Shown::folders`] has it; `None` where that
+    /// side has no folder here.
+    pub parents: [Option<PathBuf>; 2],
 }
 
 impl Shown<'_> {
@@ -81,7 +84,7 @@ fn walk<'a>(rows: &'a [Row], parent: &Path, dirs: [&Option<PathBuf>; 2], depth: 
         let folder =
             |dir: &Option<PathBuf>, item: &Option<Item>| Some(dir.as_ref()?.join(&item.as_ref().filter(|i| i.kind == ItemKind::Folder)?.name));
         let folders = [folder(dirs[0], &row.left), folder(dirs[1], &row.right)];
-        let shown_row = Shown { row, depth, key, folders };
+        let shown_row = Shown { row, depth, key, folders, parents: [dirs[0].clone(), dirs[1].clone()] };
         let descend = shown_row.is_folder() && open(&shown_row.key);
         let (key, folders) = (shown_row.key.clone(), shown_row.folders.clone());
         shown.push(shown_row);

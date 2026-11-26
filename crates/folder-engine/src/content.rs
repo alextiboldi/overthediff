@@ -91,17 +91,19 @@ fn content_test(test: ContentTest, left: File<'_>, right: File<'_>) -> Result<Co
         return Ok(ContentResult::BinaryDifferences);
     }
     let same = match test {
-        ContentTest::Crc => crc(left)? == crc(right)?,
+        ContentTest::Crc => crc32(left.0, left.1, left.2)? == crc32(right.0, right.1, right.2)?,
         ContentTest::Binary => same_bytes(left, right)?,
     };
     Ok(if same { ContentResult::BinarySame } else { ContentResult::BinaryDifferences })
 }
 
-/// The source's CRC-32 as-is when it provides one, otherwise the content's.
-fn crc(file: File<'_>) -> Result<u32, SourceError> {
-    if let Some(crc) = file.2.crc32 {
+/// The CRC-32 of `item`, a file in `folder` (relative to the source's root): the source's own as-is
+/// when it provides one, otherwise the content's, read through the source.
+pub fn crc32(source: &dyn DataSource, folder: &Path, item: &Item) -> Result<u32, SourceError> {
+    if let Some(crc) = item.crc32 {
         return Ok(crc);
     }
+    let file = (source, folder, item);
     let mut reader = open(file)?;
     let mut hasher = crc32fast::Hasher::new();
     loop {

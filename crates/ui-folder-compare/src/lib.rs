@@ -54,6 +54,7 @@ mod flat;
 mod info;
 pub mod look;
 mod refresh;
+mod values;
 
 use expand::Expansion;
 pub use expand::Shown;
@@ -64,6 +65,7 @@ pub use info::{
 };
 pub use look::{COLOUR_ROLES, CONTRAST, Look, look};
 pub use refresh::{FULL_REFRESH, REFRESH, REFRESH_SELECTION, SWAP_SIDES};
+pub use values::{CANT_READ, CRC, EXT, READING};
 
 /// Folder Compare's commands, for `apps/otd/src/commands.rs`.
 pub fn commands() -> Vec<otd_core::command::Command<Shell>> {
@@ -116,7 +118,8 @@ pub fn session_type() -> SessionType {
 }
 
 /// A column each pane shows after the name: its caption (an English key) and an item's text in
-/// it, `None` for a blank cell. E08-S6 adds columns here.
+/// it, `None` for a blank cell. E08-S6 adds columns here. A folder's Size and a CRC the source
+/// doesn't hold need more than the item: `values.rs` adds them.
 pub struct Column {
     pub caption: &'static str,
     /// Its share of a pane's width; the name has the rest.
@@ -124,7 +127,12 @@ pub struct Column {
     pub cell: fn(&Item) -> Option<String>,
 }
 
-pub const COLUMNS: &[Column] = &[Column { caption: SIZE, width: 0.2, cell: size }, Column { caption: MODIFIED, width: 0.3, cell: modified }];
+pub const COLUMNS: &[Column] = &[
+    Column { caption: EXT, width: 0.08, cell: values::ext },
+    Column { caption: SIZE, width: 0.15, cell: size },
+    Column { caption: CRC, width: 0.12, cell: values::source_crc },
+    Column { caption: MODIFIED, width: 0.25, cell: modified },
+];
 
 fn size(item: &Item) -> Option<String> {
     (item.kind == ItemKind::File).then(|| trn(item.size, BYTE, BYTES))
@@ -143,6 +151,8 @@ struct Scan {
     scan: TreeScan,
     events: Receiver<ScanEvent>,
     capabilities: Capabilities,
+    /// The CRCs read from this side's files.
+    crcs: values::Crcs,
     /// Nothing was left to list when the view last took in the events.
     idle: bool,
     /// Folders listed so far and still to list, for the status bar: the last event's counts, or what
@@ -228,6 +238,11 @@ impl FolderCompare {
         self.scans.iter().flatten().any(|scan| !scan.idle)
     }
 
+    /// Whether a CRC cell is still waiting for its file to be read.
+    pub fn reading(&self) -> bool {
+        self.scans.iter().flatten().any(|scan| scan.crcs.reading())
+    }
+
     /// The rows selected on `side` (0 left, 1 right), as row keys (see [`Shown::key`]), in tree order.
     /// A close drops the rows it hides. A path whose row has since gone stays until the next click;
     /// `resolve_selection` ignores it.
@@ -295,10 +310,12 @@ impl FolderCompare {
                     // Background scanning off: a folder is listed when it is opened (`expand`), and with it
                     // on each batch of listings would compare the whole tree listed so far on this thread.
                     // ponytail: the Handling tab makes it a setting (E08-S11).
-                    let (scan, events) = TreeScan::new(Arc::new(source), "", false);
+                    let source: Arc<dyn DataSource> = Arc::new(source);
+                    let (scan, events) = TreeScan::new(Arc::clone(&source), "", false);
+                    let crcs = values::Crcs::new(source);
                     match scan.start() {
                         // `TreeScan::new` has queued the base folder, so it is pending before any event says so.
-                        Ok(()) => self.scans[side] = Some(Scan { scan, events, capabilities, idle: false, done: 0, pending: 1 }),
+                        Ok(()) => self.scans[side] = Some(Scan { scan, events, capabilities, crcs, idle: false, done: 0, pending: 1 }),
                         Err(err) => self.errors[side] = Some(err.to_string()),
                     }
                 }
@@ -407,6 +424,8 @@ impl FolderCompare {
                 let open = shown_row.is_folder().then(|| self.expansion.is_open(&shown_row.key));
                 // By key, so a cell keeps its id, and its focus, as rows open and close above it.
                 ui.push_id(&shown_row.key, |ui| {
+                    // CRCs are read only for rows in view.
+                    let in_view = ui.is_rect_visible(Rect::from_min_size(ui.cursor().min, Vec2::new(ui.available_width(), height)));
                     ui.horizontal(|ui| {
                         ui.ctx().accesskit_node_builder(ui.unique_id(), |node| {
                             node.set_role(Role::Row);
@@ -452,7 +471,15 @@ impl FolderCompare {
                             let mut clicked = activated(&response);
                             for column in COLUMNS {
                                 // A blank cell is still allocated, so it takes the item spacing a filled one does.
-                                let text = item.as_ref().and_then(column.cell).unwrap_or_default();
+                                let crcs = self.scans[side].as_mut().map(|scan| &mut scan.crcs);
+                                let at = values::At {
+                                    row,
+                                    side: [TreeSide::Left, TreeSide::Right][side],
+                                    folder: shown_row.parents[side].as_deref(),
+                                    crcs,
+                                    in_view,
+                                };
+                                let text = item.as_ref().and_then(|item| values::text(column, item, at)).unwrap_or_default();
                                 let response = cell(ui, &text, Vec2::new(pane * column.width, height), Sense::CLICK, selected == Some(true), status);
                                 clicked |= activated(&response);
                             }
@@ -545,7 +572,10 @@ impl View for FolderCompare {
             self.rescan();
         }
         self.update();
-        if self.scanning() {
+        for scan in self.scans.iter_mut().flatten() {
+            scan.crcs.take();
+        }
+        if self.scanning() || self.reading() {
             ui.ctx().request_repaint_after(SCAN_POLL);
         }
         ui.separator();
@@ -737,8 +767,9 @@ mod tests {
     fn scan(dir: &Path) -> Scan {
         let source = LocalSource::open(dir.to_str().unwrap()).unwrap();
         let capabilities = source.capabilities();
-        let (scan, events) = TreeScan::new(Arc::new(source), "", false);
-        Scan { scan, events, capabilities, idle: false, done: 0, pending: 1 }
+        let source: Arc<dyn DataSource> = Arc::new(source);
+        let (scan, events) = TreeScan::new(Arc::clone(&source), "", false);
+        Scan { scan, events, capabilities, crcs: values::Crcs::new(source), idle: false, done: 0, pending: 1 }
     }
 
     fn step(view: &FolderCompare) {

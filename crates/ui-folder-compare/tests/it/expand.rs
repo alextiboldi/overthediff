@@ -89,7 +89,11 @@ fn open_subfolders_opens_the_folder_and_every_folder_below_it_listing_them_as_ne
 fn expand_all_opens_every_folder_and_collapse_all_closes_them_all() {
     let root = tempfile::tempdir().unwrap();
     let mut harness = fixture(root.path());
-    let closed = rows(&harness);
+    // By row names: a folder's Size, blank before, shows once Expand All has listed it.
+    let names = |harness: &Harness<'_, Shell>| -> Vec<String> {
+        harness.query_all_by_role(Role::Row).filter_map(|row| row.accesskit_node().label()).collect()
+    };
+    let closed = names(&harness);
 
     run(&mut harness, "folder-compare.expand_all");
     for cell in [on(ON_LEFT, "deep.txt"), on(ON_RIGHT, "child.txt"), on(ON_LEFT, "inner.txt")] {
@@ -99,7 +103,7 @@ fn expand_all_opens_every_folder_and_collapse_all_closes_them_all() {
     assert!(inner.is_some_and(|row| row.contains(&NOT_ON_RIGHT.to_owned())), "an orphan folder opens to orphans facing gaps");
 
     run(&mut harness, "folder-compare.collapse_all");
-    assert_eq!(rows(&harness), closed, "back to the base folders' rows");
+    assert_eq!(names(&harness), closed, "back to the base folders' rows");
     assert!(!harness.state_mut().run("folder-compare.collapse_all"), "with nothing open, Collapse All is disabled");
 }
 

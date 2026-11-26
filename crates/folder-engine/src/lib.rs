@@ -11,7 +11,7 @@ mod status;
 mod tree;
 
 pub use align::{Aligned, Alignment, Placed, align, align_flat, case_sensitive};
-pub use content::{Compared, ContentOptions, ContentResult, ContentTest, Side, compare};
+pub use content::{Compared, ContentOptions, ContentResult, ContentTest, Side, compare, crc32};
 pub use display::DisplayFilter;
 pub use scan::{Folder, ScanEvent, ScanState, TreeScan};
 pub use select::{Resolved, resolve_selection};

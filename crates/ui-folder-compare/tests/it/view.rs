@@ -32,18 +32,18 @@ pub(crate) fn harness(view: FolderCompare) -> Harness<'static, Shell> {
     harness
 }
 
-/// Draws until the view's scans have nothing left to list.
+/// Draws until the view's scans have nothing left to list and no CRC cell waits for a read.
 pub(crate) fn settle(harness: &mut Harness<'_, Shell>) {
     // The scans run on worker threads; the limit only stops a test that would hang.
     for _ in 0..1000 {
         harness.run();
-        if !harness.state().view::<FolderCompare>().is_some_and(FolderCompare::scanning) {
+        if !harness.state().view::<FolderCompare>().is_some_and(|view| view.scanning() || view.reading()) {
             harness.run();
             return;
         }
         std::thread::sleep(Duration::from_millis(5));
     }
-    panic!("the scans never finished");
+    panic!("the scans or CRC reads never finished");
 }
 
 /// Each item row's cell names, in row order. The column headers' row has no cells.
