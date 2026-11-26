@@ -267,6 +267,8 @@ fn exit_asks_once_for_each_unsaved_view_then_closes_the_window() {
     while let Some(name) = prompt(&harness) {
         assert!(asked.len() < 5, "the prompts never end: {asked:?}");
         assert!(name.contains(selected(&harness).unwrap_or_default().as_str()), "the view asked about is shown");
+        let question = harness.get_by(|node| node.role() == Role::Label && node.label().or_else(|| node.value()).is_some_and(|text| text == name));
+        assert_ne!(question.accesskit_node().live(), Live::Off, "each view's question is announced, though focus stays on Save");
         asked.push(name);
         assert!(!harness.state_mut().exit(), "asking to exit again doesn't start over");
         assert!(!sent.close.get(), "the window stays open while a view is unanswered");

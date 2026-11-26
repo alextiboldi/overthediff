@@ -172,7 +172,10 @@ fn dialog(ctx: &Context, title: &str, error: Option<&str>, focus: bool) -> Optio
             node.set_label(question.as_str());
             node.set_modal();
         });
-        ui.heading(&question);
+        // Exit's next question replaces this one in the same dialog, with focus kept on Save, and
+        // selects that view's tab behind it: announce it (rule 21).
+        let heading = ui.heading(&question);
+        ui.ctx().accesskit_node_builder(heading.id, |node| node.set_live(Live::Assertive));
         ui.label(t(UNSAVED_LOST));
         if let Some(error) = error {
             let response = ui.label(error);
