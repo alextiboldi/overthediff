@@ -8,17 +8,20 @@
 //! *File > Open File* and the hidden *Open File on File System*, and [`OpenFiles`] opens two files
 //! given on the command line (E07-S1-T2).
 //!
-//! ponytail: the text is a plain list of lines until E07-S1-T4 draws the aligned comparison.
+//! Below the headers, [`aligned`] draws the two files aligned row by row, with their differences
+//! highlighted, scrolling together (E07-S1-T4).
 
 mod read_only;
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chrono::{DateTime, Local};
+pub mod aligned;
 mod open;
 
-use egui::accesskit::Live;
-use egui::{Id, RichText, ScrollArea, Ui};
+use aligned::Aligned;
+use egui::accesskit::{Live, Role};
+use egui::{Id, Ui, UiBuilder};
 use otd_core::i18n::{file_size, fmt, t};
 use otd_format::{Kind, Registry};
 use otd_launch::Completion;
@@ -83,6 +86,8 @@ pub struct TextCompareView {
     done: Option<Completion>,
     /// Why the last comparison left both panes read-only, if it did.
     comparison: Option<ReadOnly>,
+    /// The panes' rows, aligned, and the comparison behind them.
+    aligned: Aligned,
 }
 
 impl Drop for TextCompareView {
@@ -116,6 +121,7 @@ impl TextCompareView {
             browse: None,
             done: None,
             comparison: None,
+            aligned: Aligned::new(None, None),
         }
     }
 
@@ -183,12 +189,17 @@ impl TextCompareView {
         let specs = &self.session.specs;
         self.loaded.resize(specs.len(), None);
         self.panes.resize_with(specs.len(), || None);
+        let mut changed = false;
         for ((spec, loaded), pane) in specs.iter().zip(&mut self.loaded).zip(&mut self.panes) {
             if loaded.as_ref() != Some(spec) {
                 *loaded = Some(spec.clone());
                 self.comparison = None;
                 *pane = (!spec.trim().is_empty()).then(|| otd_text_compare::open(spec, &self.formats).map_err(|e| e.message));
+                changed = true;
             }
+        }
+        if changed {
+            self.aligned = Aligned::new(self.pane(0).map(|pane| pane.lines.as_slice()), self.pane(1).map(|pane| pane.lines.as_slice()));
         }
     }
 }
@@ -216,13 +227,35 @@ impl View for TextCompareView {
                     let caption = ui.strong(t(SIDES[side]));
                     self.path_edit(ui, side, caption.id);
                     pane(ui, self.panes.get(side).and_then(Option::as_ref), self.read_only(side));
-                    if ui.input(|i| i.pointer.primary_pressed()) && ui.rect_contains_pointer(ui.min_rect()) {
+                    if clicked(ui) {
                         self.chosen = side;
                     }
                 });
             }
         });
+        // The bodies start below both headers, at one height, so their rows line up. Each is named
+        // by its side's caption, so a line and its counterpart read apart.
+        let panes = [0, 1].map(|side| self.panes.get(side).and_then(|pane| pane.as_ref()?.as_ref().ok()));
+        let lines = panes.map(|pane| pane.map_or(&[][..], |pane| pane.lines.as_slice()));
+        ui.columns(SIDES.len(), |columns| {
+            for (side, column) in columns.iter_mut().enumerate() {
+                if panes[side].is_some() {
+                    let body = UiBuilder::new().id_salt(side).accessibility_role(Role::Group).accessibility_label(t(SIDES[side]));
+                    column.scope_builder(body, |ui| {
+                        aligned::show(ui, side, lines, &mut self.aligned);
+                        if clicked(ui) {
+                            self.chosen = side;
+                        }
+                    });
+                }
+            }
+        });
     }
+}
+
+/// Whether the primary button was pressed inside what `ui` has drawn so far.
+fn clicked(ui: &Ui) -> bool {
+    ui.input(|i| i.pointer.primary_pressed()) && ui.rect_contains_pointer(ui.min_rect())
 }
 
 fn pane(ui: &mut Ui, pane: Option<&Result<Pane, String>>, read_only: Option<ReadOnly>) {
@@ -237,7 +270,6 @@ fn pane(ui: &mut Ui, pane: Option<&Result<Pane, String>>, read_only: Option<Read
             file_info_header(ui, pane);
             read_only::show(ui, read_only);
             ui.separator();
-            lines(ui, pane);
         }
     }
 }
@@ -286,12 +318,4 @@ fn endings_name(endings: LineEndings) -> &'static str {
         LineEndings::Unix => "Unix (LF)",
         LineEndings::Mixed => "Mixed",
     }
-}
-
-fn lines(ui: &mut Ui, pane: &Pane) {
-    ScrollArea::both().auto_shrink(false).show_rows(ui, ui.text_style_height(&egui::TextStyle::Monospace), pane.lines.len(), |ui, rows| {
-        for line in pane.lines.get(rows).unwrap_or_default() {
-            ui.label(RichText::new(&line.text).monospace());
-        }
-    });
 }
