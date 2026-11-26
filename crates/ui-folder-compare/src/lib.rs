@@ -197,8 +197,8 @@ impl FolderCompare {
                 self.errors[side] = Some(error.to_string());
             }
         }
-        // ponytail: compares the whole tree again after each batch of listings; keep the rows and
-        // update the listed folders' if large trees make that slow.
+        // ponytail: compares everything listed so far again after each batch of listings, which is the
+        // base folders until expansion (T3); update only the listed folders' rows if that gets slow.
         // A side that can't be listed has unknown contents, so nothing on the other faces a gap,
         // even when the other side was listed first.
         self.rows = match (&self.scans, &self.errors) {
