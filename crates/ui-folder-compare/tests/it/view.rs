@@ -45,12 +45,18 @@ fn settle(harness: &mut Harness<'_, Shell>) {
     panic!("the scans never finished");
 }
 
-/// Each row's cell names, in row order.
+/// Each item row's cell names, in row order. The column headers' row has no cells.
 fn rows(harness: &Harness<'_, Shell>) -> Vec<Vec<String>> {
     harness
         .query_all_by_role(Role::Row)
-        .map(|row| row.query_all_by_role(Role::Cell).filter_map(|cell| cell.accesskit_node().label()).collect())
+        .map(|row| row.query_all_by_role(Role::Cell).filter_map(|cell| cell.accesskit_node().label()).collect::<Vec<_>>())
+        .filter(|cells| !cells.is_empty())
         .collect()
+}
+
+/// Where each node of `role` under `node` starts, left to right.
+fn lefts(node: &egui_kittest::Node<'_>, role: Role) -> Vec<f64> {
+    node.query_all_by_role(role).filter_map(|cell| Some(cell.accesskit_node().bounding_box()?.x0)).collect()
 }
 
 fn on(template: &str, name: &str) -> String {
@@ -152,4 +158,24 @@ fn folders_typed_into_the_path_edits_are_compared_once_each_edit_is_left() {
     settle(&mut harness);
     let rows = rows(&harness);
     assert!(rows.iter().any(|row| row.contains(&on(ON_LEFT, "same.txt")) && row.contains(&on(ON_RIGHT, "same.txt"))), "{rows:?}");
+}
+
+#[test]
+fn every_row_has_a_cell_under_each_column_header_and_the_path_edits_are_outside_the_grid() {
+    let root = tempfile::tempdir().unwrap();
+    fixture(root.path());
+    let harness = harness(FolderCompare::of_folders(&["left".into(), "right".into()], root.path()));
+    let grid = harness.get_by_role(Role::TreeGrid);
+    assert_eq!(grid.query_all_by_role(Role::TextInput).count(), 0, "the path edits aren't grid content");
+
+    let header_row = grid.query_all_by_role(Role::Row).find(|row| row.query_all_by_role(Role::ColumnHeader).next().is_some());
+    let headers = lefts(&header_row.expect("the column headers are in a row"), Role::ColumnHeader);
+    // Folders have no size and orphans face blank cells: those rows must still line up.
+    for row in grid.query_all_by_role(Role::Row).filter(|row| row.query_all_by_role(Role::Cell).next().is_some()) {
+        let cells = lefts(&row, Role::Cell);
+        assert_eq!(cells.len(), headers.len(), "a cell per column, blank ones included");
+        for (cell, header) in cells.iter().zip(&headers) {
+            assert!((cell - header).abs() < 0.5, "cells start under their headers: {cells:?} vs {headers:?}");
+        }
+    }
 }

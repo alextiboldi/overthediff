@@ -166,8 +166,10 @@ impl FolderCompare {
             match LocalSource::open(spec) {
                 Ok(source) => {
                     let capabilities = source.capabilities();
-                    // ponytail: background scanning always on; the Handling tab makes it a setting (E08-S11).
-                    let (scan, events) = TreeScan::new(Arc::new(source), "", true);
+                    // Background scanning off: T2 draws only the base folders' rows, and with it on each
+                    // batch of listings would compare the whole tree listed so far on this thread.
+                    // ponytail: the Handling tab makes it a setting (E08-S11); expanding opens folders (T3).
+                    let (scan, events) = TreeScan::new(Arc::new(source), "", false);
                     match scan.start() {
                         Ok(()) => self.scans[side] = Some(Scan { scan, events, capabilities, idle: false }),
                         Err(err) => self.errors[side] = Some(err.to_string()),
@@ -229,7 +231,12 @@ impl FolderCompare {
         response
     }
 
+    /// The tree grid, in a ui of its own so that the path edits above it aren't grid content.
     fn rows_ui(&mut self, ui: &mut Ui) {
+        ui.scope(|ui| self.grid_ui(ui));
+    }
+
+    fn grid_ui(&mut self, ui: &mut Ui) {
         let height = ui.text_style_height(&TextStyle::Body) + ui.spacing().item_spacing.y;
         let pane = (ui.available_width() - 2.0 * ui.spacing().item_spacing.x * (1 + COLUMNS.len()) as f32) / 2.0;
         let name_width = pane * (1.0 - COLUMNS.iter().map(|c| c.width).sum::<f32>());
@@ -239,6 +246,7 @@ impl FolderCompare {
             node.set_label(t(FOLDER_COMPARE));
         });
         ui.horizontal(|ui| {
+            ui.ctx().accesskit_node_builder(ui.unique_id(), |node| node.set_role(Role::Row));
             for _ in 0..2 {
                 header(ui, NAME, name_width, height);
                 for column in COLUMNS {
@@ -266,11 +274,9 @@ impl FolderCompare {
                                 moved = moved.or_else(|| arrow(ui, &response, index, side, self.rows.len()));
                             }
                             for column in COLUMNS {
-                                let width = pane * column.width;
-                                match item.as_ref().and_then(column.cell) {
-                                    Some(text) => drop(cell(ui, &text, Vec2::new(width, height), Sense::hover())),
-                                    None => ui.add_space(width),
-                                }
+                                // A blank cell is still allocated, so it takes the item spacing a filled one does.
+                                let text = item.as_ref().and_then(column.cell).unwrap_or_default();
+                                cell(ui, &text, Vec2::new(pane * column.width, height), Sense::hover());
                             }
                         }
                     });
