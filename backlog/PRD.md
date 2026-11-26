@@ -129,7 +129,7 @@ Each decision sits in its owning story as task T1 with a proposed default. The i
 
 **File formats and compatibility**
 - **Snapshot and settings-package formats** (Q10 E19-S1, Q11 E23-S1): own formats, and whether to import third-party tools' files for migration.
-- **Built-in language and converter catalogue** (Q8, E10-S2 and E10-S7).
+- **Built-in converter catalogue** (Q8, E10-S7). The built-in languages (Q8, E10-S2) were decided on 2026-11-25: C/C++, C#, Java, JavaScript/TypeScript, Python, Go, Rust, HTML/XML, CSS, JSON, YAML, SQL, shell scripts, Markdown and INI/properties, plus plain text.
 - **Report XML schema** (Q9, E18-S5).
 
 **Unspecified behaviour** (define)

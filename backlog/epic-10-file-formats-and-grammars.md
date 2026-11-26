@@ -92,6 +92,37 @@ As a developer, I can see source code syntax-highlighted in Text Compare so that
 - [ ] *View > Syntax Highlighting* turns highlighting on or off in Text Compare. Every element has a default colour that is readable in the light and dark themes.
 - [ ] The grammar has no nesting and no context-specific rules. Mixed-language files are highlighted by their own format's grammar only.
 
+#### Decisions
+**Starter language set and built-in format list (E10-S2-T1, Q8).** Recorded by E10-S2-T1 and confirmed by the operator on 2026-11-25, as proposed. The feature catalogue says there are built-in formats and grammars but doesn't list them (Q8), so the list is *unspecified* there and is OverTheDiff's own choice. The proposal names the languages. Where it joins two with a slash, the split into formats, the masks and the treatment of plain text are T1's refinements (*inferred*).
+
+- The starter set is 15 built-in Text formats with grammars, plus the plain Text format. Each language pair joined by a slash is **one** format with one grammar, whose keywords cover both languages:
+
+  | Format (working name) | Masks |
+  |---|---|
+  | C/C++ | `*.c;*.h;*.cc;*.cpp;*.cxx;*.hh;*.hpp;*.hxx` |
+  | C# | `*.cs` |
+  | Java | `*.java` |
+  | JavaScript/TypeScript | `*.js;*.mjs;*.cjs;*.jsx;*.ts;*.mts;*.cts;*.tsx` |
+  | Python | `*.py;*.pyw;*.pyi` |
+  | Go | `*.go` |
+  | Rust | `*.rs` |
+  | HTML/XML | `*.html;*.htm;*.xhtml;*.xml;*.xsd;*.xsl;*.xslt;*.svg` |
+  | CSS | `*.css` |
+  | JSON | `*.json;*.jsonc` |
+  | YAML | `*.yaml;*.yml` |
+  | SQL | `*.sql` |
+  | Shell script | `*.sh;*.bash;*.zsh;*.ksh` |
+  | Markdown | `*.md;*.markdown` |
+  | INI/properties | `*.ini;*.cfg;*.properties` |
+
+- The built-ins sit in the order shown, at the top of the format list. Their masks don't overlap, so none shadows another and their order doesn't change which one a file resolves to.
+- The plain Text format is E02-S1's built-in catch-all Text format (*Plain text*, `otd_format::CATCH_ALL`), with no grammar. It is not a second, listed format: it keeps its empty mask and stays outside the ordered list, and every text file no other format matches, such as `.txt` and `.log` files, gets it (E02-S1 Decisions). So T3 adds no format of that name.
+- "Shell scripts" means POSIX-family shells. Windows batch files and PowerShell scripts are not in the starter set; a user can add a format for them.
+- Every grammar uses the elements Comment, String and Keyword where its language has them, so each can be highlighted and, later, ignored by element (E10-S5). T3 writes each grammar's items and adds any further elements a language needs, such as tags and attributes for HTML/XML or headings for Markdown.
+- The grammars are OverTheDiff's own work, written from the languages' public specifications. Whether T3 can use a library's keyword lists or grammars instead is its `licence-check` (standards/clean-room.md and standards/licences.md).
+- The names are working names. Naming.md rule 3 lets a file format or language we support keep its own name, and T3 confirms each name before it reaches the UI.
+- E10-S7's built-in document converters, the other half of Q8, stay with E10-S7-T1.
+
 #### Tasks
 - **E10-S2-T1** — Decide the starter language set and built-in format list (Q8) · size: S · depends: — · flags: `decision`
   - AC: decision recorded in this story. Proposed default:
