@@ -4,13 +4,13 @@
 //! while the new listings come in. Full Refresh drops both scans and compares from scratch. Swap
 //! Sides exchanges the two base folders and compares from scratch too.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use otd_core::command::{Command, State};
 use otd_source::ItemKind;
 use otd_ui::Shell;
 
-use crate::{FolderCompare, ID};
+use crate::{FolderCompare, ID, Scan};
 
 // English keys, drawn only through `t` (the menus' captions).
 pub const REFRESH: &str = "Refresh";
@@ -65,11 +65,14 @@ impl FolderCompare {
     // the base folders' rows, so their folder is the base, until expansion (E08-S1-T3).
     pub fn refresh_selection(&mut self) {
         let Some(row) = self.rows.get(self.current.0) else { return };
-        let folder = [&row.left, &row.right].into_iter().flatten().any(|item| item.kind == ItemKind::Folder);
-        let path = Path::new(&row.name).to_path_buf();
+        // Each side by its own item's spelling: case-insensitive pairing can match `Docs` to `docs`.
+        let folders =
+            [&row.left, &row.right].map(|item| item.as_ref().filter(|item| item.kind == ItemKind::Folder).map(|item| PathBuf::from(&item.name)));
         self.relist(Path::new(""), false);
-        if folder {
-            self.relist(&path, true);
+        for (scan, folder) in self.scans.iter_mut().zip(folders) {
+            if let (Some(scan), Some(folder)) = (scan, folder) {
+                scan.relist(&folder, true);
+            }
         }
     }
 
@@ -82,10 +85,16 @@ impl FolderCompare {
 
     fn relist(&mut self, folder: &Path, below: bool) {
         for scan in self.scans.iter_mut().flatten() {
-            if scan.scan.refresh(folder, below) > 0 {
-                // Scanning again: the view polls until the listings are in.
-                scan.idle = false;
-            }
+            scan.relist(folder, below);
+        }
+    }
+}
+
+impl Scan {
+    fn relist(&mut self, folder: &Path, below: bool) {
+        if self.scan.refresh(folder, below) > 0 {
+            // Scanning again: the view polls until the listings are in.
+            self.idle = false;
         }
     }
 }
