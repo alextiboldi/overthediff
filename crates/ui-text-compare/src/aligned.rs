@@ -259,7 +259,7 @@ pub struct Caret {
     pub pointer: Option<Pos2>,
     /// The pane's bookmarks, marked in the gutter (E07-S6-T2).
     pub bookmarks: Bookmarks,
-    /// Whether spaces, tabs and line breaks show as glyphs (*Visible Whitespace*).
+    /// Whether spaces, tabs and line breaks show as glyphs (*Show Whitespace*).
     pub whitespace: bool,
 }
 

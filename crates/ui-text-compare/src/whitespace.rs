@@ -1,4 +1,4 @@
-//! *View > Visible Whitespace* (E07-S9-T1): while it is on, both panes mark each space, each tab
+//! *View > Show Whitespace* (E07-S9-T1): while it is on, both panes mark each space, each tab
 //! and each line's break, with one glyph for a Windows (CR LF), one for a Mac (CR) and one for a
 //! Unix (LF) break. The glyphs are painted over the laid-out line, so the text, its columns, the
 //! caret and the line's accessible name stay as they are.
@@ -15,12 +15,12 @@ use otd_ui::Shell;
 use crate::open::NOT_TEXT_COMPARE;
 use crate::{TEXT_COMPARE, TextCompareView};
 
-pub const VISIBLE_WHITESPACE: &str = "Visible Whitespace";
+pub const SHOW_WHITESPACE: &str = "Show Whitespace";
 
 /// The View menu's on/off item. Q24 names no shortcut for it.
 pub(crate) fn commands() -> Vec<Command<Shell>> {
     vec![
-        Command::typed("text-compare.visible_whitespace", VISIBLE_WHITESPACE, &[], toggle)
+        Command::typed("text-compare.show_whitespace", SHOW_WHITESPACE, &[], toggle)
             .views(&[TEXT_COMPARE])
             .icon("pilcrow")
             .menu(&["View"])
@@ -35,8 +35,8 @@ fn toggle(shell: &mut Shell, _: &Args) -> Outcome {
 }
 
 impl TextCompareView {
-    /// Whether *Visible Whitespace* is on.
-    pub fn visible_whitespace(&self) -> bool {
+    /// Whether *Show Whitespace* is on.
+    pub fn show_whitespace(&self) -> bool {
         self.whitespace
     }
 }
